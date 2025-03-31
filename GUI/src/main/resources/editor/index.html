@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="monaco-editor/min/vs/loader.js"></script>
+
+    <script>
+      require.config({ paths: { 'vs': './monaco-editor/min/vs' } });
+        require(['vs/editor/editor.main'], function() {
+            // Define the custom "One Dark" theme
+          monaco.languages.register({ id: "apache" })
+        
+          // Register a tokens provider for the language
+          monaco.languages.setMonarchTokensProvider("apache", {
+            // Set defaultToken to invalid to see what you do not tokenize yet
+            defaultToken: "",
+        
+            // Apache directives are case-insensitive
+            ignoreCase: false,
+        
+            // The main tokenizer for our languages
+            tokenizer: {
+              root: [
+                // Comments
+                [/#.*$/, "comment"],
+            
+                // Opening tags with parameters - match in specific order
+                [/<(?=\/?[A-Za-z])/, "tag.bracket"], // Opening bracket
+                [/\/(?=[A-Za-z]+>)/, "tag.bracket"], // Forward slash in closing tags
+                [/[A-Za-z]+(?=\s|>|\/>)/, "tag.directive"], // Directive name
+                [/\s+[^>]+(?=>)/, "tag.parameter"], // Parameters
+                [/>/, "tag.bracket"], // Closing bracket
+            
+                // Common Apache directives
+                [
+                  /\b(AccessFileName|AddDefaultCharset|AddDescription|AddEncoding|AddHandler|AddIcon|AddIconByEncoding|AddIconByType|AddLanguage|AddModule|AddModuleInfo|AddOutputFilter|AddOutputFilterByType|AddType|Alias|AliasMatch|Allow|AllowCONNECT|AllowEncodedSlashes|AllowMethods|AllowOverride|Anonymous|Anonymous_Authoritative|Anonymous_LogEmail|Anonymous_MustGiveEmail|Anonymous_NoUserID|Anonymous_VerifyEmail|AuthAuthoritative|AuthDBAuthoritative|AuthDBGroupFile|AuthDBMAuthoritative|AuthDBMGroupFile|AuthDBMType|AuthDBMUserFile|AuthDBUserFile|AuthDigestAlgorithm|AuthDigestDomain|AuthDigestFile|AuthDigestGroupFile|AuthDigestNcCheck|AuthDigestNonceFormat|AuthDigestNonceLifetime|AuthDigestQop|AuthDigestShmemSize|AuthGroupFile|AuthLDAPAuthoritative|AuthLDAPBindDN|AuthLDAPBindPassword|AuthLDAPCharsetConfig|AuthLDAPCompareDNOnServer|AuthLDAPDereferenceAliases|AuthLDAPEnabled|AuthLDAPFrontPageHack|AuthLDAPGroupAttribute|AuthLDAPGroupAttributeIsDN|AuthLDAPRemoteUserIsDN|AuthLDAPUrl|AuthName|AuthType|AuthUserFile|BrowserMatch|BrowserMatchNoCase|BS2000Account|BufferedLogs|CacheDefaultExpire|CacheDirLength|CacheDirLevels|CacheDisable|CacheEnable|CacheExpiryCheck|CacheFile|CacheForceCompletion|CacheGcClean|CacheGcDaily|CacheGcInterval|CacheGcMemUsage|CacheGcUnused|CacheIgnoreCacheControl|CacheIgnoreHeaders|CacheIgnoreNoLastMod|CacheLastModifiedFactor|CacheMaxExpire|CacheMaxFileSize|CacheMinFileSize|CacheNegotiatedDocs|CacheRoot|CacheSize|CacheTimeMargin|CGIMapExtension|CharsetDefault|CharsetOptions|CharsetSourceEnc|CheckSpelling|ChildPerUserID|ContentDigest|CookieDomain|CookieExpires|CookieLog|CookieName|CookieStyle|CookieTracking|CoreDumpDirectory|CustomLog|Dav|DavDepthInfinity|DavLockDB|DavMinTimeout|DefaultIcon|DefaultLanguage|DefaultType|DeflateBufferSize|DeflateCompressionLevel|DeflateFilterNote|DeflateMemLevel|DeflateWindowSize|Deny|DirectoryIndex|DirectorySlash|DocumentRoot|DumpIOInput|DumpIOOutput|EnableExceptionHook|EnableMMAP|EnableSendfile|ErrorDocument|ErrorLog|Example|ExpiresActive|ExpiresByType|ExpiresDefault|ExtendedStatus|ExtFilterDefine|ExtFilterOptions|FileETag|ForceLanguagePriority|ForceType|ForensicLog|Group|Header|HeaderName|HostnameLookups|IdentityCheck|IdentityCheckTimeout|ImapBase|ImapDefault|ImapMenu|Include|IndexIgnore|IndexOptions|IndexOrderDefault|ISAPIAppendLogToErrors|ISAPIAppendLogToQuery|ISAPICacheFile|ISAPIFakeAsync|ISAPILogNotSupported|ISAPIReadAheadBuffer|KeepAlive|KeepAliveTimeout|LanguagePriority|LDAPCacheEntries|LDAPCacheTTL|LDAPConnectionTimeout|LDAPOpCacheEntries|LDAPOpCacheTTL|LDAPSharedCacheFile|LDAPSharedCacheSize|LDAPTrustedCA|LDAPTrustedCAType|LimitInternalRecursion|LimitRequestBody|LimitRequestFields|LimitRequestFieldsize|LimitRequestLine|LimitXMLRequestBody|Listen|ListenBacklog|LoadFile|LoadModule|LockFile|LogFormat|LogLevel|MaxClients|MaxKeepAliveRequests|MaxMemFree|MaxRequestsPerChild|MaxRequestsPerThread|MaxSpareServers|MaxSpareThreads|MaxThreads|MaxThreadsPerChild|MCacheMaxObjectCount|MCacheMaxObjectSize|MCacheMaxStreamingBuffer|MCacheMinObjectSize|MCacheRemovalAlgorithm|MCacheSize|MetaDir|MetaFiles|MetaSuffix|MimeMagicFile|MinSpareServers|MinSpareThreads|MMapFile|ModMimeUsePathInfo|MultiviewsMatch|NameVirtualHost|NoCache|NoProxy|NumServers|NWSSLTrustedCerts|NWSSLUpgradeable|Options|Order|PassEnv|PidFile|ProtocolEcho|ProxyBadHeader|ProxyBlock|ProxyDomain|ProxyErrorOverride|ProxyFtpDirCharset|ProxyIOBufferSize|ProxyMaxForwards|ProxyPass|ProxyPassReverse|ProxyPreserveHost|ProxyReceiveBufferSize|ProxyRemote|ProxyRemoteMatch|ProxyRequests|ProxyTimeout|ProxyVia|ReadmeName|Redirect|RedirectMatch|RedirectPermanent|RedirectTemp|RemoveCharset|RemoveEncoding|RemoveHandler|RemoveInputFilter|RemoveLanguage|RemoveOutputFilter|RemoveType|RequestHeader|Require|RewriteBase|RewriteCond|RewriteEngine|RewriteLock|RewriteLog|RewriteLogLevel|RewriteMap|RewriteOptions|RewriteRule|RLimitCPU|RLimitMEM|RLimitNPROC|Satisfy|ScoreBoardFile|Script|ScriptAlias|ScriptAliasMatch|ScriptInterpreterSource|ScriptLog|ScriptLogBuffer|ScriptLogLength|ScriptSock|SecureListen|SendBufferSize|ServerAdmin|ServerAlias|ServerLimit|ServerName|ServerPath|ServerRoot|ServerSignature|ServerTokens|SetEnv|SetEnvIf|SetEnvIfNoCase|SetHandler|SetInputFilter|SetOutputFilter|SSIEndTag|SSIErrorMsg|SSIStartTag|SSITimeFormat|SSIUndefinedEcho|SSLCACertificateFile|SSLCACertificatePath|SSLCARevocationFile|SSLCARevocationPath|SSLCertificateChainFile|SSLCertificateFile|SSLCertificateKeyFile|SSLCipherSuite|SSLEngine|SSLMutex|SSLOptions|SSLPassPhraseDialog|SSLProtocol|SSLProxyCACertificateFile|SSLProxyCACertificatePath|SSLProxyCARevocationFile|SSLProxyCARevocationPath|SSLProxyCipherSuite|SSLProxyEngine|SSLProxyMachineCertificateFile|SSLProxyMachineCertificatePath|SSLProxyProtocol|SSLProxyVerify|SSLProxyVerifyDepth|SSLRandomSeed|SSLRequire|SSLRequireSSL|SSLSessionCache|SSLSessionCacheTimeout|SSLVerifyClient|SSLVerifyDepth|StartServers|StartThreads|SuexecUserGroup|ThreadLimit|ThreadsPerChild|ThreadStackSize|TimeOut|TransferLog|TypesConfig|UnsetEnv|UseCanonicalName|User|UserDir|VirtualDocumentRoot|VirtualDocumentRootIP|VirtualScriptAlias|VirtualScriptAliasIP|Win32DisableAcceptEx|XBitHack)\b/,
+                  "keyword",
+                ],
+            
+                // Variables
+                [/\${[^}]*}/, "variable"],
+                [/%\{[^}]*\}/, "variable"],
+            
+                // Strings
+                [/"([^"\\]|\\.)*$/, "string.invalid"], // non-terminated string
+                [/'([^'\\]|\\.)*$/, "string.invalid"], // non-terminated string
+                [/"/, "string", "@string_double"],
+                [/'/, "string", "@string_single"],
+            
+                // Numbers
+                [/\b\d+\b/, "number"],
+            
+                // IP addresses
+                [/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, "constant.numeric"],
+            
+                // Operators
+                [/[=!<>]/, "operator"],
+              ],
+            
+              string_double: [
+                [/[^\\"]+/, "string"],
+                [/\\./, "string.escape"],
+                [/"/, "string", "@pop"],
+              ],
+            
+              string_single: [
+                [/[^\\']+/, "string"],
+                [/\\./, "string.escape"],
+                [/'/, "string", "@pop"],
+              ],
+            },
+          })
+      
+          // Define the One Dark theme
+          monaco.editor.defineTheme("oneDark", {
+            base: "vs-dark", // Dark base theme
+            inherit: true, // Inherit default settings
+            rules: [
+              { token: "comment", foreground: "5c6370", fontStyle: "italic" }, // Comments in gray
+              { token: "keyword", foreground: "c678dd" }, // Keywords in purple
+              { token: "string", foreground: "98c379" }, // Strings in green
+              { token: "number", foreground: "d19a66" }, // Numbers in orange
+              { token: "attribute.name", foreground: "e5c07b" }, // Attribute names in yellow
+              { token: "attribute.value", foreground: "98c379" }, // Attribute values in green
+              { token: "tag.bracket", foreground: "abb2bf" }, // Tag brackets in light gray
+              { token: "tag.directive", foreground: "61afef" }, // Directive names in blue
+              { token: "tag.parameter", foreground: "d19a66" }, // Parameters in orange
+              { token: "variable", foreground: "e06c75" }, // Variables in red
+              { token: "constant.numeric", foreground: "d19a66" }, // IP addresses in orange
+              { token: "operator", foreground: "56b6c2" }, // Operators in cyan
+              { token: "delimiter", foreground: "abb2bf" }, // Delimiters in light gray
+            ],
+            colors: {
+              "editor.background": "#282c34", // Editor background
+              "editor.lineHighlightBackground": "#2c313c", // Line highlight background
+              "editor.foreground": "#abb2bf", // Default text color
+              "editorCursor.foreground": "#528bff", // Cursor color
+              "editor.selectionBackground": "#3e4451", // Selection background
+              "editorWhitespace.foreground": "#3b4048", // Whitespace color
+            },
+          })
+      
+            // Create the Monaco Editor instance
+        monaco.editor.create(document.getElementById('container'), {
+        value:  `# Apache configuration example
+<VirtualHost *:80>
+    ServerAdmin webmaster@example.com
+    ServerName example.com
+    ServerAlias www.example.com
+    DocumentRoot /var/www/html
+    ErrorLog \${APACHE_LOG_DIR}/error.log
+    CustomLog \${APACHE_LOG_DIR}/access.log combined
+    
+    <Directory /var/www/html>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    # Setup for mod_rewrite
+    RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^www\\.(.*)$ [NC]
+    RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+</VirtualHost>`,
+                language: 'apache',
+                theme: 'oneDark', // Apply the One Dark theme
+                minimap: {
+                    enabled: false // Disable the minimap
+                }
+            });
+        });
+    </script>
+    <style>
+        html, body, #container {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+</body>
+</html>
