@@ -1,1 +1,45 @@
-/target
+GUI/.gradle
+GUI/build/
+GUI/!gradle/wrapper/gradle-wrapper.jar
+GUI/!**/src/main/**/build/
+GUI/!**/src/test/**/build/
+
+### IntelliJ IDEA ###
+GUI/.idea/modules.xml
+GUI/.idea/jarRepositories.xml
+GUI/.idea/compiler.xml
+GUI/.idea/libraries/
+GUI/*.iws
+GUI/*.iml
+GUI/*.ipr
+GUI/out/
+GUI/!**/src/main/**/out/
+GUI/!**/src/test/**/out/
+
+### Kotlin ###
+GUI/.kotlin
+
+### Eclipse ###
+GUI/.apt_generated
+GUI/.classpath
+GUI/.factorypath
+GUI/.project
+GUI/.settings
+GUI/.springBeans
+GUI/.sts4-cache
+GUI/bin/
+GUI/!**/src/main/**/bin/
+GUI/!**/src/test/**/bin/
+
+### NetBeans ###
+GUI/nbproject/private/
+GUI/nbbuild/
+GUI/dist/
+GUI/nbdist/
+GUI/.nb-gradle/
+
+### VS Code ###
+GUI/.vscode/
+
+### Mac OS ###
+GUI/.DS_Store
