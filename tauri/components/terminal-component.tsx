@@ -33,7 +33,7 @@ interface TerminalTheme {
 // Terminal themes with proper typing
 const terminalThemes: Record<"dark" | "light", TerminalTheme> = {
   dark: {
-    background: "#282c34",
+    background: "#0e171e",
     foreground: "#abb2bf",
     cursor: "#528bff",
     selection: "#3E4451",

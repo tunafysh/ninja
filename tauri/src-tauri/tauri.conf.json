@@ -5,9 +5,9 @@
   "identifier": "com.tunafysh.apache-editor",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:3000",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "frontendDist": "../out"
   },
   "app": {
     "withGlobalTauri": true,
@@ -15,8 +15,10 @@
       {
         "title": "apache-editor",
         "width": 800,
-        "height": 600
-      }
+        "height": 600,
+        "decorations": false
+      } 
+
     ],
     "security": {
       "csp": null

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("apache-editor")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+68a5ff1ca5457c50e40ff62742d82f0ac5812a2f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+30cced8504ad75bf49eb9451307379ad51f224fd")]
 [assembly: System.Reflection.AssemblyProductAttribute("apache-editor")]
 [assembly: System.Reflection.AssemblyTitleAttribute("apache-editor")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Window } from "@tauri-apps/api/window"
 import {
   Copy,
   CreditCard,
@@ -65,12 +66,12 @@ export function ApplicationMenubar() {
   }, [])
 
   return (
-    <div className="flex h-12 items-center border-b bg-background">
+    <div className="flex h-12 items-center border-b bg-background drag" data-tauri-drag-region>
       {platform === "mac" && (
         <WindowControls
-          onMinimize={() => console.log("Minimize")}
-          onMaximize={() => console.log("Maximize")}
-          onClose={() => console.log("Close")}
+          onMinimize={() => Window.getCurrent().minimize()}
+          onMaximize={() => Window.getCurrent().maximize()}
+          onClose={() => Window.getCurrent().close()}
         />
       )}
 
@@ -208,75 +209,11 @@ export function ApplicationMenubar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
-              Account
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-                <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard className="mr-2 h-4 w-4" />
-                <span>Billing</span>
-                <DropdownMenuShortcut>⌘B</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-                <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Users className="mr-2 h-4 w-4" />
-                <span>Team</span>
-              </DropdownMenuItem>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  <span>Invite users</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuPortal>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem>
-                      <Mail className="mr-2 h-4 w-4" />
-                      <span>Email</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      <span>Message</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      <span>More...</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuPortal>
-              </DropdownMenuSub>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Log out</span>
-              <DropdownMenuShortcut>⇧⌘Q</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
-              Help
+              Server
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">
@@ -292,15 +229,6 @@ export function ApplicationMenubar() {
             <DropdownMenuItem>
               <Github className="mr-2 h-4 w-4" />
               <span>GitHub</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Twitter className="mr-2 h-4 w-4" />
-              <span>Twitter</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Info className="mr-2 h-4 w-4" />
-              <span>About</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

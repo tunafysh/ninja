@@ -38,7 +38,7 @@ loader.init().then((monaco) => {
       { token: "delimiter", foreground: "abb2bf" },
     ],
     colors: {
-      "editor.background": "#282c34",
+      "editor.background": "#0e171e",
       "editor.lineHighlightBackground": "#2c313c",
       "editor.foreground": "#abb2bf",
       "editorCursor.foreground": "#528bff",
@@ -49,7 +49,7 @@ loader.init().then((monaco) => {
 
   // GitHub Light theme (light mode)
   monaco.editor.defineTheme("githubLight", {
-    base: "vs",
+    base: "vs-dark",
     inherit: true,
     rules: [
       { token: "comment", foreground: "6a737d", fontStyle: "italic" },
@@ -67,11 +67,11 @@ loader.init().then((monaco) => {
       { token: "delimiter", foreground: "24292e" },
     ],
     colors: {
-      "editor.background": "#ffffff",
+      "editor.background": "#0e171e",
       "editor.lineHighlightBackground": "#f6f8fa",
       "editor.foreground": "#24292e",
-      "editorCursor.foreground": "#044289",
-      "editor.selectionBackground": "#c8e1ff",
+      "editorCursor.foreground": "#0e171e",
+      "editor.selectionBackground": "#c8e1ffcc",
       "editorWhitespace.foreground": "#d1d5da",
     },
   })
@@ -165,9 +165,9 @@ export default function ApacheEditor() {
     editorRef.current = editor
     // Register Apache language
     registerApacheLanguage(monaco)
-
+    monaco.editor.RenderMinimap.None
     // Force theme update
-    monaco.editor.setTheme(isDarkMode ? "oneDark" : "githubLight")
+    monaco.editor.setTheme("oneDark")
   }
 
   const toggleTheme = () => {
@@ -215,19 +215,7 @@ export default function ApacheEditor() {
   }
 
   return (
-    <div className={`flex flex-col w-full h-full ${isDarkMode ? "dark" : ""}`}>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold">Apache Configuration Syntax Highlighter</h2>
-        <button
-          onClick={toggleTheme}
-          className={`p-2 rounded-full ${isDarkMode ? "bg-gray-700 text-yellow-300" : "bg-blue-100 text-blue-800"}`}
-          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
-      </div>
-
-      <div className="h-[calc(100vh-200px)] border rounded-md overflow-hidden">
+    <div className={`flex flex-col w-full h-[calc(100vh - 48px)] ${isDarkMode ? "dark" : ""}`}>
         <ResizablePanelGroup direction="vertical">
           <ResizablePanel defaultSize={60} minSize={20}>
             <div className="h-full p-0">
@@ -235,10 +223,10 @@ export default function ApacheEditor() {
                 height="100%"
                 defaultLanguage="apache"
                 defaultValue={apacheConfig}
-                theme={isDarkMode ? "oneDark" : "githubLight"}
+                theme={"oneDark"}
                 onMount={handleEditorDidMount}
                 options={{
-                  minimap: { enabled: true },
+                  minimap: { enabled: false },
                   scrollBeyondLastLine: false,
                   fontSize: 14,
                   lineNumbers: "on",
@@ -262,12 +250,11 @@ export default function ApacheEditor() {
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize={40} minSize={10}>
-            <div className={`h-full ${isDarkMode ? "bg-[#282c34]" : "bg-white"}`}>
+            <div className={`h-[calc(100% - 20%)] ${isDarkMode ? "bg-[#282c34]" : "bg-white"}`}>
               <TerminalComponent isDarkMode={isDarkMode} />
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-      </div>
     </div>
   )
 }

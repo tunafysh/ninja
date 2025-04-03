@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback, useRef } from "react"
+import React, { useState, useCallback, useRef, Dispatch, SetStateAction } from "react"
 import { DndProvider, useDrag, useDrop } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import {
@@ -427,9 +427,9 @@ function AddToolDialog({
   )
 }
 
-export function SwappableSidebar() {
+export function SwappableSidebar({ isCollapsed, setIsCollapsed }: { isCollapsed: boolean, setIsCollapsed: Dispatch<SetStateAction<boolean>> }) {
   const [tools, setTools] = useState(initialTools)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTool, setEditingTool] = useState<ToolItem | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -484,8 +484,8 @@ export function SwappableSidebar() {
       <div
         ref={sidebarRef}
         className={cn(
-          "flex h-screen flex-col border-r bg-background transition-all duration-300",
-          isCollapsed ? "w-16" : "w-64",
+          "flex h-[calc(100vh-48px)] flex-col border-r bg-background transition-all duration-300 mr-0",
+          "w-full",
         )}
         onContextMenu={handleContextMenu}
       >
@@ -506,7 +506,9 @@ export function SwappableSidebar() {
                 <Plus className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} className="h-8 w-8 p-0">
+            <Button variant="ghost" size="icon" onClick={() => {
+              setIsCollapsed(!isCollapsed)
+              }} className="h-8 w-8 p-0">
               {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </Button>
           </div>
@@ -542,14 +544,6 @@ export function SwappableSidebar() {
             ),
           )}
         </div>
-
-        {!isCollapsed && (
-          <div className="border-t p-2">
-            <Button variant="outline" size="sm" onClick={resetOrder} className="w-full">
-              Reset Order
-            </Button>
-          </div>
-        )}
       </div>
 
       <AddToolDialog
