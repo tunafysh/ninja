@@ -1,11 +1,15 @@
 "use client"
 
-import React, { useState, useCallback, useRef, Dispatch, SetStateAction } from "react"
+import { useState } from "react"
+
+import * as React from "react"
 import { DndProvider, useDrag, useDrop } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import {
   BarChart3,
   Calendar,
+  CreditCard,
+  Edit,
   FileText,
   Grip,
   Home,
@@ -13,49 +17,25 @@ import {
   LayoutDashboard,
   Mail,
   MessageSquare,
-  Settings,
-  Users,
   Plus,
+  Settings,
   Trash,
-  Edit,
-  Code,
-  Terminal,
-  Bookmark,
-  Briefcase,
-  Cloud,
-  CreditCard,
-  Database,
-  Download,
-  FileCode,
-  Film,
-  Folder,
-  Globe,
-  HardDrive,
-  Headphones,
-  Heart,
-  Link,
-  Map,
-  Music,
-  Package,
-  Phone,
-  PieChart,
-  Printer,
-  Search,
-  Send,
-  Server,
-  ShoppingCart,
-  Smartphone,
-  Star,
-  Tag,
-  Upload,
-  Video,
-  Zap,
+  Users,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import {
   Dialog,
   DialogContent,
@@ -76,6 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 
 // Define the type for our tool items
 type ToolItem = {
@@ -84,6 +65,7 @@ type ToolItem = {
   icon: React.ReactNode
   color?: string
   command?: string
+  isActive?: boolean
 }
 
 // Map of available icons
@@ -98,41 +80,7 @@ const iconMap: Record<string, React.ReactNode> = {
   Images: <Image className="h-5 w-5" />,
   Users: <Users className="h-5 w-5" />,
   Settings: <Settings className="h-5 w-5" />,
-  Plus: <Plus className="h-5 w-5" />,
-  Trash: <Trash className="h-5 w-5" />,
-  Edit: <Edit className="h-5 w-5" />,
-  Code: <Code className="h-5 w-5" />,
-  Terminal: <Terminal className="h-5 w-5" />,
-  Bookmark: <Bookmark className="h-5 w-5" />,
-  Briefcase: <Briefcase className="h-5 w-5" />,
-  Cloud: <Cloud className="h-5 w-5" />,
   CreditCard: <CreditCard className="h-5 w-5" />,
-  Database: <Database className="h-5 w-5" />,
-  Download: <Download className="h-5 w-5" />,
-  FileCode: <FileCode className="h-5 w-5" />,
-  Film: <Film className="h-5 w-5" />,
-  Folder: <Folder className="h-5 w-5" />,
-  Globe: <Globe className="h-5 w-5" />,
-  HardDrive: <HardDrive className="h-5 w-5" />,
-  Headphones: <Headphones className="h-5 w-5" />,
-  Heart: <Heart className="h-5 w-5" />,
-  Link: <Link className="h-5 w-5" />,
-  Map: <Map className="h-5 w-5" />,
-  Music: <Music className="h-5 w-5" />,
-  Package: <Package className="h-5 w-5" />,
-  Phone: <Phone className="h-5 w-5" />,
-  PieChart: <PieChart className="h-5 w-5" />,
-  Printer: <Printer className="h-5 w-5" />,
-  Search: <Search className="h-5 w-5" />,
-  Send: <Send className="h-5 w-5" />,
-  Server: <Server className="h-5 w-5" />,
-  ShoppingCart: <ShoppingCart className="h-5 w-5" />,
-  Smartphone: <Smartphone className="h-5 w-5" />,
-  Star: <Star className="h-5 w-5" />,
-  Tag: <Tag className="h-5 w-5" />,
-  Upload: <Upload className="h-5 w-5" />,
-  Video: <Video className="h-5 w-5" />,
-  Zap: <Zap className="h-5 w-5" />,
 }
 
 // Available colors
@@ -151,8 +99,40 @@ const colorOptions = [
 
 // Initial tools data
 const initialTools: ToolItem[] = [
-  { id: "start", name: "Start Server", icon: <Home className="h-5 w-5" />, command: "sudo systemctl start apache2" },   
-  
+  { id: "home", name: "Home", icon: <Home className="h-5 w-5" />, command: "/home", isActive: true },
+  {
+    id: "dashboard",
+    name: "Dashboard",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+    color: "text-blue-500",
+    command: "/dashboard",
+  },
+  {
+    id: "messages",
+    name: "Messages",
+    icon: <MessageSquare className="h-5 w-5" />,
+    color: "text-green-500",
+    command: "/messages",
+  },
+  { id: "mail", name: "Mail", icon: <Mail className="h-5 w-5" />, color: "text-yellow-500", command: "/mail" },
+  {
+    id: "calendar",
+    name: "Calendar",
+    icon: <Calendar className="h-5 w-5" />,
+    color: "text-purple-500",
+    command: "/calendar",
+  },
+  {
+    id: "analytics",
+    name: "Analytics",
+    icon: <BarChart3 className="h-5 w-5" />,
+    color: "text-pink-500",
+    command: "/analytics",
+  },
+  { id: "files", name: "Files", icon: <FileText className="h-5 w-5" />, color: "text-orange-500", command: "/files" },
+  { id: "images", name: "Images", icon: <Image className="h-5 w-5" />, color: "text-cyan-500", command: "/images" },
+  { id: "users", name: "Users", icon: <Users className="h-5 w-5" />, color: "text-indigo-500", command: "/users" },
+  { id: "settings", name: "Settings", icon: <Settings className="h-5 w-5" />, command: "/settings" },
 ]
 
 // Drag item type
@@ -243,36 +223,27 @@ const DraggableTool = ({
   return (
     <ContextMenu>
       <ContextMenuTrigger>
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                ref={ref}
-                className={cn(
-                  "group flex cursor-grab items-center justify-between rounded-md p-2 transition-colors hover:bg-muted",
-                  isDragging ? "opacity-50" : "opacity-100",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-md bg-muted",
-                      tool.color === "default" ? "" : tool.color,
-                    )}
-                  >
-                    {tool.icon}
-                  </div>
-                  <span className="text-sm font-medium">{tool.name}</span>
-                </div>
-                <Grip className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p>Drag to reorder</p>
-              <p className="text-xs text-muted-foreground">Right-click for options</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div
+          ref={ref}
+          className={cn(
+            "group flex cursor-grab items-center justify-between rounded-md p-2 transition-colors hover:bg-sidebar-accent",
+            isDragging ? "opacity-50" : "opacity-100",
+            tool.isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-md bg-sidebar-accent/50",
+                tool.color === "default" ? "" : tool.color,
+              )}
+            >
+              {tool.icon}
+            </div>
+            <span className="text-sm font-medium">{tool.name}</span>
+          </div>
+          <Grip className="h-4 w-4 text-sidebar-foreground/50 opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={() => onEdit(tool)}>
@@ -324,6 +295,7 @@ function AddToolDialog({
       icon: iconMap[selectedIcon],
       command,
       color: color === "default" ? "" : color,
+      isActive: editingTool?.isActive || false,
     }
 
     if (editingTool && onUpdate) {
@@ -427,14 +399,17 @@ function AddToolDialog({
   )
 }
 
-export function SwappableSidebar({ isCollapsed, setIsCollapsed }: { isCollapsed: boolean, setIsCollapsed: Dispatch<SetStateAction<boolean>> }) {
+interface ShadcnSidebarProps {
+  isCollapsed?: boolean
+}
+
+export function ShadcnSidebar({ isCollapsed }: ShadcnSidebarProps) {
   const [tools, setTools] = useState(initialTools)
-  
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTool, setEditingTool] = useState<ToolItem | null>(null)
-  const sidebarRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = React.useRef<HTMLDivElement>(null)
 
-  const moveItem = useCallback((dragIndex: number, hoverIndex: number) => {
+  const moveItem = React.useCallback((dragIndex: number, hoverIndex: number) => {
     setTools((prevTools) => {
       const newTools = [...prevTools]
       const draggedItem = newTools[dragIndex]
@@ -481,70 +456,63 @@ export function SwappableSidebar({ isCollapsed, setIsCollapsed }: { isCollapsed:
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div
-        ref={sidebarRef}
-        className={cn(
-          "flex h-[calc(100vh-48px)] flex-col border-r bg-background transition-all duration-300 mr-0",
-          "w-full",
-        )}
-        onContextMenu={handleContextMenu}
-      >
-        <div className="flex h-14 items-center justify-between border-b px-4">
-          <h2 className={cn("text-lg font-semibold", isCollapsed && "hidden")}>Quick Tools</h2>
-          <div className="flex items-center gap-2">
-            {!isCollapsed && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  setEditingTool(null)
-                  setDialogOpen(true)
-                }}
-                className="h-8 w-8 p-0"
-                title="Add Tool"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            )}
-            <Button variant="ghost" size="icon" onClick={() => {
-              setIsCollapsed(!isCollapsed)
-              }} className="h-8 w-8 p-0">
-              {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto p-2">
-          {tools.map((tool, index) =>
-            isCollapsed ? (
-              <TooltipProvider key={tool.id} delayDuration={300}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className={cn("mb-1 h-12 w-12", tool.color)}>
-                      {tool.icon}
+      <SidebarProvider defaultOpen={!isCollapsed}>
+        <Sidebar>
+          <div ref={sidebarRef} className="flex h-full flex-col" onContextMenu={handleContextMenu}>
+            <SidebarHeader>
+              <div className="flex items-center justify-between px-4 py-2">
+                {!isCollapsed && <h2 className="text-lg font-semibold">Quick Tools</h2>}
+                <div className="flex items-center gap-2">
+                  {!isCollapsed && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditingTool(null)
+                        setDialogOpen(true)
+                      }}
+                      className="h-8 w-8 p-0"
+                      title="Add Tool"
+                    >
+                      <Plus className="h-4 w-4" />
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>{tool.name}</p>
-                    {tool.command && <p className="text-xs text-muted-foreground">{tool.command}</p>}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <div key={tool.id} data-tool="true">
-                <DraggableTool
-                  id={tool.id}
-                  index={index}
-                  tool={tool}
-                  moveItem={moveItem}
-                  onRemove={handleRemoveTool}
-                  onEdit={handleEditTool}
-                />
+                  )}
+                  <SidebarTrigger />
+                </div>
               </div>
-            ),
-          )}
-        </div>
-      </div>
+            </SidebarHeader>
+
+            <SidebarContent>
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {tools.map((tool, index) => (
+                      <div key={tool.id} data-tool="true">
+                        <DraggableTool
+                          id={tool.id}
+                          index={index}
+                          tool={tool}
+                          moveItem={moveItem}
+                          onRemove={handleRemoveTool}
+                          onEdit={handleEditTool}
+                        />
+                      </div>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </SidebarContent>
+
+            {!isCollapsed && (
+              <SidebarFooter>
+                <Button variant="outline" size="sm" onClick={resetOrder} className="w-full">
+                  Reset Order
+                </Button>
+              </SidebarFooter>
+            )}
+          </div>
+        </Sidebar>
+      </SidebarProvider>
 
       <AddToolDialog
         open={dialogOpen}
@@ -554,45 +522,6 @@ export function SwappableSidebar({ isCollapsed, setIsCollapsed }: { isCollapsed:
         onUpdate={handleUpdateTool}
       />
     </DndProvider>
-  )
-}
-
-// Add missing icons
-function ChevronLeft(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
-
-function ChevronRight(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
   )
 }
 

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/hanan/Desktop/apache-editor/TUI/apache-editor.csproj": {}
+    "/Users/hanan/Desktop/ninja/TUI/apache-editor.csproj": {}
   },
   "projects": {
-    "/Users/hanan/Desktop/apache-editor/TUI/apache-editor.csproj": {
+    "/Users/hanan/Desktop/ninja/TUI/apache-editor.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/hanan/Desktop/apache-editor/TUI/apache-editor.csproj",
+        "projectUniqueName": "/Users/hanan/Desktop/ninja/TUI/apache-editor.csproj",
         "projectName": "apache-editor",
-        "projectPath": "/Users/hanan/Desktop/apache-editor/TUI/apache-editor.csproj",
+        "projectPath": "/Users/hanan/Desktop/ninja/TUI/apache-editor.csproj",
         "packagesPath": "/Users/hanan/.nuget/packages/",
-        "outputPath": "/Users/hanan/Desktop/apache-editor/TUI/obj/",
+        "outputPath": "/Users/hanan/Desktop/ninja/TUI/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/hanan/.nuget/NuGet/NuGet.Config"

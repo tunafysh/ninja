@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import { WindowControls } from "./window-controls"
+import { ModeToggle } from "./ui/themetoggle"
 
 export function ApplicationMenubar() {
   const { setTheme, theme } = useTheme()
@@ -66,7 +67,7 @@ export function ApplicationMenubar() {
   }, [])
 
   return (
-    <div className="flex h-12 items-center border-b bg-background drag" data-tauri-drag-region>
+    <div className="flex h-12 justify-between items-center border-b bg-background drag" data-tauri-drag-region>
       {platform === "mac" && (
         <WindowControls
           onMinimize={() => Window.getCurrent().minimize()}
@@ -75,6 +76,7 @@ export function ApplicationMenubar() {
         />
       )}
 
+      {platform !== "mac" && (
       <div className="flex items-center gap-2 px-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -233,16 +235,17 @@ export function ApplicationMenubar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-
-      {platform !== "mac" && (
+        )}
         <div className="ml-auto">
+          <ModeToggle/>
+        {platform !== "mac" && (
           <WindowControls
-            onMinimize={() => console.log("Minimize")}
-            onMaximize={() => console.log("Maximize")}
-            onClose={() => console.log("Close")}
+          onMinimize={() => console.log("Minimize")}
+          onMaximize={() => console.log("Maximize")}
+          onClose={() => console.log("Close")}
           />
+        )}
         </div>
-      )}
     </div>
   )
 }
