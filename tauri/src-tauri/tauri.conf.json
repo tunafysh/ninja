@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ninja",
+  "productName": "Ninja",
   "version": "0.1.0",
   "identifier": "com.tunafysh.ninja",
   "build": {
@@ -13,10 +13,11 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "apache-editor",
+        "title": "Ninja",
         "width": 800,
         "height": 600,
-        "decorations": false
+        "decorations": false,
+        "transparent": true
       } 
 
     ],
