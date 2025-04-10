@@ -19,8 +19,8 @@ export function ModeToggle() {
 
   return (
     <Button variant={"toggle"} size="icon" onClick={switchTheme}>
-        <SunIcon className={`h-[1.2rem] w-[1.2rem] rotate-0 transition-all dark:-rotate-90 ${theme == "light"? "opacity-100": "opacity-0"}`} />
-        <MoonIcon className={`absolute h-[1.2rem] w-[1.2rem] rotate-90 transition-all dark:rotate-0 ${theme == "dark"? "opacity-100": "opacity-0"}`} />
+        <SunIcon suppressHydrationWarning className={`h-[1.2rem] w-[1.2rem] rotate-0 transition-all dark:-rotate-90 ${theme == "light"? "opacity-100": "opacity-0"}`} />
+        <MoonIcon suppressHydrationWarning className={`absolute h-[1.2rem] w-[1.2rem] rotate-90 transition-all dark:rotate-0 ${theme == "dark"? "opacity-100": "opacity-0"}`} />
         <span className="sr-only">Toggle theme</span>
     </Button>
   )

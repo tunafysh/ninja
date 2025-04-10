@@ -28,7 +28,7 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
 
   if (platform === "mac") {
     return (
-      <div className="flex items-center gap-1.5 px-2">
+      <div className="flex items-center gap-1.5 px-2 pl-3">
         <button
           onClick={onClose}
           className="group flex h-3 w-3 items-center justify-center rounded-full bg-red-500 transition-colors hover:bg-red-600"

@@ -4,37 +4,25 @@ import * as React from "react"
 import { Window } from "@tauri-apps/api/window"
 import {
   Copy,
-  CreditCard,
   File,
   FileText,
   FolderOpen,
   Github,
   HelpCircle,
-  Info,
   Laptop,
   LayoutGrid,
   LifeBuoy,
   LogOut,
-  Mail,
-  MessageSquare,
   Moon,
-  PlusCircle,
   Save,
-  Settings,
   Sun,
-  Twitter,
-  User,
-  UserPlus,
-  Users,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuPortal,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -49,25 +37,12 @@ import { useTheme } from "next-themes"
 import { WindowControls } from "./window-controls"
 import { ModeToggle } from "./ui/themetoggle"
 
-export function ApplicationMenubar() {
+export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" | "linux" | "unknown" }) {
   const { setTheme, theme } = useTheme()
   const [viewMode, setViewMode] = React.useState("grid")
-  const [platform, setPlatform] = React.useState<"mac" | "windows" | "linux" | "unknown">("unknown")
-
-  React.useEffect(() => {
-    // Detect platform
-    const userAgent = window.navigator.userAgent.toLowerCase()
-    if (userAgent.indexOf("mac") !== -1) {
-      setPlatform("mac")
-    } else if (userAgent.indexOf("win") !== -1) {
-      setPlatform("windows")
-    } else if (userAgent.indexOf("linux") !== -1) {
-      setPlatform("linux")
-    }
-  }, [])
 
   return (
-    <div className="flex h-12 justify-between items-center border-b bg-background drag" data-tauri-drag-region>
+    <div style={{ borderTopLeftRadius: "15px", borderTopRightRadius: "15px"}} className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-12"} justify-between items-center border-b bg-background drag overflow-hidden w-full`} data-tauri-drag-region>
       {platform === "mac" && (
         <WindowControls
           onMinimize={() => Window.getCurrent().minimize()}
@@ -237,13 +212,16 @@ export function ApplicationMenubar() {
       </div>
         )}
         <div className="ml-auto">
-          <ModeToggle/>
         {platform !== "mac" && (
+          <div>
+
+          <ModeToggle/>
           <WindowControls
           onMinimize={() => console.log("Minimize")}
           onMaximize={() => console.log("Maximize")}
           onClose={() => console.log("Close")}
           />
+          </div>
         )}
         </div>
     </div>
