@@ -178,7 +178,7 @@ export default function Tools() {
 
                   <div className="space-y-2">
                     <Label htmlFor="backup-location">Backup Location</Label>
-                    <Input id="backup-location" defaultValue="C:/xampp/mysql/backup" className="bg-muted" />
+                    <Input id="backup-location" defaultValue="C:/ninja/mysql/backup" className="bg-muted" />
                   </div>
 
                   <Button className="w-full">Create Database Backup</Button>
@@ -189,12 +189,12 @@ export default function Tools() {
 
                   <div className="space-y-2">
                     <Label htmlFor="backup-directory">Select Directory</Label>
-                    <Input id="backup-directory" defaultValue="C:/xampp/htdocs" className="bg-muted" />
+                    <Input id="backup-directory" defaultValue="C:/ninja/htdocs" className="bg-muted" />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="backup-file-location">Backup Location</Label>
-                    <Input id="backup-file-location" defaultValue="C:/xampp/backup" className="bg-muted" />
+                    <Input id="backup-file-location" defaultValue="C:/ninja/backup" className="bg-muted" />
                   </div>
 
                   <Button className="w-full">Create File Backup</Button>

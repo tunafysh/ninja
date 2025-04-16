@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Database, Server, Globe, FileCode, Cpu, MoreHorizontal } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MovingBorderButton } from "../ui/moving-border-button"
 
 export default function Dashboard() {
   const [services, setServices] = useState([
@@ -35,7 +36,7 @@ export default function Dashboard() {
         <h2 className="text-xl font-semibold mb-3 px-1">Services</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           {services.map((service) => (
-            <Card key={service.id} className="bg-card border-border overflow-hidden py-0">
+            <Card key={service.id} className="bg-card border-border py-0">
               <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                 <div className="flex items-center gap-1">
                   <div className={`p-1.5 rounded-md bg-muted ${service.status === "running" ? "bg-primary/10" : ""}`}>
@@ -51,6 +52,9 @@ export default function Dashboard() {
                 >
                   {service.status === "running" ? "Running" : "Stopped"}
                 </Badge>
+                {/* <MovingBorderButton className="text-xs md:text-sm h-8 px-0 w-full hover:dark:bg-muted hover:bg-primary">
+                  Starting
+                </MovingBorderButton> (for use in loading circle) */}
               </CardHeader>
               <CardFooter className="p-3 md:p-4 pt-0 flex gap-2">
                 <Button

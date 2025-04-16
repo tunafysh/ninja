@@ -2,21 +2,7 @@
 
 import * as React from "react"
 import { Window } from "@tauri-apps/api/window"
-import {
-  Copy,
-  File,
-  FileText,
-  FolderOpen,
-  Github,
-  HelpCircle,
-  Laptop,
-  LayoutGrid,
-  LifeBuoy,
-  LogOut,
-  Moon,
-  Save,
-  Sun,
-} from "lucide-react"
+import { Copy, File, FileText, FolderOpen, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Save, Sun } from 'lucide-react'
 
 import { Button } from "@/components/ui/button"
 import {
@@ -42,7 +28,14 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
   const [viewMode, setViewMode] = React.useState("grid")
 
   return (
-    <div style={{ borderTopLeftRadius: "15px", borderTopRightRadius: "15px"}} className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-12"} justify-between items-center border-b bg-background drag overflow-hidden w-full`} data-tauri-drag-region>
+    <div 
+      className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-12"} justify-between items-center border-b bg-background drag w-full`} 
+      style={{ 
+        borderTopLeftRadius: '7px', 
+        borderTopRightRadius: '7px' 
+      }}
+      data-tauri-drag-region
+    >
       {platform === "mac" && (
         <WindowControls
           onMinimize={() => Window.getCurrent().minimize()}
@@ -213,18 +206,16 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
         )}
         <div className="ml-auto">
         {platform !== "mac" && (
-          <div>
-
-          <ModeToggle/>
-          <WindowControls
-          onMinimize={() => console.log("Minimize")}
-          onMaximize={() => console.log("Maximize")}
-          onClose={() => console.log("Close")}
-          />
+          <div className="flex items-center">
+            <ModeToggle/>
+            <WindowControls
+              onMinimize={() => console.log("Minimize")}
+              onMaximize={() => console.log("Maximize")}
+              onClose={() => console.log("Close")}
+            />
           </div>
         )}
         </div>
     </div>
   )
 }
-
