@@ -1,144 +1,90 @@
-use std::process::Command;
-use std::io::{Error, ErrorKind};
-use zbus::zvariant::{Value, OwnedObjectPath};
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+use glob::glob;
+use serde::{Deserialize, Serialize};
+use anyhow::{Context, Result};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShurikenStatus {
-    Active,
-    Inactive,
-    Error(String),
-    Reloading,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Shuriken {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ShurikenConfig {
     name: String,
-    service_name: String,
-    status: ShurikenStatus,
+    version: String,
+    entry_point: PathBuf,
+    args: Vec<String>,
+    #[serde(skip)]
+    base_dir: PathBuf,
+    #[serde(skip)]
+    process: Arc<Mutex<Option<Child>>>,
 }
 
-impl Shuriken {
-    /// Create a new service component (Shuriken)
-    pub fn new(name: &str, service_name: &str) -> Self {
-        Shuriken {
-            name: name.to_string(),
-            service_name: service_name.to_string(),
-            status: ShurikenStatus::Inactive,
+impl ShurikenConfig {
+    pub fn load(config_path: &Path) -> Result<Self> {
+        let config_content = std::fs::read_to_string(config_path)
+            .context("Failed to read manifest file")?;
+
+        let mut config: Self = toml::from_str(&config_content)
+            .context("Failed to parse Shuriken manifest")?;
+
+        // Set base directory relative to config file location
+        config.base_dir = config_path.parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+
+        // Validate essential paths
+        let full_entry = config.absolute_path(&config.entry_point);
+        if !full_entry.exists() {
+            return Err(anyhow::anyhow!(
+                "Entry point not found: {}",
+                full_entry.display()
+            ));
         }
+
+        Ok(config)
     }
 
-    /// Throw the Shuriken (start service)
-    pub async fn throw(&mut self) -> Result<(), String> {
-        self.execute_service_action("start").await?;
-        self.status = ShurikenStatus::Active;
+    pub fn absolute_path(&self, relative_path: &Path) -> PathBuf {
+        self.base_dir.join(relative_path)
+    }
+
+    pub fn start(&mut self) -> Result<()> {
+        let mut process = Command::new(self.absolute_path(&self.entry_point))
+            .args(&self.args)
+            .current_dir(&self.base_dir)
+            .spawn()
+            .context("Failed to start Shuriken")?;
+
+        *self.process.lock().unwrap() = Some(process);
         Ok(())
     }
 
-    /// Recall the Shuriken (stop service)
-    pub async fn recall(&mut self) -> Result<(), String> {
-        self.execute_service_action("stop").await?;
-        self.status = ShurikenStatus::Inactive;
+    pub fn stop(&mut self) -> Result<()> {
+        if let Some(process) = self.process.lock().unwrap().as_mut() {
+            process.kill()?;
+        }
         Ok(())
     }
-
-    /// Spin the Shuriken (restart service)
-    pub async fn spin(&mut self) -> Result<(), String> {
-        self.execute_service_action("restart").await?;
-        self.status = ShurikenStatus::Reloading;
-        Ok(())
-    }
-
-    /// Check shuriken position (service status)
-    pub async fn track(&mut self) -> Result<ShurikenStatus, String> {
-        let output = self.execute_service_action("is-active").await?;
-        
-        self.status = match output.trim() {
-            "active" => ShurikenStatus::Active,
-            "inactive" => ShurikenStatus::Inactive,
-            _ => ShurikenStatus::Error(output),
-        };
-        
-        Ok(self.status.clone())
-    }
-
-    /// Internal service command execution with Polkit
-    async fn execute_service_action(&self, action: &str) -> Result<String, String> {
-        // Use the Polkit authentication from previous implementation
-        let connection = zbus::Connection::system().await.map_err(|e| e.to_string())?;
-        
-        // Get the current process ID for Polkit
-        let pid = std::process::id();
-        
-        // Prepare subject for Polkit authorization
-        let subject = HashMap::from([
-            ("pid", Value::U32(pid)),
-            ("start-time", Value::U64(0)),
-            ("subject-kind", Value::Str("unix-process".into())),
-        ]);
-        
-        // Define the action ID for systemd service management
-        let action_id = format!("org.freedesktop.systemd1.manage-units");
-        
-        // Polkit authorization check
-        let reply = connection.call_method(
-                Some("org.freedesktop.PolicyKit1"),
-                "/org/freedesktop/PolicyKit1/Authority",
-                Some("org.freedesktop.PolicyKit1.Authority"),
-                "CheckAuthorization",
-                &(
-                    subject,                    // Subject (the current process)
-                    action_id,                  // Action ID
-                    HashMap::<String, Value>::new(), // Details
-                    1u32,                       // Flags (1 = AllowUserInteraction)
-                    ""                          // Cancellation ID (empty string)
-                )
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        
-        // Extract the response tuple from the message body
-        let (is_authorized, _, _): (bool, u32, HashMap<String, Value>) = reply.body().deserialize().map_err(|e| e.to_string())?;
-            
-        
-        if !is_authorized {
-            return Err("Unauthorized service operation".into());
-        }
-        
-        // Execute systemctl command
-        let output = Command::new("systemctl")
-            .arg(action)
-            .arg(&self.service_name)
-            .output()
-            .map_err(|e| e.to_string())?;
-        
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
-        }
-    }   
-    
 }
 
-// Trait for component management
-pub trait ServiceController {
-    fn get_name(&self) -> &str;
-    fn get_status(&self) -> &ShurikenStatus;
-    fn get_service_name(&self) -> &str;
-}
+pub struct ShurikenManager;
 
-impl ServiceController for Shuriken {
-    fn get_name(&self) -> &str {
-        &self.name
+impl ShurikenManager {
+    pub fn discover(pattern: &str) -> Result<Vec<ShurikenConfig>> {
+        let mut shurikens = Vec::new();
+
+        for entry in glob(pattern).context("Invalid glob pattern")? {
+            match entry {
+                Ok(path) => match ShurikenConfig::load(&path) {
+                    Ok(config) => shurikens.push(config),
+                    Err(e) => eprintln!("Skipping invalid Shuriken at {}: {}", path.display(), e),
+                },
+                Err(e) => eprintln!("Glob error: {}", e),
+            }
+        }
+
+        Ok(shurikens)
     }
 
-    fn get_status(&self) -> &ShurikenStatus {
-        &self.status
-    }
-
-    fn get_service_name(&self) -> &str {
-        &self.service_name
+    pub fn find_by_name<'a>(shurikens: &'a [ShurikenConfig], name: &'a str) -> Option<&'a ShurikenConfig> {
+        shurikens.iter().find(|s| s.name == name)
     }
 }
