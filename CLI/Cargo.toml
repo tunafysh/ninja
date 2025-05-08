@@ -1,0 +1,12 @@
+[package]
+name = "ninja-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.37", features = ["cargo"] }
+owo-colors = { version = "4.2.0", features = ["supports-color"] }
+
+[[bin]]
+path = "src/main.rs"   
+name = "shurikenctl"
