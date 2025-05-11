@@ -29,5 +29,7 @@ toml = "0.8.20"
 anyhow = "1.0.98"
 glob = "0.3.2"
 log = "0.4.27"
+surrealdb = { version = "2.3.1", features = ["kv-rocksdb"] }
+tokio = { version = "1.45.0", features = ["sync"] }
 
 

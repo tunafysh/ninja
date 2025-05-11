@@ -1,40 +1,151 @@
-use std::path::Path;
-use glob::glob;
-use tauri::Manager;
-use std::collections::HashMap;
-use log::info;
-use std::fs;
+#![allow(unused_variables)]
+mod db;
 
-mod shuriken;
+use db::{Database, Shuriken};
+use std::{process::{Command, Stdio}, sync::Arc};
+use tokio::sync::Mutex;
+use tauri::{Manager, State};
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/\
-#[tauri::command]
-fn bootstrap() -> Vec<shuriken::Shuriken> {
-    info!("Bootstrapping...");
-    
-    if !fs::exists("shurikens").expect("Cannot read fs") {
-        fs::create_dir("shurikens").expect("Failed to create shuriken directory");
-    }
-    
-    let shurikens = shuriken::ShurikenManager::discover("shurikens/manifest.toml").unwrap();
-
-    info!("Bootstrapped {} shuriken(s)", shurikens.len());
-    shurikens
+struct AppState {
+    db: Arc<Mutex<Database>>,
 }
 
 #[tauri::command]
-async fn control_shuriken(
-    shuriken: shuriken::Shuriken,
-    action: String,
-) -> Result<shuriken::Shuriken, String> {
-    let mut s = shuriken;
-    match action.as_str() {
-        "throw" => s.throw().await?,
-        "recall" => s.recall().await?,
-        "spin" => s.spin().await?,
-        _ => return Err("Invalid action".into()),
+async fn create_shuriken(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    binary_path: String,
+    config_path: String,
+) -> Result<(), String> {
+    let shuriken = Shuriken {
+        id,
+        name,
+        binary_path,
+        config_path,
+        status: "stopped".to_string(),
+        pid: None,
     };
-    Ok(s)
+    state.db.lock().await.create_shuriken(shuriken).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_shuriken(state: State<'_, AppState>, id: String) -> Result<Option<Shuriken>, String> {
+    state.db.lock().await.get_shuriken(&id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_all_shurikens(state: State<'_, AppState>) -> Result<Vec<Shuriken>, String> {
+    state.db.lock().await.get_all_shurikens().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_shuriken_status(
+    state: State<'_, AppState>,
+    id: String,
+    status: String,
+    pid: Option<i32>,
+) -> Result<(), String> {
+    state.db.lock().await.update_shuriken_status(&id, &status, pid).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_shuriken(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db.lock().await.delete_shuriken(&id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_shuriken(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Shuriken, String> {
+    let db = state.db.lock().await;
+    let mut shuriken = db.get_shuriken(&id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Shuriken not found".to_string())?;
+
+    if shuriken.status == "running" {
+        return Ok(shuriken);
+    }
+
+    // Start the process
+    let process = Command::new(&shuriken.binary_path)
+        .args(["-f", &shuriken.config_path]) // Example args
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to start: {}", e))?;
+
+    // Update database record
+    shuriken.pid = Some(process.id() as i32);
+    shuriken.status = "running".to_string();
+
+    db.update_shuriken(shuriken.clone()).await.map_err(|e| e.to_string())?;
+    Ok(shuriken)
+}
+#[tauri::command]
+async fn stop_shuriken(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Shuriken, String> {
+    let db = state.db.lock().await;
+    let mut shuriken = db.get_shuriken(&id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Shuriken not found".to_string())?;
+
+    if shuriken.status == "stopped" {
+        return Ok(shuriken);
+    }
+
+    // Kill the process based on PID
+    if let Some(pid) = shuriken.pid {
+        // Special case for Apache
+        if shuriken.id == "apache" {
+            Command::new("apachectl")
+                .args(["-k", "stop"])
+                .status()
+                .map_err(|e| format!("Failed to stop Apache: {}", e))?;
+        } else {
+            // Use platform-specific kill commands
+            #[cfg(target_os = "windows")]
+            {
+                Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string()])
+                    .status()
+                    .map_err(|e| format!("Failed to kill process: {}", e))?;
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            {
+                Command::new("kill")
+                    .arg("-9")
+                    .arg(pid.to_string())
+                    .status()
+                    .map_err(|e| format!("Failed to kill process: {}", e))?;
+            }
+        }
+    }
+
+    // Update database record
+    shuriken.pid = None;
+    shuriken.status = "stopped".to_string();
+    
+    db.update_shuriken(shuriken.clone()).await.map_err(|e| e.to_string())?;
+    Ok(shuriken)
+}
+
+#[tauri::command]
+async fn restart_shuriken(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Shuriken, String> {
+    // First stop the shuriken
+    let _ = stop_shuriken(state.clone(), id.clone()).await?;
+    
+    // Then start it again
+    start_shuriken(state, id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,7 +155,25 @@ pub fn run() {
             .filter(|metadata| metadata.target() != "tao")
             .build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![control_shuriken, bootstrap])
+        .manage(AppState {
+            db: Arc::new(Mutex::new(
+                tokio::runtime::Runtime::new()
+                    .expect("Failed to create runtime")
+                    .block_on(async {
+                        Database::new().await.expect("Failed to initialize database")
+                    })
+            ))
+        })
+        .invoke_handler(tauri::generate_handler![
+            create_shuriken,
+            get_shuriken,
+            get_all_shurikens,
+            update_shuriken_status,
+            delete_shuriken,
+            start_shuriken,
+            stop_shuriken,
+            restart_shuriken
+        ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             #[cfg(target_os = "macos")]
