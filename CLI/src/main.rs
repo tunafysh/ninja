@@ -1,6 +1,8 @@
 use clap::{command, Arg, ArgMatches, Command};
 use owo_colors::OwoColorize;
 
+mod service;
+
 fn args() -> ArgMatches{
     let cmd = command!()
     .subcommand(Command::new("throw").about("Throw a shuriken (start a service)")
