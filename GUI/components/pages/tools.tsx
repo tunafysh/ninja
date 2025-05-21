@@ -85,7 +85,6 @@ export default function Tools() {
       <Tabs defaultValue="sql" className="w-full">
         <TabsList className="grid grid-cols-3 max-w-md mb-6">
           <TabsTrigger value="sql">SQL Query</TabsTrigger>
-          <TabsTrigger value="terminal">Terminal</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
         </TabsList>
 
@@ -121,40 +120,6 @@ export default function Tools() {
                 <div className="bg-slate-900 border border-slate-700 rounded-md p-4 h-[200px] overflow-auto">
                   <p className="text-slate-400 text-sm">Query results will appear here...</p>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="terminal">
-          <Card className="bg-card border-border">
-            <CardHeader>
-              <CardTitle>Terminal</CardTitle>
-              <CardDescription>Execute commands directly on your server</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-muted rounded-md p-4 h-[300px] overflow-auto font-mono text-sm">
-                <div className="text-primary">C:\xampp&gt;</div>
-                <div className="text-white">php -v</div>
-                <div className="text-white">
-                  PHP 8.2.0 (cli) (built: Dec 13 2022 16:54:15) (ZTS Visual C++ 2019 x64)
-                </div>
-                <div className="text-white">Copyright (c) The PHP Group</div>
-                <div className="text-white">Zend Engine v4.2.0, Copyright (c) Zend Technologies</div>
-                <div className="text-primary">C:\xampp&gt;</div>
-                <div className="text-white">mysql --version</div>
-                <div className="text-white">mysql Ver 8.0.31 for Win64 on x86_64 (MySQL Community Server - GPL)</div>
-                <div className="text-primary">C:\xampp&gt;</div>
-                <div className="text-white">apache -v</div>
-                <div className="text-white">Server version: Apache/2.4.54 (Win64)</div>
-                <div className="text-white">Server built: Jun 14 2022 13:22:10</div>
-                <div className="text-primary">C:\xampp&gt;</div>
-                <div className="text-white">_</div>
-              </div>
-
-              <div className="flex gap-2">
-                <Input placeholder="Enter command..." className="bg-muted font-mono" />
-                <Button>Execute</Button>
               </div>
             </CardContent>
           </Card>

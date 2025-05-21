@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Window } from "@tauri-apps/api/window"
+// import { Window } from "@tauri-apps/api/window"
 import { Copy, File, FileText, FolderOpen, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Save, Sun } from 'lucide-react'
 
 import { Button } from "@/components/ui/button"
@@ -108,7 +108,6 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
               <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <Copy className="mr-2 h-4 w-4" />
               <span>Copy</span>
               <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
             </DropdownMenuItem>
@@ -163,19 +162,6 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <span>Zoom In</span>
-              <DropdownMenuShortcut>⌘+</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Zoom Out</span>
-              <DropdownMenuShortcut>⌘-</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Reset Zoom</span>
-              <DropdownMenuShortcut>⌘0</DropdownMenuShortcut>
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -183,7 +169,7 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
-              Server
+              Help
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">

@@ -1,5 +1,5 @@
 "use client"
-import { warn, debug, trace, info, error } from '@tauri-apps/plugin-log';
+// import { warn, debug, trace, info, error } from '@tauri-apps/plugin-log';
 import { ApplicationMenubar } from "@/components/application-menubar"
 import { Card, CardContent } from "@/components/ui/card"
 import { useState, useRef, useEffect } from "react"
@@ -8,14 +8,16 @@ import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
 import Tools from "@/components/pages/tools"
 import Logs from "@/components/pages/logs"
+import { HomeIcon, Cog, FileText, Wrench, Zap } from "lucide-react"
+import Scripting from "@/components/pages/scripting"
 
-const tabs = ["Dashboard", "Configuration", "Logs", "Tools"]
+const tabIcons = [ <HomeIcon className="w-4 h-4 mr-1" />, <Cog className="w-4 h-4 mr-1"/>, <FileText className="w-4 h-4 mr-1"/>, <Wrench className="w-4 h-4 mr-1"/>, <Zap className="w-4 h-4 mr-1"/> ]
+const tabs = ["Dashboard", "Configuration", "Logs", "Tools", "Scripting"]
 export default function Page() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [hoverStyle, setHoverStyle] = useState({})
   const [activeStyle, setActiveStyle] = useState({ left: "0px", width: "0px" })
-  const [isDarkMode, setIsDarkMode] = useState(false)
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
 
@@ -41,12 +43,12 @@ export default function Page() {
       setPlatform("linux")
     }
 
-    forwardConsole('log', trace);
-    forwardConsole('debug', debug);
-    forwardConsole('info', info);
-    forwardConsole('warn', warn);
-    forwardConsole('error', error);
-  }, [])
+    // forwardConsole('log', trace);
+    // forwardConsole('debug', debug);
+    // forwardConsole('info', info);
+    // forwardConsole('warn', warn);
+    // forwardConsole('error', error);
+  })
 
   useEffect(() => {
     if (hoveredIndex !== null) {
@@ -138,6 +140,7 @@ export default function Page() {
                       onClick={() => setActiveIndex(index)}
                     >
                       <div className="text-sm font-[var(--www-mattmannucci-me-geist-regular-font-family)] leading-5 whitespace-nowrap flex items-center justify-center h-full">
+                        {tabIcons[index]}
                         {tab}
                       </div>
                     </div>
@@ -166,6 +169,8 @@ export default function Page() {
             <Logs />
           ) : activeIndex === 3 ? (
             <Tools />
+          ) : activeIndex === 4 ? (
+            <Scripting />
           ) : null}
         </div>
       </main>
