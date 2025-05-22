@@ -83,7 +83,7 @@ export default function Tools() {
       </div>
 
       <Tabs defaultValue="sql" className="w-full">
-        <TabsList className="grid grid-cols-3 max-w-md mb-6">
+        <TabsList className="grid grid-cols-2 max-w-md mb-6">
           <TabsTrigger value="sql">SQL Query</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
         </TabsList>
