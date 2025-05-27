@@ -1,4 +1,4 @@
-**Copyright ©, Hannan Smani**  
+**End-User License Agreement**  
 **Version 1.0, [2025]**  
 
 **1. Definitions**  
@@ -34,4 +34,4 @@
 - This is **not an open-source license** (OSI/FSF definitions do not apply).  
 
 **6. Copyright Notice**  
-Copyright (c) [Year] [Your Name]. All rights reserved.  
+Copyright (c) 2025 Hannan Smani. All rights reserved.  
