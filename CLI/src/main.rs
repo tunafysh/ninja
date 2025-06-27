@@ -1,27 +1,86 @@
-use clap::{command, Arg, ArgMatches, Command};
+use clap::{Arg, Command};
 use owo_colors::OwoColorize;
 
-mod service;
+mod service_manager;
+use service_manager::{ServiceManager, ServiceError};
 
-fn args() -> ArgMatches{
-    let cmd = command!()
-    .subcommand(Command::new("throw").about("Throw a shuriken (start a service)")
-    .arg(Arg::new("shuriken").required(true)))
-    .subcommand(Command::new("recall").about("Recall a shuriken (stop a service)")
-    .arg(Arg::new("shuriken").required(true)))
-    .subcommand(Command::new("trace").about("Trace a shuriken (check if a service is running)")
-    .arg(Arg::new("shuriken").required(true)));
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Command::new("ninja")
+        .version("0.1.0")
+        .about("Ninja CLI - Service Manager")
+        .subcommand(
+            Command::new("start")
+                .about("Start a shuriken service")
+                .arg(
+                    Arg::new("shuriken")
+                        .help("The name of the shuriken to start")
+                        .required(true)
+                        .index(1),
+                ),
+        )
+        .subcommand(
+            Command::new("stop")
+                .about("Stop a shuriken service")
+                .arg(
+                    Arg::new("shuriken")
+                        .help("The name of the shuriken to stop")
+                        .required(true)
+                        .index(1),
+                ),
+        )
+        .subcommand(
+            Command::new("list")
+                .about("List running shuriken services"),
+        )
+        .get_matches();
 
-    cmd.get_matches()
-}
-
-fn main() {
-    let args = args();
+    let mut service_manager = ServiceManager::bootstrap().await
+        .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
     match args.subcommand() {
-        Some(("throw", shuriken)) => println!("{}", format!("Throwing shuriken {}...", shuriken.get_one::<String>("shuriken").expect("idk").green()).bold()),
-        Some(("recall", shuriken)) => println!("{}", format!("Recalling shuriken {}...", shuriken.get_one::<String>("shuriken").expect("idk").green()).bold()),
-        Some(("trace", shuriken)) => println!("{}", format!("Shuriken {}{}{}{}", shuriken.get_one::<String>("shuriken").expect("idk").yellow(), " is running with access to port: ".green(), "5173".magenta(), ".".green()).green().bold()),
-        _ => println!("{}", "Invalid action".red()),
+        Some(("start", shuriken_args)) => {
+            let shuriken_name = shuriken_args
+                .get_one::<String>("shuriken")
+                .expect("Failed to get shuriken name");
+            
+            match service_manager.start_service(shuriken_name).await {
+                Ok(pid) => println!("{}", format!("Started shuriken '{}'.", shuriken_name).green()),
+                Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
+            }
+        }
+        Some(("stop", shuriken_args)) => {
+            let shuriken_name = shuriken_args
+                .get_one::<String>("shuriken")
+                .expect("Failed to get shuriken name");
+            
+            match service_manager.stop_service(shuriken_name).await {
+                Ok(_) => println!("{}", format!("Stopped shuriken '{}'", shuriken_name).green()),
+                Err(e) => eprintln!("{}", format!("Failed to stop shuriken '{}': {}", shuriken_name, e).red()),
+            }
+        }
+        Some(("list", _)) => {
+            match service_manager.get_running_services().await {
+                Ok(services) => {
+                    if services.is_empty() {
+                        println!("{}", "No running services".yellow());
+                    } else {
+                        println!("{}", "Running services:".bold());
+                        for service in services {
+                            let pid_str = service.pid
+                                .map(|p| format!(" (PID: {})", p))
+                                .unwrap_or_default();
+                            println!("  • {}{}", service.name.green(), pid_str.dimmed());
+                        }
+                    }
+                }
+                Err(e) => eprintln!("{}", format!("Failed to get running services: {}", e).red()),
+            }
+        }
+        _ => {
+            println!("{}", "Invalid action. Use --help for available commands.".red());
+        }
     }
+
+    Ok(())
 }

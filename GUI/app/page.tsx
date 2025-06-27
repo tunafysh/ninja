@@ -149,7 +149,6 @@ export default function Page() {
               </div>
             </CardContent>
           </Card>
-          <ModeToggle />
         </div>
 
         {/* Content area with scrolling */}

@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Server, Database, FileCode, Save } from "lucide-react"
+import { ModeToggle } from "../ui/themetoggle"
 
 export default function Configuration() {
   const [apachePort, setApachePort] = useState("80")
