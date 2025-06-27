@@ -2,7 +2,7 @@ use clap::{Arg, Command};
 use owo_colors::OwoColorize;
 
 mod service_manager;
-use service_manager::{ServiceManager, ServiceError};
+use service_manager::ServiceManager;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("Failed to get shuriken name");
             
             match service_manager.start_service(shuriken_name).await {
-                Ok(pid) => println!("{}", format!("Started shuriken '{}'.", shuriken_name).green()),
+                Ok(_pid) => println!("{}", format!("Started shuriken '{}'.", shuriken_name).green()),
                 Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
