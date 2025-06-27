@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let mut service_manager = ServiceManager::bootstrap().await
+    let mut service_manager = ServiceManager::bootstrap()
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
     match args.subcommand() {
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("Failed to get shuriken name");
             
             match service_manager.start_service(shuriken_name).await {
-                Ok(_pid) => println!("{}", format!("Started shuriken '{}'.", shuriken_name).green()),
+                Ok(pid) => println!("{}", format!("Started shuriken '{}' with PID {}", shuriken_name, pid).green()),
                 Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
             }
         }

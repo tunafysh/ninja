@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tokio::process::Child;
-use surrealdb::{Surreal, engine::local::{RocksDb, Db}};
+use rusqlite::{Connection, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -99,19 +99,25 @@ pub struct RuntimeStatus {
 pub struct ServiceManager {
     running_processes: HashMap<String, Child>,
     service_configs: HashMap<String, ServiceConfig>,
-    db: Surreal<Db>,
+    db: Connection,
 }
 
 impl ServiceManager {
     // Bootstrap function - initializes everything
-    pub async fn bootstrap() -> Result<Self, ServiceError> {
-        // Initialize SurrealDB
-        let db = Surreal::new::<RocksDb>("registry.db").await
+    pub fn bootstrap() -> Result<Self, ServiceError> {
+        // Initialize SQLite database
+        let db = Connection::open("registry.db")
             .map_err(ServiceError::DatabaseError)?;
         
-        // Use default namespace and database
-        db.use_ns("ninja").use_db("services").await
-            .map_err(ServiceError::DatabaseError)?;
+        // Create services table if it doesn't exist
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS services (
+                name TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                pid INTEGER
+            )",
+            [],
+        ).map_err(ServiceError::DatabaseError)?;
         
         // Load service configs from TOML files
         let configs = Self::load_service_configs()?;
@@ -124,17 +130,17 @@ impl ServiceManager {
     }
     
     // Start a service
-    pub async fn start_service(&mut self, service_name: &str) -> Result<(), ServiceError> {
+    pub async fn start_service(&mut self, service_name: &str) -> Result<u32, ServiceError> {
         let pid = self.spawn_process(service_name).await?;
         println!("Starting shuriken {}...", service_name);
-        // Update status in database
-        self.db.update(("status", service_name)).content(RuntimeStatus {
-            name: service_name.to_string(),
-            status: "running".to_string(),
-            pid: Some(pid),
-        }).await.map_err(ServiceError::DatabaseError)?;
         
-        Ok(())
+        // Update status in database
+        self.db.execute(
+            "INSERT OR REPLACE INTO services (name, status, pid) VALUES (?1, ?2, ?3)",
+            [service_name, "running", &pid.to_string()],
+        ).map_err(ServiceError::DatabaseError)?;
+        
+        Ok(pid)
     }
     
     // Stop a service
@@ -144,11 +150,10 @@ impl ServiceManager {
             let _ = child.kill().await;
             
             // Update status in database
-            self.db.update(("status", service_name)).content(RuntimeStatus {
-                name: service_name.to_string(),
-                status: "stopped".to_string(),
-                pid: None,
-            }).await.map_err(ServiceError::DatabaseError)?;
+            self.db.execute(
+                "INSERT OR REPLACE INTO services (name, status, pid) VALUES (?1, ?2, NULL)",
+                [service_name, "stopped"],
+            ).map_err(ServiceError::DatabaseError)?;
             
             Ok(())
         } else {
@@ -156,14 +161,44 @@ impl ServiceManager {
         }
     }
     
+    // Get all services from database
+    pub async fn get_all_services(&self) -> Result<Vec<RuntimeStatus>, ServiceError> {
+        let mut stmt = self.db.prepare("SELECT name, status, pid FROM services")
+            .map_err(ServiceError::DatabaseError)?;
+        
+        let service_iter = stmt.query_map([], |row| {
+            Ok(RuntimeStatus {
+                name: row.get(0)?,
+                status: row.get(1)?,
+                pid: row.get(2)?,
+            })
+        }).map_err(ServiceError::DatabaseError)?;
+        
+        let mut services = Vec::new();
+        for service in service_iter {
+            services.push(service.map_err(ServiceError::DatabaseError)?);
+        }
+        
+        Ok(services)
+    }
+    
     // Get running services
     pub async fn get_running_services(&self) -> Result<Vec<RuntimeStatus>, ServiceError> {
-        let services: Vec<RuntimeStatus> = self.db
-            .query("SELECT * FROM status WHERE status = 'running'")
-            .await
-            .map_err(ServiceError::DatabaseError)?
-            .take(0)
+        let mut stmt = self.db.prepare("SELECT name, status, pid FROM services WHERE status = 'running'")
             .map_err(ServiceError::DatabaseError)?;
+        
+        let service_iter = stmt.query_map([], |row| {
+            Ok(RuntimeStatus {
+                name: row.get(0)?,
+                status: row.get(1)?,
+                pid: row.get(2)?,
+            })
+        }).map_err(ServiceError::DatabaseError)?;
+        
+        let mut services = Vec::new();
+        for service in service_iter {
+            services.push(service.map_err(ServiceError::DatabaseError)?);
+        }
         
         Ok(services)
     }
@@ -177,18 +212,8 @@ impl ServiceManager {
         let bin_path = config.shuriken.bin_path.get_path();
         let full_bin_path = Path::new(&service_dir).join(bin_path);
         
-        let mut cmd = if cfg!(windows) {
-            let c = tokio::process::Command::new(&full_bin_path);
-            c
-        } else {
-            tokio::process::Command::new(&full_bin_path)
-        };
-        
-        cmd.current_dir(&service_dir)
-           .stdout(std::process::Stdio::piped())
-           .stderr(std::process::Stdio::piped());
-        
-        let child = cmd.spawn()
+        let mut child = tokio::process::Command::new(&full_bin_path)
+            .spawn()
             .map_err(|e| ServiceError::SpawnFailed(service_name.to_string(), e))?;
         
         let pid = child.id().ok_or(ServiceError::NoPid)?;
@@ -258,7 +283,7 @@ pub enum ServiceError {
     ProcessNotFound(String),
     SpawnFailed(String, std::io::Error),
     NoPid,
-    DatabaseError(surrealdb::Error),
+    DatabaseError(rusqlite::Error),
     ShurikensDirectoryNotFound,
     IoError(std::io::Error),
     InvalidServiceName,
