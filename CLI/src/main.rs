@@ -1,3 +1,4 @@
+// main.rs
 use clap::{Arg, Command};
 use owo_colors::OwoColorize;
 
@@ -43,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shuriken_name = shuriken_args
                 .get_one::<String>("shuriken")
                 .expect("Failed to get shuriken name");
-            
+
+            // Use the actual name from manifest, not service-name
             match service_manager.start_service(shuriken_name).await {
                 Ok(pid) => println!("{}", format!("Started shuriken '{}' with PID {}", shuriken_name, pid).green()),
                 Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
@@ -53,13 +55,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shuriken_name = shuriken_args
                 .get_one::<String>("shuriken")
                 .expect("Failed to get shuriken name");
-            
+
+            // Use the actual name from manifest, not service-name
             match service_manager.stop_service(shuriken_name).await {
                 Ok(_) => println!("{}", format!("Stopped shuriken '{}'", shuriken_name).green()),
                 Err(e) => eprintln!("{}", format!("Failed to stop shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
         Some(("list", _)) => {
+            // Clean up stale processes and get accurate running services
             match service_manager.get_running_services().await {
                 Ok(services) => {
                     if services.is_empty() {
