@@ -32,7 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .subcommand(
             Command::new("list")
-                .about("List running shuriken services"),
+                .about("List running shuriken services")
+                .arg(
+                    Arg::new("all")
+                        .short('a')
+                        .long("all")
+                        .help("Show all shurikens and their statuses")
+                        .action(clap::ArgAction::SetTrue),
+                ),
         )
         .get_matches();
 
@@ -62,23 +69,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => eprintln!("{}", format!("Failed to stop shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
-        Some(("list", _)) => {
-            // Clean up stale processes and get accurate running services
-            match service_manager.get_running_services().await {
-                Ok(services) => {
-                    if services.is_empty() {
-                        println!("{}", "No running services".yellow());
-                    } else {
-                        println!("{}", "Running services:".bold());
-                        for service in services {
-                            let pid_str = service.pid
-                                .map(|p| format!(" (PID: {})", p))
-                                .unwrap_or_default();
-                            println!("  • {}{}", service.name.green(), pid_str.dimmed());
+        Some(("list", list_args)) => {
+            let show_all = list_args.get_flag("all");
+
+            if show_all {
+                // Show all services with their statuses
+                match service_manager.get_all_services().await {
+                    Ok(services) => {
+                        if services.is_empty() {
+                            // If no services in database, show available services from configs
+                            let available_services = service_manager.list_services();
+                            if available_services.is_empty() {
+                                println!("{}", "No shurikens found".yellow());
+                            } else {
+                                println!("{}", "Available shurikens:".bold());
+                                for service_name in available_services {
+                                    println!("  • {} {}", service_name.blue(), "stopped".dimmed());
+                                }
+                            }
+                        } else {
+                            // Get all available services from configs
+                            let available_services = service_manager.list_services();
+                            let mut all_services = std::collections::HashMap::new();
+                            
+                            // Initialize all services as stopped
+                            for service_name in available_services {
+                                all_services.insert(service_name, ("stopped".to_string(), None));
+                            }
+                            
+                            // Update with actual statuses from database
+                            for service in services {
+                                all_services.insert(service.name, (service.status, service.pid));
+                            }
+                            
+                            println!("{}", "All shurikens:".bold());
+                            for (name, (status, pid)) in all_services {
+                                let status_colored = match status.as_str() {
+                                    "running" => status.green().to_string(),
+                                    "stopped" => status.red().to_string(),
+                                    _ => status.yellow().to_string(),
+                                };
+                                
+                                let pid_str = pid
+                                    .map(|p| format!(" (PID: {})", p))
+                                    .unwrap_or_default();
+                                    
+                                println!("  • {} {} {}", name.blue(), status_colored, pid_str.dimmed());
+                            }
                         }
                     }
+                    Err(e) => eprintln!("{}", format!("Failed to get services: {}", e).red()),
                 }
-                Err(e) => eprintln!("{}", format!("Failed to get running services: {}", e).red()),
+            } else {
+                // Show only running services (original behavior)
+                match service_manager.get_running_services().await {
+                    Ok(services) => {
+                        if services.is_empty() {
+                            println!("{}", "No running services".yellow());
+                        } else {
+                            println!("{}", "Running services:".bold());
+                            for service in services {
+                                let pid_str = service.pid
+                                    .map(|p| format!(" (PID: {})", p))
+                                    .unwrap_or_default();
+                                println!("  • {}{}", service.name.green(), pid_str.dimmed());
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("{}", format!("Failed to get running services: {}", e).red()),
+                }
             }
         }
         _ => {

@@ -1,9 +1,10 @@
 // service_manager.rs
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tokio::process::Child;
-use rusqlite::{Connection, Result as SqlResult};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -22,6 +23,7 @@ pub struct ShurikenConfig {
     pub bin_path: BinPath,
     #[serde(rename = "config-path")]
     pub config_path: String,
+    pub args: Option<Vec<String>>,
     pub ports: Option<Vec<u16>>,
     #[serde(rename = "health-check")]
     pub health_check: Option<String>,
@@ -315,7 +317,14 @@ impl ServiceManager {
         let bin_path = config.shuriken.bin_path.get_path();
         let full_bin_path = Path::new(&service_dir).join(bin_path);
 
-        let mut child = tokio::process::Command::new(&full_bin_path)
+        let mut command = tokio::process::Command::new(&full_bin_path);
+        
+        // Add arguments if they exist
+        if let Some(args) = &config.shuriken.args {
+            command.args(args);
+        }
+
+        let child = command
             .spawn()
             .map_err(|e| ServiceError::SpawnFailed(config.shuriken.name.clone(), e))?;
 
