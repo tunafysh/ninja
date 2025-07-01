@@ -315,9 +315,10 @@ impl ServiceManager {
         // Get the service directory path
         let service_dir = format!("shurikens/{}", directory_name);
         let bin_path = config.shuriken.bin_path.get_path();
-        let full_bin_path = Path::new(&service_dir).join(bin_path);
 
-        let mut command = tokio::process::Command::new(&full_bin_path);
+        let mut command = tokio::process::Command::new(&bin_path);
+
+        command.current_dir(service_dir);
         
         // Add arguments if they exist
         if let Some(args) = &config.shuriken.args {

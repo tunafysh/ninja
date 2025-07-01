@@ -34,9 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Command::new("list")
                 .about("List running shuriken services")
                 .arg(
-                    Arg::new("all")
-                        .short('a')
-                        .long("all")
+                    Arg::new("full")
+                        .short('f')
+                        .long("full")
                         .help("Show all shurikens and their statuses")
                         .action(clap::ArgAction::SetTrue),
                 ),
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(("list", list_args)) => {
-            let show_all = list_args.get_flag("all");
+            let show_all = list_args.get_flag("full");
 
             if show_all {
                 // Show all services with their statuses
