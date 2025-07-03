@@ -12,6 +12,11 @@ serde_ini = "0.2.0"
 serde_json = "1.0.140"
 tokio = { version = "1.45.1", features = ["full", "windows-sys"] }
 toml = "0.8.23"
+ninja-runtime = { path = "../NRT"}
+log = "0.4.27"
+fern = { version = "0.7.1", features = ["colored", "chrono"] }
+chrono = "0.4.41"
+file-rotate = "0.8.0"
 
 [[bin]]
 path = "src/main.rs"   

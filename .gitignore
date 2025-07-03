@@ -1,2 +1,7 @@
 CLI/Cargo.lock
 CLI/target
+CLI/registry.db
+CLI/shurikens
+GUI/node_modules
+GUI/package-lock.json
+NRT/target

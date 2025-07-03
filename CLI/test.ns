@@ -1,0 +1,6 @@
+import { add } from "ninja"
+
+console.info("Hello World!")
+console.warn("Hello World!")
+console.error("Hello World!")
+console.log(add(125, 25))

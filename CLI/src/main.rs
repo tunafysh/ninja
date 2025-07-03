@@ -1,14 +1,22 @@
+use std::process::exit;
+
 // main.rs
 use clap::{Arg, Command};
+use ::log::{info, warn, error};
 use owo_colors::OwoColorize;
 
-mod service_manager;
-use service_manager::ServiceManager;
+mod log;
+use log::setup_logger;
+
+mod manager;
+use manager::ServiceManager;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logger
+    
     let args = Command::new("ninja")
-        .version("0.1.0")
+        .version(std::env!("CARGO_PKG_VERSION"))
         .about("Ninja CLI - Service Manager")
         .subcommand(
             Command::new("start")
@@ -22,11 +30,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .subcommand(
             Command::new("stop")
-                .about("Stop a shuriken service")
+            .about("Stop a shuriken service")
                 .arg(
                     Arg::new("shuriken")
                         .help("The name of the shuriken to stop")
                         .required(true)
+                        .index(1),
+                ),
+        )
+        .subcommand(
+            Command::new("script")
+                .about("Run a script using the Ninja Runtime.")
+                .arg(
+                    Arg::new("file")
+                        .help("The path of the file to run")
                         .index(1),
                 ),
         )
@@ -43,6 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
+    setup_logger().expect("Failed to initialize logger");
+    
     let mut service_manager = ServiceManager::bootstrap()
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
@@ -138,6 +157,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(e) => eprintln!("{}", format!("Failed to get running services: {}", e).red()),
                 }
+            }
+        }
+        Some(("script", script_args)) => {
+            let file_path = script_args.get_one::<String>("file").expect("Failed to get file path");
+            let rt = ninja_runtime::NinjaRuntime::new();
+
+            match rt.execute_file(file_path) {
+                Ok(_) => exit(0),
+                Err(e) => eprintln!("Error: {}", e),
             }
         }
         _ => {
