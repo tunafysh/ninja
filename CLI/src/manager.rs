@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{PathBuf, Path};
 use tokio::process::Child;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -15,18 +15,49 @@ pub struct ServiceConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum MaintenanceType {
+    Native {
+        #[serde(rename = "maintenance")]
+        maintenance: String,
+        #[serde(rename = "bin-path")]
+        bin_path: BinPath,
+        #[serde(rename = "config-path")]
+        config_path: PathBuf,
+	args: Option<Vec<String>>
+    },
+    Script {
+        #[serde(rename = "maintenance")]
+        maintenance: String,
+        #[serde(rename = "script-path")]
+        script_path: PathBuf,
+    },
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum ShurikenType {
+    Daemon {
+	r#type: String,
+	ports: Option<Vec<u16>>,
+        #[serde(rename = "health-check")]
+        health_check: Option<String>,
+    },
+    Executable {
+	r#type: String,
+	#[serde(rename = "add-path")]
+	addPath: bool,
+    },
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct ShurikenConfig {
     pub name: String,
     #[serde(rename = "service-name")]
     pub service_name: String,
-    #[serde(rename = "bin-path")]
-    pub bin_path: BinPath,
-    #[serde(rename = "config-path")]
-    pub config_path: String,
-    pub args: Option<Vec<String>>,
-    pub ports: Option<Vec<u16>>,
-    #[serde(rename = "health-check")]
-    pub health_check: Option<String>,
+    pub maintenance: MaintenanceType,
+    
+    pub r#type: ShurikenType,
 }
 
 #[derive(Debug, Deserialize, Clone)]
