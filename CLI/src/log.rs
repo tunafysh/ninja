@@ -30,7 +30,7 @@ impl Write for RotatingWriter {
 
 pub fn setup_logger() -> Result<(), fern::InitError> {
     let log_path = match std::env::consts::OS {
-        "linux" => format!("{}{}",std::env::var("XDG_DATA_HOME").expect("Failed to get environment variable"), "/com.tunafysh.ninja/logs/shurikenctl.log"),
+        "linux" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/.local/share/com.tunafysh.ninja/logs/shurikenctl.log"),
         "macos" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/Library/Application Support/com.tunafysh.ninja/logs/shurikenctl.log"),
         "windows" => format!("{}{}",std::env::var("LOCALAPPDATA").expect("Failed to get environment variable"), "\\com.tunafysh.ninja\\logs\\shurikenctl.log"),
         _ => "logs/shurikenctl.log".to_string(),

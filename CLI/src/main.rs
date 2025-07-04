@@ -1,8 +1,7 @@
 use std::process::exit;
 
 // main.rs
-use clap::{Arg, Command};
-use ::log::{info, warn, error};
+use clap::{Arg, Command, ArgAction::SetTrue};
 use owo_colors::OwoColorize;
 
 mod log;
@@ -55,9 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .short('f')
                         .long("full")
                         .help("Show all shurikens and their statuses")
-                        .action(clap::ArgAction::SetTrue),
+                        .action(SetTrue),
                 ),
         )
+	.arg(
+	    Arg::new("mcp")
+		.long("mcp")
+		.action(SetTrue)
+		.hide(true)
+	)
         .get_matches();
 
     setup_logger().expect("Failed to initialize logger");
@@ -161,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(("script", script_args)) => {
             let file_path = script_args.get_one::<String>("file").expect("Failed to get file path");
-            let rt = ninja_runtime::NinjaRuntime::new();
+            let rt = ninja_engine::NinjaRuntime::new();
 
             match rt.execute_file(file_path) {
                 Ok(_) => exit(0),
