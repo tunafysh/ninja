@@ -1,6 +1,4 @@
-import { add } from "ninja"
+import * as fs from "fs";
 
-console.info("Hello World!")
-console.warn("Hello World!")
-console.error("Hello World!")
-console.log(add(125, 25))
+console.log("Hello World!");
+fs.write("test.txt", "Hello World!");

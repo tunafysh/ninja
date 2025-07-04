@@ -1,7 +1,8 @@
-use std::process::exit;
+use std::{path::Path, process::exit};
 
 // main.rs
 use clap::{Arg, Command, ArgAction::SetTrue};
+use ::log::info;
 use owo_colors::OwoColorize;
 
 mod log;
@@ -44,7 +45,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("file/script")
                         .help("The path of the file or snippet of script to run")
                         .index(1),
-                ),
+                )
+		.arg(
+		    Arg::new("repl")
+			.long("repl")
+			.help("This flag enables REPL mode")
+			.action(SetTrue)
+		)
         )
         .subcommand(
             Command::new("list")
@@ -67,8 +74,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     setup_logger().expect("Failed to initialize logger");
     
+    if args.get_flag("mcp") {
+        info!("Starting up in MCP mode.");
+        exit(0);
+    }
 
-
+    info!("Initializing service manager...");
     let mut service_manager = ServiceManager::bootstrap()
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
@@ -77,7 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shuriken_name = shuriken_args
                 .get_one::<String>("shuriken")
                 .expect("Failed to get shuriken name");
-
+        
+            info!("Starting shuriken {}...", shuriken_name);
             // Use the actual name from manifest, not service-name
             match service_manager.start_service(shuriken_name).await {
                 Ok(pid) => println!("{}", format!("Started shuriken '{}' with PID {}", shuriken_name, pid).green()),
@@ -89,6 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get_one::<String>("shuriken")
                 .expect("Failed to get shuriken name");
 
+            info!("Stopping shuriken {}...", shuriken_name);
             // Use the actual name from manifest, not service-name
             match service_manager.stop_service(shuriken_name).await {
                 Ok(_) => println!("{}", format!("Stopped shuriken '{}'", shuriken_name).green()),
@@ -167,12 +180,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(("run", script_args)) => {
-            let file_path = script_args.get_one::<String>("file/script").expect("Failed to get file path");
-            let rt = ninja_engine::NinjaRuntime::new();
-
-            match rt.execute_file(file_path) {
-                Ok(_) => exit(0),
-                Err(e) => eprintln!("Error: {}", e),
+            let content = script_args.get_one::<String>("file/script").expect("Failed to get file path");
+            let rt = ninja_engine::NinjaEngine::new();
+            
+            if Path::new(content).exists() {
+                match rt.execute_file(content) {
+                    Ok(_) => exit(0),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+            } else {
+                match rt.execute(content) {
+                    Ok(_) => exit(0),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
             }
         }
         _ => {
