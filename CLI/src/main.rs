@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .about("Ninja CLI - Service Manager")
         .subcommand(
             Command::new("start")
-                .about("Start a shuriken service")
+                .about("Start a shuriken")
                 .arg(
                     Arg::new("shuriken")
                         .help("The name of the shuriken to start")
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .subcommand(
             Command::new("stop")
-            .about("Stop a shuriken service")
+            .about("Stop a shuriken")
                 .arg(
                     Arg::new("shuriken")
                         .help("The name of the shuriken to stop")
@@ -38,11 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            Command::new("script")
+            Command::new("run")
                 .about("Run a script using the Ninja Runtime.")
                 .arg(
-                    Arg::new("file")
-                        .help("The path of the file to run")
+                    Arg::new("file/script")
+                        .help("The path of the file or snippet of script to run")
                         .index(1),
                 ),
         )
@@ -67,6 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     setup_logger().expect("Failed to initialize logger");
     
+
+
     let mut service_manager = ServiceManager::bootstrap()
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
@@ -164,8 +166,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some(("script", script_args)) => {
-            let file_path = script_args.get_one::<String>("file").expect("Failed to get file path");
+        Some(("run", script_args)) => {
+            let file_path = script_args.get_one::<String>("file/script").expect("Failed to get file path");
             let rt = ninja_engine::NinjaRuntime::new();
 
             match rt.execute_file(file_path) {
