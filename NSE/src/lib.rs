@@ -1,4 +1,6 @@
-use rquickjs::{context::EvalOptions, Context, Module, Runtime};
+use std::path::PathBuf;
+
+use rquickjs::{context::EvalOptions, Context, Function, Module, Runtime};
 
 mod util;
 use util::*;
@@ -84,5 +86,20 @@ impl NinjaEngine {
             options.promise = true;
             ctx.eval_file_with_options(path, options)
         })
+    }
+
+    pub fn execute_function(&self, function: String, file: &PathBuf) -> Result<(), rquickjs::Error> {
+    self.ctx.with(|ctx| {
+        // Load and evaluate the JavaScript file
+        ctx.eval_file::<(), _>(file)?;
+
+        // Get the function from globals
+        let func: Function = ctx.globals().get(&function)?;
+
+        // Call the function with the converted arguments
+        let _result: rquickjs::Value = func.call(())?;
+
+        Ok(())
+    })  
     }
 }

@@ -1,6 +1,6 @@
-use std::{path::Path, process::exit};
-
 // main.rs
+use std::{path::Path, process::exit};
+use ninja_api::ServiceManager;
 use clap::{Arg, Command, ArgAction::SetTrue};
 use ::log::info;
 use owo_colors::OwoColorize;
@@ -8,8 +8,6 @@ use owo_colors::OwoColorize;
 mod log;
 use log::setup_logger;
 
-mod manager;
-use manager::ServiceManager;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

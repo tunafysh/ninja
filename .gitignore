@@ -5,3 +5,5 @@ CLI/shurikens
 GUI/node_modules
 GUI/package-lock.json
 NSE/target
+API/target
+MCP/target

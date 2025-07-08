@@ -16,7 +16,7 @@ log = "0.4.27"
 fern = { version = "0.7.1", features = ["colored", "chrono"] }
 chrono = "0.4.41"
 file-rotate = "0.8.0"
-rusqlite = "0.36.0"
+ninja-api = { path = "../API"}
 
 [[bin]]
 path = "src/main.rs"   
