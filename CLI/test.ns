@@ -1,4 +1,8 @@
 import * as fs from "fs";
 
-console.log("Hello World!");
-fs.write("test.txt", "Hello World!");
+let test = "test"
+
+function start() {
+    console.log("Hello World! its executing main bruh");
+    fs.write("test.txt", "Hello World!");
+}

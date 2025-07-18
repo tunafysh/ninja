@@ -494,6 +494,7 @@ dependencies = [
 name = "ninja-api"
 version = "0.1.0"
 dependencies = [
+ "log",
  "ninja-engine",
  "rusqlite",
  "serde",

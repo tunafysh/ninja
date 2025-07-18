@@ -175,7 +175,6 @@ pub mod sys_api {
             return Ok(0);
         }
         
-        Err(rquickjs::Error::new_from_js_message("sys", "engine", "Failed to get system uptime"))
     }
 
     #[cfg(target_os = "linux")]

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use ninja_engine::NinjaEngine;
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
+use std::{env, fs};
+use log::info;
 use std::path::{Path, PathBuf};
 use tokio::process::Child;
 
@@ -21,6 +21,7 @@ pub struct ShurikenConfig {
     #[serde(rename = "service-name")]
     pub service_name: String,
     pub maintenance: MaintenanceType,
+    // These fields are needed when maintenance is a simple string
     #[serde(rename = "bin-path")]
     pub bin_path: Option<PlatformPath>,
     #[serde(rename = "script-path")]
@@ -28,19 +29,22 @@ pub struct ShurikenConfig {
     #[serde(rename = "config-path")]
     pub config_path: Option<PathBuf>,
     pub args: Option<Vec<String>>,
-    #[serde(flatten)]
+    #[serde(flatten, rename = "type")]
     pub shuriken_type: ShurikenType,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum MaintenanceType {
+    // When maintenance is just a string, we need to look for the associated fields in the parent struct
+    Simple(String),
+    // When maintenance is an object with specific fields
     Native {
         maintenance: String,
         #[serde(rename = "bin-path")]
         bin_path: PlatformPath,
         #[serde(rename = "config-path")]
-        config_path: PathBuf,
+        config_path: Option<PathBuf>,
         args: Option<Vec<String>>,
     },
     Script {
@@ -48,12 +52,12 @@ pub enum MaintenanceType {
         #[serde(rename = "script-path")]
         script_path: PathBuf,
     },
-    Simple(String),
 }
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum ShurikenType {
+    Simple(String),
     Daemon {
         r#type: String,
         ports: Option<Vec<u16>>,
@@ -103,49 +107,65 @@ pub struct LogsConfig {
     pub error_log: Option<PlatformPath>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeStatus {
     pub name: String,
     pub status: String,
     pub pid: Option<u32>,
 }
 
+#[derive(Debug, Clone)]
+struct ServiceState {
+    pub name: String,
+    pub status: String,
+    pub pid: Option<u32>,
+    pub directory_name: String,
+}
+
 pub struct ServiceManager {
     running_processes: HashMap<String, Child>,
     service_configs: HashMap<String, ServiceConfig>,
-    db: Connection,
+    service_states: HashMap<String, ServiceState>, // In-memory state tracking
 }
 
 impl ServiceManager {
     pub fn bootstrap() -> Result<Self, ServiceError> {
-        let db = Connection::open("registry.db")?;
-
-        db.execute(
-            "CREATE TABLE IF NOT EXISTS services (
-                name TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                pid INTEGER
-            )",
-            [],
-        )?;
-
+        let args = env::args().collect::<Vec<String>>();
+        let exe_path = PathBuf::from(&args[0]);
+        let path = exe_path.parent().ok_or_else(|| {
+            ServiceError::ConfigError("Failed to determine current directory".to_string())
+        })?;
+        info!("Current directory set to: {}", &path.display());
+        env::set_current_dir(&path)?;
+        // Initialize service states from configs
         let configs = Self::load_service_configs()?;
+        let mut service_states = HashMap::new();
+        for (directory_name, config) in &configs {
+            service_states.insert(
+                config.shuriken.name.clone(),
+                ServiceState {
+                    name: config.shuriken.name.clone(),
+                    status: "stopped".to_string(),
+                    pid: None,
+                    directory_name: directory_name.clone(),
+                },
+            );
+        }
 
         Ok(Self {
             running_processes: HashMap::new(),
             service_configs: configs,
-            db,
+            service_states,
         })
     }
 
     pub async fn start_service(&mut self, service_name: &str) -> Result<u32, ServiceError> {
         let config = self.find_service_by_name(service_name)?.clone();
         let directory_name = self.find_directory_by_name(service_name)?;
-
         let pid = self.spawn_process(&directory_name, &config).await?;
         println!("Starting shuriken {}...", service_name);
 
-        self.update_service_status(service_name, "running", Some(pid))?;
+        self.update_service_status(service_name, "running", Some(pid));
         Ok(pid)
     }
 
@@ -157,57 +177,57 @@ impl ServiceManager {
             let _ = child.kill().await;
         }
 
-        // Also kill by PID from database
-        if let Some(pid) = self.get_service_pid(service_name)? {
-            Self::kill_process_by_pid(pid);
+        // Also kill by PID from in-memory state
+        if let Some(state) = self.service_states.get(service_name) {
+            if let Some(pid) = state.pid {
+                Self::kill_process_by_pid(pid);
+            }
         }
 
-        self.update_service_status(service_name, "stopped", None)?;
+        self.update_service_status(service_name, "stopped", None);
         Ok(())
     }
 
-    pub async fn get_all_services(&self) -> Result<Vec<RuntimeStatus>, ServiceError> {
-        let mut stmt = self.db.prepare("SELECT name, status, pid FROM services")?;
-        let service_iter = stmt.query_map([], |row| {
-            Ok(RuntimeStatus {
-                name: row.get(0)?,
-                status: row.get(1)?,
-                pid: row.get(2)?,
-            })
-        })?;
+    pub async fn get_all_services(&mut self) -> Result<Vec<RuntimeStatus>, ServiceError> {
+        self.cleanup_stale_processes().await;
 
-        service_iter
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into)
+        let services = self
+            .service_states
+            .values()
+            .map(|state| RuntimeStatus {
+                name: state.name.clone(),
+                status: state.status.clone(),
+                pid: state.pid,
+            })
+            .collect();
+
+        Ok(services)
     }
 
     pub async fn get_running_services(&mut self) -> Result<Vec<RuntimeStatus>, ServiceError> {
-        self.cleanup_stale_processes().await?;
+        self.cleanup_stale_processes().await;
 
-        let mut stmt = self
-            .db
-            .prepare("SELECT name, status, pid FROM services WHERE status = 'running'")?;
-        let service_iter = stmt.query_map([], |row| {
-            Ok(RuntimeStatus {
-                name: row.get(0)?,
-                status: row.get(1)?,
-                pid: row.get(2)?,
-            })
-        })?;
-
-        let mut services = Vec::new();
-        for service in service_iter {
-            let service = service?;
-
-            if let Some(pid) = service.pid {
-                if Self::is_process_running(pid) {
-                    services.push(service);
+        let services = self
+            .service_states
+            .values()
+            .filter(|state| state.status == "running")
+            .filter_map(|state| {
+                if let Some(pid) = state.pid {
+                    if Self::is_process_running(pid) {
+                        Some(RuntimeStatus {
+                            name: state.name.clone(),
+                            status: state.status.clone(),
+                            pid: state.pid,
+                        })
+                    } else {
+                        // Process died, update status
+                        None
+                    }
                 } else {
-                    // Process died, update status
-                    self.update_service_status(&service.name, "stopped", None)?;
+                    None
                 }
-            }
-        }
+            })
+            .collect();
 
         Ok(services)
     }
@@ -223,25 +243,30 @@ impl ServiceManager {
         self.service_configs.get(directory_name)
     }
 
+    pub fn get_service_status(&self, service_name: &str) -> Option<RuntimeStatus> {
+        self.service_states.get(service_name).map(|state| RuntimeStatus {
+            name: state.name.clone(),
+            status: state.status.clone(),
+            pid: state.pid,
+        })
+    }
+
     // Private helper methods
-    async fn cleanup_stale_processes(&mut self) -> Result<(), ServiceError> {
-        let all_services = self.get_all_services().await?;
+    async fn cleanup_stale_processes(&mut self) {
+        let service_names: Vec<String> = self.service_states.keys().cloned().collect();
 
-        for service in all_services {
-            if service.status == "running" {
-                if let Some(pid) = service.pid {
-                    if !Self::is_process_running(pid) {
-                        self.update_service_status(&service.name, "stopped", None)?;
-
-                        if let Ok(directory_name) = self.find_directory_by_name(&service.name) {
-                            self.running_processes.remove(&directory_name);
+        for service_name in service_names {
+            if let Some(state) = self.service_states.get(&service_name).cloned() {
+                if state.status == "running" {
+                    if let Some(pid) = state.pid {
+                        if !Self::is_process_running(pid) {
+                            self.update_service_status(&service_name, "stopped", None);
+                            self.running_processes.remove(&state.directory_name);
                         }
                     }
                 }
             }
         }
-
-        Ok(())
     }
 
     async fn spawn_process(
@@ -282,39 +307,43 @@ impl ServiceManager {
         config: &ServiceConfig,
     ) -> Result<(String, Vec<String>), ServiceError> {
         match &config.shuriken.maintenance {
-            MaintenanceType::Native { bin_path, args, .. } => Ok((
-                bin_path.get_path().to_string(),
-                args.clone().unwrap_or_default(),
-            )),
+            MaintenanceType::Native { bin_path, args, .. } => {
+                Ok((
+                    bin_path.get_path().to_string(),
+                    args.clone().unwrap_or_default(),
+                ))
+            }
             MaintenanceType::Script { script_path, .. } => {
                 self.execute_ninja_script(script_path, &config.shuriken.name)?;
                 Ok((String::new(), Vec::new()))
             }
-            MaintenanceType::Simple(maintenance_type) => match maintenance_type.as_str() {
-                "native" => {
-                    let bin_path = config.shuriken.bin_path.as_ref().ok_or_else(|| {
-                        ServiceError::ConfigError(
-                            "bin-path required for native maintenance".to_string(),
-                        )
-                    })?;
-                    Ok((
-                        bin_path.get_path().to_string(),
-                        config.shuriken.args.clone().unwrap_or_default(),
-                    ))
+            MaintenanceType::Simple(maintenance_type) => {
+                match maintenance_type.as_str() {
+                    "native" => {
+                        let bin_path = config.shuriken.bin_path.as_ref().ok_or_else(|| {
+                            ServiceError::ConfigError(
+                                "bin-path required for native maintenance".to_string(),
+                            )
+                        })?;
+                        Ok((
+                            bin_path.get_path().to_string(),
+                            config.shuriken.args.clone().unwrap_or_default(),
+                        ))
+                    }
+                    "script" => {
+                        let script_path = config.shuriken.script_path.as_ref().ok_or_else(|| {
+                            ServiceError::ConfigError(
+                                "script-path required for script maintenance".to_string(),
+                            )
+                        })?;
+                        self.execute_ninja_script(script_path, &config.shuriken.name)?;
+                        Ok((String::new(), Vec::new()))
+                    }
+                    _ => Err(ServiceError::ConfigError(
+                        "maintenance must be 'native' or 'script'".to_string(),
+                    )),
                 }
-                "script" => {
-                    let script_path = config.shuriken.script_path.as_ref().ok_or_else(|| {
-                        ServiceError::ConfigError(
-                            "script-path required for script maintenance".to_string(),
-                        )
-                    })?;
-                    self.execute_ninja_script(script_path, &config.shuriken.name)?;
-                    Ok((String::new(), Vec::new()))
-                }
-                _ => Err(ServiceError::ConfigError(
-                    "maintenance must be 'native' or 'script'".to_string(),
-                )),
-            },
+            }
         }
     }
 
@@ -324,6 +353,7 @@ impl ServiceManager {
         service_name: &str,
     ) -> Result<(), ServiceError> {
         let engine = NinjaEngine::new();
+        env::set_current_dir(format!("shurikens/{}", service_name))?;
         engine
             .execute_function("start".to_string(), script_path)
             .map_err(|e| {
@@ -391,39 +421,10 @@ impl ServiceManager {
             .ok_or_else(|| ServiceError::ServiceNotFound(name.to_string()))
     }
 
-    fn update_service_status(
-        &self,
-        service_name: &str,
-        status: &str,
-        pid: Option<u32>,
-    ) -> Result<(), ServiceError> {
-        match pid {
-            Some(pid) => {
-                self.db.execute(
-                    "INSERT OR REPLACE INTO services (name, status, pid) VALUES (?1, ?2, ?3)",
-                    [service_name, status, &pid.to_string()],
-                )?;
-            }
-            None => {
-                self.db.execute(
-                    "INSERT OR REPLACE INTO services (name, status, pid) VALUES (?1, ?2, NULL)",
-                    [service_name, status],
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-    fn get_service_pid(&self, service_name: &str) -> Result<Option<u32>, ServiceError> {
-        let mut stmt = self
-            .db
-            .prepare("SELECT pid FROM services WHERE name = ?1")?;
-        let mut rows = stmt.query_map([service_name], |row| Ok(row.get::<_, Option<u32>>(0)?))?;
-
-        if let Some(row) = rows.next() {
-            Ok(row?)
-        } else {
-            Ok(None)
+    fn update_service_status(&mut self, service_name: &str, status: &str, pid: Option<u32>) {
+        if let Some(state) = self.service_states.get_mut(service_name) {
+            state.status = status.to_string();
+            state.pid = pid;
         }
     }
 
@@ -484,7 +485,6 @@ pub enum ServiceError {
     InvalidServiceName,
     ConfigParseError(String, toml::de::Error),
     NoServicesFound,
-    DatabaseError(rusqlite::Error),
     IoError(std::io::Error),
 }
 
@@ -503,7 +503,6 @@ impl std::fmt::Display for ServiceError {
                 write!(f, "Failed to parse config for '{}': {}", name, err)
             }
             ServiceError::NoServicesFound => write!(f, "No services found in shurikens directory"),
-            ServiceError::DatabaseError(err) => write!(f, "Database error: {}", err),
             ServiceError::IoError(err) => write!(f, "IO error: {}", err),
         }
     }
@@ -512,15 +511,8 @@ impl std::fmt::Display for ServiceError {
 impl std::error::Error for ServiceError {}
 
 // Automatic error conversions
-impl From<rusqlite::Error> for ServiceError {
-    fn from(err: rusqlite::Error) -> Self {
-        ServiceError::DatabaseError(err)
-    }
-}
-
 impl From<std::io::Error> for ServiceError {
     fn from(err: std::io::Error) -> Self {
         ServiceError::IoError(err)
     }
 }
-

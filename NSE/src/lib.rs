@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-
-use rquickjs::{context::EvalOptions, Context, Function, Module, Runtime};
+use std::{fs as filesystem, path::PathBuf};
+use log::info;
+use rquickjs::{context::EvalOptions, Context, Module, Runtime};
 
 mod util;
 use util::*;
@@ -88,18 +88,33 @@ impl NinjaEngine {
         })
     }
 
-    pub fn execute_function(&self, function: String, file: &PathBuf) -> Result<(), rquickjs::Error> {
+    pub fn execute_function(
+    &self,
+    function: String,
+    file: &PathBuf,
+) -> Result<(), rquickjs::Error> {
     self.ctx.with(|ctx| {
-        // Load and evaluate the JavaScript file
-        ctx.eval_file::<(), _>(file)?;
+        info!("Starting function execution.");
+        info!("Loading file: {}", file.display());
+        let mut options = EvalOptions::default();
+        options.global = false;
+        options.promise = true;
 
-        // Get the function from globals
-        let func: Function = ctx.globals().get(&function)?;
+        let script = format!("{}{}", filesystem::read_to_string(file)?, "\nglobalThis.start = start; globalThis.stop = stop"); 
 
-        // Call the function with the converted arguments
-        let _result: rquickjs::Value = func.call(())?;
+        ctx.eval_with_options::<(), _>(script, options)?;
+        info!("File loaded successfully: {}", file.display());
+
+        let globals = ctx.globals();
+
+        let func: rquickjs::Function = globals.get(function.as_str())?;
+
+        // Call the function with no arguments and ignore returned value
+        func.call::<(), ()>(())?;
+        info!("Function executed successfully: {}", function);
 
         Ok(())
-    })  
-    }
+    })
+}
+
 }

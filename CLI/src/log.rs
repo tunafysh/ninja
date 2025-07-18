@@ -48,9 +48,7 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
         log_path,
         AppendCount::new(5),
         ContentLimit::Bytes(10_000_000),
-        #[cfg(unix)]
         file_rotate::compression::Compression::None,
-        #[cfg(unix)]
         None,
     );
 

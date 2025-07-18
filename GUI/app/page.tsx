@@ -3,16 +3,14 @@
 import { ApplicationMenubar } from "@/components/application-menubar"
 import { Card, CardContent } from "@/components/ui/card"
 import { useState, useRef, useEffect } from "react"
-import { ModeToggle } from "@/components/ui/themetoggle"
 import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
 import Tools from "@/components/pages/tools"
 import Logs from "@/components/pages/logs"
-import { HomeIcon, Cog, FileText, Wrench, Zap } from "lucide-react"
+import { HomeIcon, Cog, FileText, Database, Zap } from "lucide-react"
 import Scripting from "@/components/pages/scripting"
 
-const tabIcons = [ <HomeIcon className="w-4 h-4 mr-1" />, <Cog className="w-4 h-4 mr-1"/>, <FileText className="w-4 h-4 mr-1"/>, <Wrench className="w-4 h-4 mr-1"/>, <Zap className="w-4 h-4 mr-1"/> ]
-const tabs = ["Dashboard", "Configuration", "Logs", "Tools", "Scripting"]
+const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Scripting"]
 export default function Page() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -20,6 +18,27 @@ export default function Page() {
   const [activeStyle, setActiveStyle] = useState({ left: "0px", width: "0px" })
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
+  const tabIcons = [ 
+    <HomeIcon className={`w-4 h-4 mr-1 ${activeIndex != 0? "dark:text-[#ffffff99]": "text-red-500"}`} />, 
+    <Cog className={`w-4 h-4 mr-1 ${activeIndex != 1? "dark:text-[#ffffff99]": "text-orange-500"}`}/>, 
+    <FileText className={`w-4 h-4 mr-1 ${activeIndex != 2? "dark:text-[#ffffff99]": "text-green-500"}`}/>, 
+    <Database className={`w-4 h-4 mr-1 ${activeIndex != 3? "dark:text-[#ffffff99]": "text-purple-500"}`}/>, 
+    <div className="relative">
+      <svg className="w-0 h-0 absolute">
+        <defs>
+          <linearGradient id="zapStrokeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <Zap className={`w-4 h-4 mr-1 ${activeIndex != 4? "dark:text-[#ffffff99]": ""}`} 
+           style={activeIndex == 4 ? { 
+             fill: 'none', 
+             stroke: 'url(#zapStrokeGradient)', 
+             strokeWidth: '2' 
+           } : {}}/>
+    </div>]
 
   function forwardConsole(
     fnName: 'log' | 'debug' | 'info' | 'warn' | 'error',
