@@ -17,6 +17,7 @@ fern = { version = "0.7.1", features = ["colored", "chrono"] }
 chrono = "0.4.41"
 file-rotate = "0.8.0"
 ninja-api = { path = "../API"}
+clap-verbosity-flag = "3.0.3"
 
 [[bin]]
 path = "src/main.rs"   

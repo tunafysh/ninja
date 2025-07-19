@@ -3,10 +3,27 @@ name = "ninja-api"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "ninja_api"
+path = "src/lib.rs"
+
+[target.unix.dependencies]
+daemonize = "0.5.0"
+
 [dependencies]
-rusqlite = "0.37.0"
 serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.46.1", features = ["full"] }
 toml = "0.8.23"
 ninja-engine = { path = "../NSE"}
 log = "0.4.27"
+warp = { version = "0.3.7", features = ["async-compression", "tokio-rustls"] }
+thiserror = "2.0.12"
+clap = { version = "4.5.41", features = ["derive"] }
+serde_json = "1.0.140"
+file-rotate = "0.8.0"
+fern = { version = "0.7.1", features = ["chrono", "colored"] }
+chrono = "0.4.41"
+
+[[bin]]
+path = "src/main.rs"
+name = "kurokage"
