@@ -241,6 +241,7 @@ impl ServiceManager {
     ) -> Result<(), ServiceError> {
         let engine = NinjaEngine::new();
         env::set_current_dir(format!("shurikens/{}", service_name))?;
+        println!("Executing script: {}", script_path.display());
         engine
             .execute_function("start".to_string(), script_path)
             .map_err(|e| {

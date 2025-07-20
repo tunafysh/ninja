@@ -8,7 +8,6 @@ use owo_colors::OwoColorize;
 mod log;
 use log::setup_logger;
 
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
