@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Dispatch, SetStateAction, useState } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,19 +8,14 @@ import { Database, Server, Globe, FileCode, Cpu, MoreHorizontal } from "lucide-r
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MovingBorderButton } from "../ui/moving-border-button"
+import { Shuriken } from "@/lib/types"
 
-export default function Dashboard() {
-  const [services, setServices] = useState([
-    { id: "apache", name: "Apache", status: "stopped", icon: Server, color: "text-red-500" },
-    { id: "mysql", name: "MySQL", status: "stopped", icon: Database, color: "text-blue-500" },
-    { id: "php", name: "PHP", status: "stopped", icon: FileCode, color: "text-purple-500" },
-    { id: "filezilla", name: "FileZilla", status: "stopped", icon: Globe, color: "text-green-500" },
-  ])
+export default function Dashboard({shurikens, setShurikens, index, setIndex }: { shurikens: Shuriken[], setShurikens: Dispatch<SetStateAction<Shuriken[]>>, index: number, setIndex: Dispatch<SetStateAction<number>> }) {
 
-  const toggleService = (id: string) => {
-    setServices(
-      services.map((service) => {
-        if (service.id === id) {
+  const toggleService = (service_name: string) => {
+    setShurikens(
+      shurikens.map((service) => {
+        if (service.service_name === service_name && service.type.kind === "Daemon") {
           const newStatus = service.status === "running" ? "stopped" : "running"
           return { ...service, status: newStatus }
         }
@@ -34,9 +29,9 @@ export default function Dashboard() {
       {/* Services Section */}
       <div>
         <h2 className="text-xl font-semibold mb-3 px-1">Services</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-          {services.map((service) => (
-            <Card key={service.id} className="bg-card border-border py-0">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 md:gap-4">
+          {shurikens.map((service) => (
+            <Card key={service.service_name} className="bg-card border-border py-0">
               <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                 <div className="flex items-center gap-1">
                   <div className={`p-1.5 rounded-md bg-muted ${service.status === "running" ? "bg-primary/10" : ""}`}>
@@ -46,24 +41,21 @@ export default function Dashboard() {
                   </div>
                   <CardTitle className="text-sm md:text-base">{service.name}</CardTitle>
                 </div>
-                <Badge
+                {service.type.kind == "Daemon" && <Badge
                   variant={service.status === "running" ? "default" : "secondary"}
                   className={`text-xs ${service.status === "running" ? "bg-primary" : ""}`}
                 >
                   {service.status === "running" ? "Running" : "Stopped"}
-                </Badge>
-                {/* <MovingBorderButton className="text-xs md:text-sm h-8 px-0 w-full hover:dark:bg-muted hover:bg-primary">
-                  Starting
-                </MovingBorderButton> (for use in loading circle) */}
+                </Badge>}
               </CardHeader>
-              <CardFooter className="p-3 md:p-4 pt-0 flex gap-2">
+              <CardFooter className={`h-full p-3 pr-2 md:p-4 ${service.type.kind == "Daemon"? "pt-0": "mt-4"} flex gap-2`}>
                 <Button
-                  variant={service.status === "running" ? "destructive" : "default"}
+                  variant={service.type.kind == "Daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                   className="text-xs md:text-sm h-8 px-0"
                   style={{ width: "90%"}}
-                  onClick={() => toggleService(service.id)}
+                  onClick={() => toggleService(service.service_name)}
                 >
-                  {service.status === "running" ? "Stop" : "Start"}
+                  {service.type.kind == "Daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

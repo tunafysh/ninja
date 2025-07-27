@@ -7,8 +7,9 @@ import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
 import Tools from "@/components/pages/tools"
 import Logs from "@/components/pages/logs"
-import { HomeIcon, Cog, FileText, Database, Zap } from "lucide-react"
+import { HomeIcon, Cog, FileText, Database, Zap, Server, Globe } from "lucide-react"
 import Scripting from "@/components/pages/scripting"
+import { Shuriken } from "@/lib/types"
 
 const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Scripting"]
 export default function Page() {
@@ -39,6 +40,58 @@ export default function Page() {
              strokeWidth: '2' 
            } : {}}/>
     </div>]
+    const [shurikens, setShurikens] = useState<Shuriken[]>([
+      {
+        name: "Apache",
+        service_name: "apache",
+        maintenance: {
+          kind: "Script",
+          script_path: "test.ns",
+        },
+        type: {
+          kind: "Daemon",
+          ports: [80, 443],
+          health_check: "http://localhost:80/health",
+        },
+        status: "stopped",
+        icon: Server,
+        color: "text-green-500"
+      },
+      {
+        name: "MySQL",
+        service_name: "mysql",
+        maintenance: {
+          kind: "Native",
+          bin_path: "mysql",
+          config_path: "mysql.conf",
+          args: ["-u", "root", "-p"],
+        },
+        type: {
+          kind: "Daemon",
+          ports: [3306],
+          health_check: "http://localhost:3306/health",
+        },
+        status: "stopped",
+        icon: Database,
+        color: "text-blue-500"
+      },
+      {
+        name: "FileZilla",
+        service_name: "filezilla",
+        maintenance: {
+          kind: "Native",
+          bin_path: "filezilla",
+          config_path: "filezilla.conf",
+        },
+        type: {
+          kind: "Executable",
+          add_path: true,
+        },
+        status: "stopped",
+        icon: Globe,
+        color: "text-green-500"
+      }
+    ])
 
   function forwardConsole(
     fnName: 'log' | 'debug' | 'info' | 'warn' | 'error',
@@ -81,6 +134,24 @@ export default function Page() {
       }
     }
   }, [hoveredIndex])
+
+  function handleKeyDown(e: KeyboardEvent) {
+    // Detect Ctrl+Tab
+    if (e.ctrlKey && !e.shiftKey && e.key === "Tab") {
+      setActiveIndex(activeIndex + 1)
+    }
+    // Detect Ctrl+Shift+Tab
+    if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
+      setActiveIndex(activeIndex - 1)
+    }
+  }
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     const activeElement = tabRefs.current[activeIndex]
@@ -180,7 +251,7 @@ export default function Page() {
         
         " style={{ height: "calc(100vh - 100px)" }}>
           {activeIndex === 0 ? (
-            <Dashboard />
+            <Dashboard shurikens={shurikens} setShurikens={setShurikens} index={activeIndex} setIndex={setActiveIndex} />
           ) : activeIndex === 1 ? (
             <Configuration />
           ) : activeIndex === 2 ? (

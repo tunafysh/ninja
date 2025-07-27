@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = [
+    "API",
+    "CLI",
+    "MCP",
+    "NSE",
+    "xtask",
+    "GUI/src-tauri"
+]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

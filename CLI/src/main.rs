@@ -1,77 +1,81 @@
 // main.rs
 use std::{path::Path, process::exit};
-use ninja_api::ServiceManager;
-use clap::{Arg, Command, ArgAction::SetTrue};
+use ninja::ServiceManager;
+use clap::{Parser, Subcommand, Args};
 use ::log::info;
 use owo_colors::OwoColorize;
+use clap_verbosity_flag::Verbosity;
 
 mod log;
 use log::setup_logger;
+
+
+#[derive(Parser)]
+#[command(name = "ninja")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(about = "Ninja CLI - Service Manager")]
+pub struct NinjaCli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+    
+    #[arg(long, hide = true)]
+    pub mcp: bool,
+
+    #[command(flatten)]
+    verbose: Verbosity,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Start a shuriken
+    Start(StartArgs),
+    /// Stop a shuriken
+    Stop(StopArgs),
+    /// Run a script using the Ninja Runtime
+    Run(RunArgs),
+    /// List running shuriken services
+    List(ListArgs),
+}
+
+#[derive(Args)]
+pub struct StartArgs {
+    /// The name of the shuriken to start
+    pub shuriken: String,
+}
+
+#[derive(Args)]
+pub struct StopArgs {
+    /// The name of the shuriken to stop
+    pub shuriken: String,
+}
+
+#[derive(Args)]
+pub struct RunArgs {
+    /// The path of the file or snippet of script to run
+    #[arg(name = "file/script")]
+    pub file_script: Option<String>,
+    
+    /// This flag enables REPL mode
+    #[arg(long)]
+    pub repl: bool,
+}
+
+#[derive(Args)]
+pub struct ListArgs {
+    /// Show all shurikens and their statuses
+    #[arg(short = 'f', long)]
+    pub full: bool,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
     
-    let args = Command::new("ninja")
-        .version(std::env!("CARGO_PKG_VERSION"))
-        .about("Ninja CLI - Service Manager")
-        .subcommand(
-            Command::new("start")
-                .about("Start a shuriken")
-                .arg(
-                    Arg::new("shuriken")
-                        .help("The name of the shuriken to start")
-                        .required(true)
-                        .index(1),
-                ),
-        )
-        .subcommand(
-            Command::new("stop")
-            .about("Stop a shuriken")
-                .arg(
-                    Arg::new("shuriken")
-                        .help("The name of the shuriken to stop")
-                        .required(true)
-                        .index(1),
-                ),
-        )
-        .subcommand(
-            Command::new("run")
-                .about("Run a script using the Ninja Runtime.")
-                .arg(
-                    Arg::new("file/script")
-                        .help("The path of the file or snippet of script to run")
-                        .index(1),
-                )
-		.arg(
-		    Arg::new("repl")
-			.long("repl")
-			.help("This flag enables REPL mode")
-			.action(SetTrue)
-		)
-        )
-        .subcommand(
-            Command::new("list")
-                .about("List running shuriken services")
-                .arg(
-                    Arg::new("full")
-                        .short('f')
-                        .long("full")
-                        .help("Show all shurikens and their statuses")
-                        .action(SetTrue),
-                ),
-        )
-	.arg(
-	    Arg::new("mcp")
-		.long("mcp")
-		.action(SetTrue)
-		.hide(true)
-	)
-        .get_matches();
+    let args = NinjaCli::parse();
 
-    setup_logger().expect("Failed to initialize logger");
+    setup_logger(args.verbose.into()).expect("Failed to initialize logger");
     
-    if args.get_flag("mcp") {
+    if args.mcp {
         info!("Starting up in MCP mode.");
         exit(0);
     }
@@ -80,33 +84,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut service_manager = ServiceManager::bootstrap()
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
-    match args.subcommand() {
-        Some(("start", shuriken_args)) => {
-            let shuriken_name = shuriken_args
-                .get_one::<String>("shuriken")
-                .expect("Failed to get shuriken name");
+    match args.command {
+        Some(Commands::Start(shuriken_args)) => {
+            let shuriken_name = shuriken_args.shuriken;
         
             info!("Starting shuriken {}...", shuriken_name);
             // Use the actual name from manifest, not service-name
-            match service_manager.start_service(shuriken_name).await {
+            match service_manager.start_service(shuriken_name.as_str()).await {
                 Ok(pid) => println!("{}", format!("Started shuriken '{}' with PID {}", shuriken_name, pid).green()),
                 Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
-        Some(("stop", shuriken_args)) => {
-            let shuriken_name = shuriken_args
-                .get_one::<String>("shuriken")
-                .expect("Failed to get shuriken name");
+        Some(Commands::Stop(shuriken_args)) => {
+            let shuriken_name = shuriken_args.shuriken;
 
             info!("Stopping shuriken {}...", shuriken_name);
             // Use the actual name from manifest, not service-name
-            match service_manager.stop_service(shuriken_name).await {
+            match service_manager.stop_service(shuriken_name.as_str()).await {
                 Ok(_) => println!("{}", format!("Stopped shuriken '{}'", shuriken_name).green()),
                 Err(e) => eprintln!("{}", format!("Failed to stop shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
-        Some(("list", list_args)) => {
-            let show_all = list_args.get_flag("full");
+        Some(Commands::List(list_args)) => {
+            let show_all = list_args.full;
 
             if show_all {
                 // Show all services with their statuses
@@ -176,8 +176,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some(("run", script_args)) => {
-            let content = script_args.get_one::<String>("file/script").expect("Failed to get file path");
+        Some(Commands::Run(script_args)) => {
+            let file_arg = script_args.file_script.expect("Failed to get file path");
+            let content = file_arg.as_str();
             let rt = ninja_engine::NinjaEngine::new();
             
             if Path::new(content).exists() {

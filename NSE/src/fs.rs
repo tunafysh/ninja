@@ -43,6 +43,19 @@ pub mod fs_api {
         result.map_err(|_e| rquickjs::Error::new_from_js("fs", "Failed to remove: {}"))
     }
 
+    #[rquickjs::function]
+    pub fn readjson(path: String) -> Result<String> {
+        let file = fs::read_to_string(path).expect("Failed to read file");
+        let json: serde_json::Value = serde_json::from_str(&file).expect("Failed to parse JSON");
+        Ok(json.to_string())
+    }
+
+    #[rquickjs::function]
+    pub fn writejson(path: String, content: String) -> Result<()> {
+        let json: serde_json::Value = serde_json::from_str(&content).expect("Failed to parse JSON");
+        fs::write(path, json.to_string())
+            .map_err(|_e| rquickjs::Error::new_from_js("fs", "Failed to write file."))
+    }
     // Module initialization - corrected attribute syntax
     
 }

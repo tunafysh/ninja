@@ -28,7 +28,7 @@ impl Write for RotatingWriter {
     }
 }
 
-pub fn setup_logger() -> Result<(), fern::InitError> {
+pub fn setup_logger(level: LevelFilter) -> Result<(), fern::InitError> {
     let log_path = match std::env::consts::OS {
         "linux" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/.local/share/com.tunafysh.ninja/logs/shurikenctl.log"),
         "macos" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/Library/Application Support/com.tunafysh.ninja/logs/shurikenctl.log"),
@@ -71,7 +71,7 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
         })
         .chain(std::io::stdout())
         .chain(Box::new(rotating_writer) as Box<dyn Write + Send>)
-        .level(LevelFilter::Debug)
+        .level(level)
         .apply()?;
 
     Ok(())

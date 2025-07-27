@@ -7,3 +7,6 @@ GUI/package-lock.json
 NSE/target
 API/target
 MCP/target
+target
+GUI/out
+GUI/src-tauri/target

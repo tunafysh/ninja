@@ -19,7 +19,12 @@
         "height": 513,
         "decorations": false,
         "transparent": true
-      } 
+      },
+      {
+        "title": "Armory",
+        "width": 912,
+        "height": 513
+      }
 
     ],
     "security": {

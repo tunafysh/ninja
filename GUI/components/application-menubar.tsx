@@ -2,7 +2,7 @@
 
 import * as React from "react"
 // import { Window } from "@tauri-apps/api/window"
-import { Copy, File, FileText, FolderOpen, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Save, Sun } from 'lucide-react'
+import { File, FileText, FolderOpen, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Save, Sun } from 'lucide-react'
 
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import { WindowControls } from "./window-controls"
-import { ModeToggle } from "./ui/themetoggle"
 
 export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" | "linux" | "unknown" }) {
   const { setTheme, theme } = useTheme()
@@ -36,13 +35,13 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
       }}
       data-tauri-drag-region
     >
-      {platform === "mac" && (
+      {/* {platform === "mac" && (
         <WindowControls
           onMinimize={() => Window.getCurrent().minimize()}
           onMaximize={() => Window.getCurrent().maximize()}
           onClose={() => Window.getCurrent().close()}
         />
-      )}
+      )} */}
 
       {platform !== "mac" && (
       <div className="flex items-center gap-2 px-4">
@@ -190,10 +189,10 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
         </DropdownMenu>
       </div>
         )}
+        
         <div className="ml-auto">
         {platform !== "mac" && (
           <div className="flex items-center">
-            <ModeToggle/>
             <WindowControls
               onMinimize={() => console.log("Minimize")}
               onMaximize={() => console.log("Maximize")}

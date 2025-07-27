@@ -2,7 +2,5 @@ import * as fs from "fs";
 
 let test = "test"
 
-function start() {
-    console.log("Hello World! its executing main bruh");
-    fs.write("test.txt", "Hello World!");
-}
+console.log("Hello World! its executing main bruh");
+fs.write("test.txt", "Hello World!");

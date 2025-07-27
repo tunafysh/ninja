@@ -28,10 +28,5 @@
 - Violations terminate rights automatically.  
 - Commercial users must certify compliance upon request.  
 
-**5. Disclaimer & Jurisdiction**  
-- **No warranties or liability**.  
-- Governed by [State/Country] law.  
-- This is **not an open-source license** (OSI/FSF definitions do not apply).  
-
 **6. Copyright Notice**  
 Copyright (c) 2025 Hannan Smani. All rights reserved.  

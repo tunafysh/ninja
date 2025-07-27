@@ -15,6 +15,7 @@ name = "ninja_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+log = "0.4.27"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
@@ -25,11 +26,7 @@ serde_json = "1"
 tauri-plugin-log = { version = "2", features = ["colored"] }
 zbus = "5.5.0"
 chrono = { version = "0.4.40", features = ["serde"] }
-toml = "0.8.20"
-anyhow = "1.0.98"
-glob = "0.3.2"
 log = "0.4.27"
-surrealdb = { version = "2.3.1", features = ["kv-rocksdb"] }
 tokio = { version = "1.45.0", features = ["sync"] }
 
 

@@ -5,6 +5,7 @@ pub mod net_api {
     use std::net::{TcpListener, TcpStream, ToSocketAddrs};
     use std::time::{Duration, Instant};
     use std::thread;
+    use reqwest;
 
     /// Check if a port is available (not in use)
     #[rquickjs::function]
@@ -156,5 +157,12 @@ pub mod net_api {
     pub fn interface_up() -> bool {
         // Simple check by trying to bind to any available address
         TcpListener::bind("0.0.0.0:0").is_ok()
+    }
+
+    #[rquickjs::function]
+    pub async fn fetch(url: String) -> Result<String> {
+        let response = reqwest::get(url).await.expect("Failed to fetch data from link");
+        let body = response.text().await.expect("Failed to get text from response");
+        Ok(body)
     }
 }

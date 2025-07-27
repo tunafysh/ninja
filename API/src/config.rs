@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 // Simplified config structures using platform-aware paths
 #[derive(Debug, Deserialize, Clone)]
-pub struct ServiceConfig {
+pub struct Shuriken {
     pub shuriken: ShurikenConfig,
     pub config: Option<HashMap<String, ConfigParam>>,
     pub logs: Option<LogsConfig>,

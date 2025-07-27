@@ -1,4 +1,4 @@
-use crate::config::{ServiceConfig, MaintenanceType};
+use crate::config::{Shuriken, MaintenanceType};
 use crate::error::ServiceError;
 use crate::types::{RuntimeStatus, ServiceState};
 use ninja_engine::NinjaEngine;
@@ -10,7 +10,7 @@ use tokio::process::Child;
 
 pub struct ServiceManager {
     running_processes: HashMap<String, Child>,
-    service_configs: HashMap<String, ServiceConfig>,
+    service_configs: HashMap<String, Shuriken>,
     service_states: HashMap<String, ServiceState>, // In-memory state tracking
 }
 
@@ -126,7 +126,7 @@ impl ServiceManager {
             .collect()
     }
 
-    pub fn get_service_config(&self, directory_name: &str) -> Option<&ServiceConfig> {
+    pub fn get_service_config(&self, directory_name: &str) -> Option<&Shuriken> {
         self.service_configs.get(directory_name)
     }
 
@@ -159,7 +159,7 @@ impl ServiceManager {
     async fn spawn_process(
         &mut self,
         directory_name: &str,
-        config: &ServiceConfig,
+        config: &Shuriken,
     ) -> Result<u32, ServiceError> {
         let service_dir = format!("shurikens/{}", directory_name);
 
@@ -191,7 +191,7 @@ impl ServiceManager {
 
     fn extract_execution_details(
         &self,
-        config: &ServiceConfig,
+        config: &Shuriken,
     ) -> Result<(String, Vec<String>), ServiceError> {
         match &config.shuriken.maintenance {
             MaintenanceType::Native { bin_path, args, .. } => {
@@ -201,7 +201,7 @@ impl ServiceManager {
                 ))
             }
             MaintenanceType::Script { script_path, .. } => {
-                self.execute_ninja_script(script_path, &config.shuriken.name)?;
+                self.execute_ninja_script(&script_path, &config.shuriken.name)?;
                 Ok((String::new(), Vec::new()))
             }
             MaintenanceType::Simple(maintenance_type) => {
@@ -256,7 +256,7 @@ impl ServiceManager {
         Ok(())
     }
 
-    fn load_service_configs() -> Result<HashMap<String, ServiceConfig>, ServiceError> {
+    fn load_service_configs() -> Result<HashMap<String, Shuriken>, ServiceError> {
         let shurikens_dir = Path::new("shurikens");
 
         if !shurikens_dir.exists() {
@@ -279,7 +279,7 @@ impl ServiceManager {
                 let manifest_path = path.join("manifest.toml");
                 if manifest_path.exists() {
                     let toml_content = fs::read_to_string(&manifest_path)?;
-                    let config: ServiceConfig = toml::from_str(&toml_content)
+                    let config: Shuriken = toml::from_str(&toml_content)
                         .map_err(|e| ServiceError::ConfigParseError(directory_name.clone(), e))?;
 
                     configs.insert(directory_name, config);
@@ -294,7 +294,7 @@ impl ServiceManager {
         Ok(configs)
     }
 
-    fn find_service_by_name(&self, name: &str) -> Result<&ServiceConfig, ServiceError> {
+    fn find_service_by_name(&self, name: &str) -> Result<&Shuriken, ServiceError> {
         self.service_configs
             .values()
             .find(|config| config.shuriken.name == name)

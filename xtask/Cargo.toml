@@ -1,0 +1,9 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap_mangen = "0.2.28"
+glob = "0.3.2"
+owo-colors = "4.2.2"

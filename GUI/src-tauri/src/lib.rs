@@ -1,5 +1,3 @@
-mod structs;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -10,10 +8,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
            
         ])
-        .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
+        .setup(|_app| {
             #[cfg(target_os = "macos")]
-            window.set_shadow(true).unwrap();
+            {
+                let window = _app.get_webview_window("main").unwrap();
+                window.set_shadow(true).unwrap();
+            };
             Ok(())
         })
         .run(tauri::generate_context!())

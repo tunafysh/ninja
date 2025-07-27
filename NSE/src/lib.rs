@@ -33,7 +33,7 @@ impl NinjaEngine {
         let ctx = Context::full(&rt).expect("Failed to create context");
 
         let mut options = EvalOptions::default();
-        options.global = false;
+        options.global = true; // Changed to true for module loading
         options.promise = true;
 
         ctx.with(|ctx| {
@@ -51,7 +51,6 @@ impl NinjaEngine {
             add_global_function(&ctx, "__rust_warn", warn);
             add_global_function(&ctx, "__rust_error", error);
             add_global_function(&ctx, "sleep", sleep);
-
 
             ctx.eval::<(), _>(
             r#"
@@ -72,49 +71,49 @@ impl NinjaEngine {
     pub fn execute(&self, script: &str) -> Result<(), rquickjs::Error> {
         self.ctx.with(|ctx| {
             let mut options = EvalOptions::default();
-            options.global = false;
+            options.global = true; // Changed to true for proper context access
             options.promise = true;
+
             ctx.eval_with_options(script, options)
         })
     }
 
     pub fn execute_file(&self, path: &str) -> Result<(), rquickjs::Error> {
         self.ctx.with(|ctx| {
-
             let mut options = EvalOptions::default();
-            options.global = false;
+            options.global = true; // Changed to true for proper context access
             options.promise = true;
+
             ctx.eval_file_with_options(path, options)
         })
     }
 
     pub fn execute_function(
-    &self,
-    function: String,
-    file: &PathBuf,
-) -> Result<(), rquickjs::Error> {
-    self.ctx.with(|ctx| {
-        info!("Starting function execution.");
-        info!("Loading file: {}", file.display());
-        let mut options = EvalOptions::default();
-        options.global = false;
-        options.promise = true;
+        &self,
+        function: String,
+        file: &PathBuf,
+    ) -> Result<(), rquickjs::Error> {
+        self.ctx.with(|ctx| {
+            info!("Starting function execution.");
+            info!("Loading file: {}", file.display());
+            
+            let mut options = EvalOptions::default();
+            options.global = true; // Changed to true for proper context access
+            options.promise = true;
 
-        let script = format!("{}{}", filesystem::read_to_string(file)?, "\nglobalThis.start = start; globalThis.stop = stop"); 
+            let script = format!("{}{}", filesystem::read_to_string(file)?, "\nglobalThis.start = start; globalThis.stop = stop"); 
+            
+            ctx.eval_with_options::<(), _>(script, options)?;
+            info!("File loaded successfully: {}", file.display());
 
-        ctx.eval_with_options::<(), _>(script, options)?;
-        info!("File loaded successfully: {}", file.display());
+            let globals = ctx.globals();
+            let func: rquickjs::Function = globals.get(function.as_str())?;
 
-        let globals = ctx.globals();
+            // Call the function with no arguments and ignore returned value
+            func.call::<(), ()>(())?;
+            info!("Function executed successfully: {}", function);
 
-        let func: rquickjs::Function = globals.get(function.as_str())?;
-
-        // Call the function with no arguments and ignore returned value
-        func.call::<(), ()>(())?;
-        info!("Function executed successfully: {}", function);
-
-        Ok(())
-    })
-}
-
+            Ok(())
+        })
+    }
 }
