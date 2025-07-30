@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useState, useRef, useEffect } from "react"
 import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
-import Tools from "@/components/pages/tools"
+import Tools from "@/components/pages/backup"
 import Logs from "@/components/pages/logs"
 import { HomeIcon, Cog, FileText, Database, Zap, Server, Globe } from "lucide-react"
 import Scripting from "@/components/pages/scripting"
@@ -18,6 +18,7 @@ export default function Page() {
   const [hoverStyle, setHoverStyle] = useState({})
   const [activeStyle, setActiveStyle] = useState({ left: "0px", width: "0px" })
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [gridView, setGridView] = useState<"grid" | "list">("grid")
   const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
   const tabIcons = [ 
     <HomeIcon className={`w-4 h-4 mr-1 ${activeIndex != 0? "dark:text-[#ffffff99]": "text-red-500"}`} />, 
@@ -180,7 +181,7 @@ export default function Page() {
   return (
     <div className="relative w-screen h-screen overflow-hidden">
       {/* Application Menubar at the top */}
-      <ApplicationMenubar platform={platform} />
+      <ApplicationMenubar platform={platform} gridView={gridView} setGridView={setGridView} />
 
       {/* Main content container with rounded bottom corners */}
       <main
@@ -251,7 +252,7 @@ export default function Page() {
         
         " style={{ height: "calc(100vh - 100px)" }}>
           {activeIndex === 0 ? (
-            <Dashboard shurikens={shurikens} setShurikens={setShurikens} index={activeIndex} setIndex={setActiveIndex} />
+            <Dashboard shurikens={shurikens} setShurikens={setShurikens} index={activeIndex} setIndex={setActiveIndex} gridView={gridView} />
           ) : activeIndex === 1 ? (
             <Configuration />
           ) : activeIndex === 2 ? (

@@ -1,6 +1,4 @@
 import * as fs from "fs";
 
-let test = "test"
-
-console.log("Hello World! its executing main bruh");
+console.log("Hello World! its executing");
 fs.write("test.txt", "Hello World!");

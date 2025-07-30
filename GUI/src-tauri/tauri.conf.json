@@ -15,15 +15,21 @@
     "windows": [
       {
         "title": "Ninja",
-        "width": 912,
-        "height": 513,
+        "label": "main",
+        "maxWidth": 912,
+        "maxHeight": 513,
         "decorations": false,
-        "transparent": true
+        "resizable": false,
+        "fullscreen": false,
+        "titleBarStyle": "Transparent"
       },
       {
         "title": "Armory",
+        "label": "armory",
         "width": 912,
-        "height": 513
+        "height": 513,
+        "url": "/armory",
+        "visible": false
       }
 
     ],
@@ -33,6 +39,15 @@
   },
   "bundle": {
     "active": true,
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    },
+    "externalBin": [
+      "../../target/release/shurikenctl",
+      "../../target/release/kurokage"
+    ],
     "macOS": {
       "dmg": {
         "appPosition": {

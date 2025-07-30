@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Editor, useMonaco } from '@monaco-editor/react';
+import { Button } from '../ui/button';
+import { PlayIcon } from 'lucide-react';
 
 export default function Scripting() {
   const editorRef = useRef(null);
@@ -50,7 +52,7 @@ export default function Scripting() {
         target: monaco.languages.typescript.ScriptTarget.ES2020,
         allowNonTsExtensions: true,
         moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        module: monaco.languages.typescript.ModuleKind.CommonJS,
+        module: monaco.languages.typescript.ModuleKind.ESNext,
         noEmit: true,
         // Only include ECMAScript library, no DOM
         lib: ['es2020'],
@@ -90,6 +92,7 @@ export default function Scripting() {
           error(...args: any[]): void;
           warn(...args: any[]): void;
           info(...args: any[]): void;
+          debug(...args: any[]): void;
         };
         
         // Basic JavaScript types and functions
@@ -136,10 +139,29 @@ export default function Scripting() {
   });
 
   return (
-    <div className='h-full '>
+    <div className='h-full flex flex-col align-center justify-center gap-4'>
+      <div className='w-full flex justify-center'>
+
+      <div className='w-[95%] flex justify-between'>
+        <div>
+        <Button variant={"outline"} className='mr-4'>
+          Save script as a file
+        </Button>
+        <Button variant={"outline"}>
+          Open script file
+        </Button>
+        </div>
+        <Button>
+          <PlayIcon className='h-4 w-4'/>
+          Run script
+        </Button>
+      </div>
+      </div>
+
+      <div className='h-full w-full flex justify-center'>
       <Editor
-        height="100%"
-        width="100%"
+        height="90%"
+        width="95%"
         language="javascript"
         value={value}
         beforeMount={handleThemeChange}
@@ -155,5 +177,6 @@ export default function Scripting() {
         }}
       />
       </div>
+    </div>
   );
 }

@@ -56,6 +56,12 @@ importers:
       '@tauri-apps/plugin-log':
         specifier: ^2.3.1
         version: 2.3.1
+      '@tauri-apps/plugin-shell':
+        specifier: ~2.3.0
+        version: 2.3.0
+      chokidar:
+        specifier: ^4.0.3
+        version: 4.0.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1146,8 +1152,14 @@ packages:
   '@tauri-apps/api@2.4.1':
     resolution: {integrity: sha512-5sYwZCSJb6PBGbBL4kt7CnE5HHbBqwH+ovmOW6ZVju3nX4E3JX6tt2kRklFEH7xMOIwR0btRkZktuLhKvyEQYg==}
 
+  '@tauri-apps/api@2.7.0':
+    resolution: {integrity: sha512-v7fVE8jqBl8xJFOcBafDzXFc8FnicoH3j8o8DNNs0tHuEBmXUDqrCOAzMRX0UkfpwqZLqvrvK0GNQ45DfnoVDg==}
+
   '@tauri-apps/plugin-log@2.3.1':
     resolution: {integrity: sha512-nnKGHENWt7teqvUlIKxd6bp2wCUrrLvCvajN6CWbyrHBNKPi/pyKELzD511siEMDEdndbiZ/GEhiK0xBtZopRg==}
+
+  '@tauri-apps/plugin-shell@2.3.0':
+    resolution: {integrity: sha512-6GIRxO2z64uxPX4CCTuhQzefvCC0ew7HjdBhMALiGw74vFBDY95VWueAHOHgNOMV4UOUAFupyidN9YulTe5xlA==}
 
   '@types/node@20.17.30':
     resolution: {integrity: sha512-7zf4YyHA+jvBNfVrk2Gtvs6x7E8V+YDW05bNfG2XkWDJfYRXrTiP/DsB2zSYTaHX0bGIujTBQdMVAhb+j7mwpg==}
@@ -1173,6 +1185,10 @@ packages:
 
   caniuse-lite@1.0.30001707:
     resolution: {integrity: sha512-3qtRjw/HQSMlDWf+X79N206fepf4SOOU6SQLMaq/0KkZLmSjPxAkBOQQ+FxbHKfHmYLZFfdWsO3KA90ceHPSnw==}
+
+  chokidar@4.0.3:
+    resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
+    engines: {node: '>= 14.16.0'}
 
   class-variance-authority@0.7.1:
     resolution: {integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==}
@@ -1447,6 +1463,10 @@ packages:
   react@19.1.0:
     resolution: {integrity: sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==}
     engines: {node: '>=0.10.0'}
+
+  readdirp@4.1.2:
+    resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
+    engines: {node: '>= 14.18.0'}
 
   redux@5.0.1:
     resolution: {integrity: sha512-M9/ELqF6fy8FwmkpnF0S3YKOqMyoWJ4+CS5Efg2ct3oY9daQvd/Pc71FpGZsVsbl3Cpb+IIcjBDUnnyBdQbq4w==}
@@ -2520,9 +2540,15 @@ snapshots:
 
   '@tauri-apps/api@2.4.1': {}
 
+  '@tauri-apps/api@2.7.0': {}
+
   '@tauri-apps/plugin-log@2.3.1':
     dependencies:
       '@tauri-apps/api': 2.4.1
+
+  '@tauri-apps/plugin-shell@2.3.0':
+    dependencies:
+      '@tauri-apps/api': 2.7.0
 
   '@types/node@20.17.30':
     dependencies:
@@ -2549,6 +2575,10 @@ snapshots:
       streamsearch: 1.1.0
 
   caniuse-lite@1.0.30001707: {}
+
+  chokidar@4.0.3:
+    dependencies:
+      readdirp: 4.1.2
 
   class-variance-authority@0.7.1:
     dependencies:
@@ -2827,6 +2857,8 @@ snapshots:
       '@types/react': 19.1.0
 
   react@19.1.0: {}
+
+  readdirp@4.1.2: {}
 
   redux@5.0.1: {}
 

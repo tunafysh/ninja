@@ -25,6 +25,8 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@tauri-apps/api": "^2.4.1",
     "@tauri-apps/plugin-log": "^2.3.1",
+    "@tauri-apps/plugin-shell": "~2.3.0",
+    "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dev": "^0.1.3",

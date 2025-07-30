@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Database, Server, Globe, FileCode, Cpu, MoreHorizontal } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MovingBorderButton } from "../ui/moving-border-button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Shuriken } from "@/lib/types"
 
-export default function Dashboard({shurikens, setShurikens, index, setIndex }: { shurikens: Shuriken[], setShurikens: Dispatch<SetStateAction<Shuriken[]>>, index: number, setIndex: Dispatch<SetStateAction<number>> }) {
+export default function Dashboard({shurikens, setShurikens, index, setIndex, gridView }: { shurikens: Shuriken[], setShurikens: Dispatch<SetStateAction<Shuriken[]>>, index: number, setIndex: Dispatch<SetStateAction<number>>, gridView: "grid" | "list" }) {
 
   const toggleService = (service_name: string) => {
     setShurikens(
@@ -28,7 +28,8 @@ export default function Dashboard({shurikens, setShurikens, index, setIndex }: {
     <div className="space-y-4 md:space-y-6">
       {/* Services Section */}
       <div>
-        <h2 className="text-xl font-semibold mb-3 px-1">Services</h2>
+        <h2 className="text-xl font-semibold mb-3 px-1">Shurikens</h2>
+        {gridView === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 md:gap-4">
           {shurikens.map((service) => (
             <Card key={service.service_name} className="bg-card border-border py-0">
@@ -49,7 +50,7 @@ export default function Dashboard({shurikens, setShurikens, index, setIndex }: {
                 </Badge>}
               </CardHeader>
               <CardFooter className={`h-full p-3 pr-2 md:p-4 ${service.type.kind == "Daemon"? "pt-0": "mt-4"} flex gap-2`}>
-                <Button
+              <Button
                   variant={service.type.kind == "Daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                   className="text-xs md:text-sm h-8 px-0"
                   style={{ width: "90%"}}
@@ -73,10 +74,38 @@ export default function Dashboard({shurikens, setShurikens, index, setIndex }: {
             </Card>
           ))}
         </div>
-      </div>
+        ) : (
+          <Table className="border-border border-2 my-4 rounded-md">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-center">Shuriken</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="text-center">Maintenance</TableHead>
+                <TableHead className="text-center">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shurikens.map((service) => (
+                <TableRow key={service.service_name} >
+                  <TableCell className="text-center">{service.name}</TableCell>
+                  <TableCell className="text-center">{service.status}</TableCell>
+                  <TableCell className="text-center">{service.maintenance.kind}</TableCell>
+                  <TableCell className="flex justify-center"><Button
+                  variant={service.type.kind == "Daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
+                  style={{ width: "40%"}}
+                  onClick={() => toggleService(service.service_name)}
+                >
+                  {service.type.kind == "Daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
+                </Button>
+                </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
 
       {/* Quick Actions */}
-      <Card className="bg-card border-border py-0">
+      <Card className="bg-card border-border py-0 my-4">
         <CardHeader className="p-3 md:p-4 pb-0 md:pb-2">
           <CardTitle className="text-base md:text-lg flex items-center gap-2">
             <Cpu className="h-4 w-4 md:h-5 md:w-5 text-primary" />
@@ -139,6 +168,7 @@ export default function Dashboard({shurikens, setShurikens, index, setIndex }: {
           </Button>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

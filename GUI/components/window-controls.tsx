@@ -87,7 +87,7 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
         onClick={onClose}
         title="Close"
       >
-        <X className="h-4 w-4" />
+        <X className="h-8 w-8" />
         <span className="sr-only">Close</span>
       </Button>
     </div>

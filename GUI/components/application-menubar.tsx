@@ -21,14 +21,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import { WindowControls } from "./window-controls"
+import { Dispatch, SetStateAction } from "react"
 
-export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" | "linux" | "unknown" }) {
+export function ApplicationMenubar({ platform, gridView, setGridView }: { platform: "mac" | "windows" | "linux" | "unknown", gridView: "grid" | "list", setGridView: Dispatch<SetStateAction<"grid" | "list">> }) {
   const { setTheme, theme } = useTheme()
   const [viewMode, setViewMode] = React.useState("grid")
 
   return (
     <div 
-      className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-12"} justify-between items-center border-b bg-background drag w-full`} 
+      className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-10"} justify-between items-center border-b bg-background drag w-full`} 
       style={{ 
         borderTopLeftRadius: '7px', 
         borderTopRightRadius: '7px' 
@@ -64,16 +65,6 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
-              <Save className="mr-2 h-4 w-4" />
-              <span>Save</span>
-              <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Save As...</span>
-              <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
               <span>Export</span>
               <DropdownMenuShortcut>⌘E</DropdownMenuShortcut>
             </DropdownMenuItem>
@@ -89,47 +80,11 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
-              Edit
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            <DropdownMenuItem>
-              <span>Undo</span>
-              <DropdownMenuShortcut>⌘Z</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Redo</span>
-              <DropdownMenuShortcut>⇧⌘Z</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <span>Cut</span>
-              <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Copy</span>
-              <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>Paste</span>
-              <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <span>Select All</span>
-              <DropdownMenuShortcut>⌘A</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
               View
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">
-            <DropdownMenuRadioGroup value={viewMode} onValueChange={setViewMode}>
+            <DropdownMenuRadioGroup value={gridView} onValueChange={setGridView as (value: string) => void}>
               <DropdownMenuRadioItem value="grid">
                 <LayoutGrid className="mr-2 h-4 w-4" />
                 <span>Grid View</span>
@@ -172,11 +127,17 @@ export function ApplicationMenubar({ platform }: { platform: "mac" | "windows" |
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open("https://ninja-rs.vercel.app/docs", "_blank")}>
               <HelpCircle className="mr-2 h-4 w-4" />
               <span>Documentation</span>
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+              // For Tauri: open in default browser, not in-app webview
+                window.open("https://ninja-rs.vercel.app/support", "_blank");
+
+              }}
+            >
               <LifeBuoy className="mr-2 h-4 w-4" />
               <span>Support</span>
             </DropdownMenuItem>

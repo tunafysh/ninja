@@ -38,15 +38,16 @@ impl NinjaEngine {
 
         ctx.with(|ctx| {
             //importing apis
-            Module::evaluate_def::<js_ninja_api, _>(ctx.clone(), "ninja").unwrap();
-            Module::evaluate_def::<js_fs_api, _>(ctx.clone(), "fs").unwrap();
-            Module::evaluate_def::<js_shell_api, _>(ctx.clone(), "shell").unwrap();
-            Module::evaluate_def::<js_env_api, _>(ctx.clone(), "env").unwrap();
-            Module::evaluate_def::<js_net_api, _>(ctx.clone(), "net").unwrap();
-            Module::evaluate_def::<js_sys_api, _>(ctx.clone(), "sys").unwrap();
+            Module::evaluate_def::<js_ninja_api, _>(ctx.clone(), "ninja").expect("Failed to import ninja module");
+            Module::evaluate_def::<js_fs_api, _>(ctx.clone(), "fs").expect("Failed to import fs module");
+            Module::evaluate_def::<js_shell_api, _>(ctx.clone(), "shell").expect("Failed to import shell module");
+            Module::evaluate_def::<js_env_api, _>(ctx.clone(), "env").expect("Failed to import env module");
+            Module::evaluate_def::<js_net_api, _>(ctx.clone(), "net").expect("Failed to import net module");
+            Module::evaluate_def::<js_sys_api, _>(ctx.clone(), "sys").expect("Failed to import sys module");
 
             while ctx.execute_pending_job() {}
-            add_global_function(&ctx, "print", print);
+            add_global_function(&ctx, "print", 
+            print);
             add_global_function(&ctx, "__rust_info", info);
             add_global_function(&ctx, "__rust_warn", warn);
             add_global_function(&ctx, "__rust_error", error);
@@ -60,7 +61,7 @@ impl NinjaEngine {
                     warn: (...v) =>  globalThis.__rust_warn(`${v.join(" ")}`),
                     error: (...v) =>  globalThis.__rust_error(`${v.join(" ")}`)
                 }
-            "#,).unwrap();
+            "#,).expect("Failed to set up console methods");
         });
 
         Self {
