@@ -7,16 +7,20 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build the ninja dynamic libraries
+    /// Build the static/dynamic libraries
     BuildLibs,
-    /// Build the command line tools
-    BuildTools,
-    /// Build the whole ninja application
+    /// Build the command line
+    BuildCLI,
+    /// Build only the ninja GUI
     BuildNinja,
+    /// Build the whole ninja application
+    BuildAll,
     /// Clean renamed binaries
     Clean,
     /// Generate manpage for shurikenctl.
@@ -27,8 +31,17 @@ fn main() {
     let cli = Cli::parse();
     
     match cli.command {
-        Commands::BuildTools => build_commands(),
+        Commands::BuildLibs => build_library(cli.debug),
+        Commands::BuildCLI =>{
+            build_library(cli.debug);
+            build_commands();
+        },
         Commands::BuildNinja => {
+            build_library(cli.debug);
+            build_gui();
+        },
+        Commands::BuildAll => {
+            build_library(cli.debug);
             build_commands();
             build_gui();
         },
@@ -54,12 +67,21 @@ fn detect_target_triple() -> String {
         .to_string()
 }
 
+fn build_library(debug: bool) {
+    let target = detect_target_triple();
+    let release_dir = PathBuf::from("target/release");
+
+    let status = Command::new("cargo")
+        .args(["build", if debug { "--debug" } else { "--release"}, "--package", "ninja-api"])
+        .status()
+        .expect("building the library failed");
+}
+
 fn build_commands() {
     let target = detect_target_triple();
     let release_dir = PathBuf::from("target/release");
 
     let binaries = vec![
-        ("kurokage", "ninja-api"),
         ("shurikenctl", "ninja-cli"),
     ];
 
@@ -67,7 +89,7 @@ fn build_commands() {
         let status = Command::new("cargo")
             .args(["build", "--release", "--bin", bin, "--package", pkg])
             .status()
-            .expect("cargo build failed");
+            .expect("building the CLI failed");
         assert!(status.success(), "Build failed for {bin}");
 
         let orig = release_dir.join(if cfg!(windows) {
@@ -85,7 +107,7 @@ fn build_commands() {
         let _ = fs::remove_file(&renamed); // clean existing
         fs::rename(&orig, &renamed).expect("rename failed");
 
-        println!("✓ Renamed {} → {}", orig.display(), renamed.display());
+        println!("Renamed {} → {}", orig.display(), renamed.display());
     }
 }
 
@@ -94,7 +116,7 @@ fn build_gui() {
         .args(["tauri", "build"])
         .current_dir("GUI")
         .status()
-        .expect("Tauri build failed");
+        .expect("building the GUI failed");
 
     assert!(status.success());
 }
@@ -116,7 +138,7 @@ fn clean_binaries() {
 
         if renamed.exists() {
             fs::remove_file(&renamed).expect("Failed to remove binary");
-            println!("✗ Removed {}", renamed.display());
+            println!("Removed {}", renamed.display());
         }
     }
 }

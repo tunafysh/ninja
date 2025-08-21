@@ -21,15 +21,29 @@
         "decorations": false,
         "resizable": false,
         "fullscreen": false,
-        "titleBarStyle": "Transparent"
+        "titleBarStyle": "Overlay"
       },
       {
         "title": "Armory",
         "label": "armory",
+        "url": "/armory",
+        "decorations": false,
+        
+        "fullscreen": false,
+        "visible": false,
+        "titleBarStyle": "Transparent"
+      },
+      {
+        "title": "Forge",
+        "label": "forge",
         "width": 912,
         "height": 513,
-        "url": "/armory",
-        "visible": false
+        "url": "/forge",
+        "decorations": false,
+        "resizable": false,
+        "fullscreen": false,
+        "visible": false,
+        "titleBarStyle": "Transparent"
       }
 
     ],
@@ -75,5 +89,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link":{
+      "desktop" : {
+        "schemes": ["ninja"]
+      }
+    }
   }
 }

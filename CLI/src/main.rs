@@ -1,10 +1,11 @@
 // main.rs
-use std::{path::Path, process::exit};
-use ninja::ServiceManager;
+use std::{fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit};
+use ninja::{ types::PlatformPath, manager::ShurikenManager, config::{MaintenanceType, ShurikenConfig}, api::server, shuriken::Shuriken};
 use clap::{Parser, Subcommand, Args};
 use ::log::info;
 use owo_colors::OwoColorize;
 use clap_verbosity_flag::Verbosity;
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 
 mod log;
 use log::setup_logger;
@@ -13,13 +14,16 @@ use log::setup_logger;
 #[derive(Parser)]
 #[command(name = "ninja")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Ninja CLI - Service Manager")]
+#[command(about = "Ninja CLI - The command line version of ninja")]
 pub struct NinjaCli {
     #[command(subcommand)]
     pub command: Option<Commands>,
     
     #[arg(long, hide = true)]
     pub mcp: bool,
+
+    #[arg(long, hide = true)]
+    pub api: bool,
 
     #[command(flatten)]
     verbose: Verbosity,
@@ -34,7 +38,27 @@ pub enum Commands {
     /// Run a script using the Ninja Runtime
     Run(RunArgs),
     /// List running shuriken services
-    List(ListArgs),
+    List,
+    /// Generate a manifest file
+    Manifest,
+    /// Start shurikenctl as an API endpoint (hidden)
+    Api(ApiArgs),
+    /// Configure a shuriken using the config DSL specified in docs
+    Config(ConfigArgs)
+}
+
+#[derive(Args)]
+pub struct ConfigArgs {
+    #[arg(help = "the name of the shuriken to configure.")]
+    pub shuriken: String,
+    #[arg(last = true)]
+    pub command: String,
+}
+
+#[derive(Args)]
+#[clap(hide = true)]
+pub struct ApiArgs {
+    pub port: u16
 }
 
 #[derive(Args)]
@@ -54,17 +78,6 @@ pub struct RunArgs {
     /// The path of the file or snippet of script to run
     #[arg(name = "file/script")]
     pub file_script: Option<String>,
-    
-    /// This flag enables REPL mode
-    #[arg(long)]
-    pub repl: bool,
-}
-
-#[derive(Args)]
-pub struct ListArgs {
-    /// Show all shurikens and their statuses
-    #[arg(short = 'f', long)]
-    pub full: bool,
 }
 
 #[tokio::main]
@@ -73,129 +86,220 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let args = NinjaCli::parse();
 
-    setup_logger(args.verbose.into()).expect("Failed to initialize logger");
+    setup_logger(args.verbose.into())?;
     
     if args.mcp {
-        info!("Starting up in MCP mode.");
-        exit(0);
+        info!("Starting up as an MCP server.");
+        return Ok(())
     }
 
     info!("Initializing service manager...");
-    let mut service_manager = ServiceManager::bootstrap()
+    let manager = ShurikenManager::new().await
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
     match args.command {
         Some(Commands::Start(shuriken_args)) => {
             let shuriken_name = shuriken_args.shuriken;
         
-            info!("Starting shuriken {}...", shuriken_name);
+            println!("Starting shuriken {}...\n", shuriken_name);
             // Use the actual name from manifest, not service-name
-            match service_manager.start_service(shuriken_name.as_str()).await {
-                Ok(pid) => println!("{}", format!("Started shuriken '{}' with PID {}", shuriken_name, pid).green()),
+            match manager.start(shuriken_name.as_str()).await {
+                Ok(_) => println!("{}", format!("\nStarted shuriken '{}'", shuriken_name.green())),
                 Err(e) => eprintln!("{}", format!("Failed to start shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
         Some(Commands::Stop(shuriken_args)) => {
             let shuriken_name = shuriken_args.shuriken;
-
-            info!("Stopping shuriken {}...", shuriken_name);
+            
+            println!("Stopping shuriken {}...\n", shuriken_name);
             // Use the actual name from manifest, not service-name
-            match service_manager.stop_service(shuriken_name.as_str()).await {
-                Ok(_) => println!("{}", format!("Stopped shuriken '{}'", shuriken_name).green()),
+            match manager.stop(shuriken_name.as_str()).await {
+                Ok(_) => println!("{}", format!("\nStopped shuriken '{}'", shuriken_name.red())),
                 Err(e) => eprintln!("{}", format!("Failed to stop shuriken '{}': {}", shuriken_name, e).red()),
             }
         }
-        Some(Commands::List(list_args)) => {
-            let show_all = list_args.full;
+        Some(Commands::List) => {
+            
+            let all_shurikens = manager.list(false).await?;
+            let all_shuriken_names: Vec<String> = all_shurikens.into_iter().map(|e| e.shuriken.name).collect();
+            let running = manager.list(true).await?;
+            let running_set: std::collections::HashSet<String> = running.into_iter().map(|e| e.shuriken.name.clone()).collect();
 
-            if show_all {
-                // Show all services with their statuses
-                match service_manager.get_all_services().await {
-                    Ok(services) => {
-                        if services.is_empty() {
-                            // If no services in database, show available services from configs
-                            let available_services = service_manager.list_services();
-                            if available_services.is_empty() {
-                                println!("{}", "No shurikens found".yellow());
-                            } else {
-                                println!("{}", "Available shurikens:".bold());
-                                for service_name in available_services {
-                                    println!("  • {} {}", service_name.blue(), "stopped".dimmed());
-                                }
-                            }
-                        } else {
-                            // Get all available services from configs
-                            let available_services = service_manager.list_services();
-                            let mut all_services = std::collections::HashMap::new();
-                            
-                            // Initialize all services as stopped
-                            for service_name in available_services {
-                                all_services.insert(service_name, ("stopped".to_string(), None));
-                            }
-                            
-                            // Update with actual statuses from database
-                            for service in services {
-                                all_services.insert(service.name, (service.status, service.pid));
-                            }
-                            
-                            println!("{}", "All shurikens:".bold());
-                            for (name, (status, pid)) in all_services {
-                                let status_colored = match status.as_str() {
-                                    "running" => status.green().to_string(),
-                                    "stopped" => status.red().to_string(),
-                                    _ => status.yellow().to_string(),
-                                };
-                                
-                                let pid_str = pid
-                                    .map(|p| format!(" (PID: {})", p))
-                                    .unwrap_or_default();
-                                    
-                                println!("  • {} {} {}", name.blue(), status_colored, pid_str.dimmed());
-                            }
-                        }
-                    }
-                    Err(e) => eprintln!("{}", format!("Failed to get services: {}", e).red()),
-                }
-            } else {
-                // Show only running services (original behavior)
-                match service_manager.get_running_services().await {
-                    Ok(services) => {
-                        if services.is_empty() {
-                            println!("{}", "No running services".yellow());
-                        } else {
-                            println!("{}", "Running services:".bold());
-                            for service in services {
-                                let pid_str = service.pid
-                                    .map(|p| format!(" (PID: {})", p))
-                                    .unwrap_or_default();
-                                println!("  • {}{}", service.name.green(), pid_str.dimmed());
-                            }
-                        }
-                    }
-                    Err(e) => eprintln!("{}", format!("Failed to get running services: {}", e).red()),
+
+            println!("{}", "Shurikens:\n".blue().bold());
+            for shuriken in all_shuriken_names {
+                if running_set.contains(&shuriken) {
+                    println!("{} {}", shuriken, "running".green());
+                } else {
+                    println!("{} {}", shuriken, "stopped".red());
                 }
             }
+            
+            println!(); // for styling purposes
         }
         Some(Commands::Run(script_args)) => {
-            let file_arg = script_args.file_script.expect("Failed to get file path");
+            let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
-            let rt = ninja_engine::NinjaEngine::new();
-            
+            let rt = ninja_engine::NinjaEngine::new().map_err(|e| {
+                eprintln!("Failed to initialize Ninja engine: {}", e);
+                exit(1);
+            })?;
+
             if Path::new(content).exists() {
-                match rt.execute_file(content) {
+                match rt.execute_file(content, None) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
             } else {
-                match rt.execute(content) {
+                match rt.execute(content, None) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
             }
         }
-        _ => {
-            println!("{}", "Invalid action. Use --help for available commands.".red());
-        }
+        Some(Commands::Manifest) => {
+            let theme = ColorfulTheme::default();
+            let maintenance_types = ["native", "script"];
+
+            let name: String = Input::with_theme(&theme)
+                .with_prompt("Enter the name of the shuriken")
+                .interact_text()
+                .unwrap();
+
+            let service_name: String = Input::with_theme(&theme)
+                .with_prompt("Enter the service name")
+                .interact_text()
+                .unwrap();
+
+            // ===== Maintenance prompt =====
+            let maintenance_choice = Select::with_theme(&theme)
+                .with_prompt("Enter the maintenance type (native/script)")
+                .items(&maintenance_types)
+                .default(0)
+                .interact()
+                .unwrap();
+
+            let maintenance = match maintenance_types[maintenance_choice] {
+                "native" => {
+                    let bin_path_windows: String = Input::with_theme(&theme)
+                        .with_prompt("Enter the binary path for Windows systems")
+                        .interact_text()
+                        .unwrap();
+                
+                    let bin_path_unix: String = Input::with_theme(&theme)
+                        .with_prompt("Enter the binary path for Unix systems")
+                        .interact_text()
+                        .unwrap();
+                
+                    let config_path = {
+                        let input: String = Input::with_theme(&theme)
+                            .with_prompt("Enter the config path (optional)")
+                            .allow_empty(true)
+                            .interact_text()
+                            .unwrap();
+                        (!input.trim().is_empty()).then_some(input)
+                    };
+                
+                    let args = {
+                        let input: String = Input::with_theme(&theme)
+                            .with_prompt("Enter arguments (optional, comma-separated)")
+                            .allow_empty(true)
+                            .interact_text()
+                            .unwrap();
+                        (!input.trim().is_empty())
+                            .then(|| input.split(',').map(|s| s.trim().to_string()).collect())
+                    };
+                
+                    MaintenanceType::Native {
+                        bin_path: PlatformPath::Platform {
+                            windows: bin_path_windows,
+                            unix: bin_path_unix,
+                        },
+                        config_path: config_path.map(PathBuf::from),
+                        args,
+                    }
+                }
+                "script" => {
+                    let script_path: String = Input::with_theme(&theme)
+                        .with_prompt("Enter the script path")
+                        .interact_text()
+                        .unwrap();
+                    MaintenanceType::Script {
+                        script_path: PathBuf::from(script_path),
+                    }
+                }
+                _ => {
+                    eprintln!("Invalid maintenance type selected.");
+                    exit(1);
+                }
+            };
+        
+            // ===== Shuriken type prompt (tagged struct) =====
+                let options = ["daemon", "executable"];
+                let choice = Select::with_theme(&theme)
+                    .with_prompt("Enter the shuriken type")
+                    .items(&options)
+                    .default(0)
+                    .interact()
+                    .unwrap();
+
+            let shuriken_type = match options[choice] {
+                "daemon" => "Daemon",
+                "executable" => "Executable",
+                _ => ""
+            };
+            
+            
+            let add_path = dialoguer::Confirm::with_theme(&theme)
+                            .with_prompt("Add to PATH?")
+                            .default(false)
+                            .interact()
+                            .unwrap();
+        
+            println!("Generating manifest for '{}'", name);
+            let manifest = Shuriken {
+                shuriken: ShurikenConfig {
+                    name: name.clone(),
+                    service_name: service_name.clone(),
+                    maintenance,
+                    shuriken_type: shuriken_type.to_string(),
+                    add_path
+                },
+                config: None,
+                logs: None,
+            };
+        
+            create_dir_all(format!("shurikens/{}", name)).unwrap_or_else(|_| {
+                eprintln!("Failed to create directory for shuriken '{}'", name);
+                exit(1);
+            });
+        
+            let manifest_path = PathBuf::from(format!("shurikens/{}/manifest.toml", name));
+            let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
+                eprintln!("Failed to create manifest file for shuriken '{}'", name);
+                exit(1);
+            });
+        
+            let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
+                eprintln!("Failed to serialize manifest for shuriken '{}'", name);
+                exit(1);
+            });
+        
+            file.write_all(toml_content.as_bytes()).unwrap_or_else(|_| {
+                eprintln!("Failed to write manifest file for shuriken '{}'", name);
+                exit(1);
+            });
+        
+            println!("Manifest for '{}' generated successfully!", name);
+        },
+        Some(Commands::Api(args)) => {
+            info!("Starting API endpoint with port {}", args.port);
+            server(args.port).await?;
+        },
+        Some(Commands::Config(args)) => {
+            info!("Configuring shuriken {} with parameters {}", args.shuriken, args.command)
+        },
+        None => eprintln!("No subcommand selected. Exiting...")
     }
 
     Ok(())

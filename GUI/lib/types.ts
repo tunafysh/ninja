@@ -2,32 +2,51 @@ import { LucideIcon } from "lucide-react";
 
 export interface ConfigField  {
     name: string;
-    input: "SWITCH" | "YESNO" | "NUMBER" | "TEXT";
-    replace: string;
+    input: "SWITCH" | "NUMBER" | "TEXT";
+    script_path?: string;
 }
 
-
-
-// Rust: pub struct ShurikenConfig
 export type Shuriken = {
+    shuriken: ShurikenConfig
+}
+
+export type ShurikenConfig = {
     name: string
     service_name: string
     maintenance: MaintenanceType
     type: ShurikenType
     config?: Record<string, ConfigParam>
     status: "running" | "stopped"
-    icon: LucideIcon
-    color: string
     logs?: LogsConfig
 }
 
 // Rust: pub enum MaintenanceType
-export type MaintenanceType =
-    ({ kind: 'Native'} & {bin_path: string; config_path?: string; args?: string[] }) |
-    ({ kind: 'Script'} & {script_path: string });
+// Matches serde(tag = "maintenance")
+type MaintenanceType =
+  | {
+      type: "native";
+      bin_path: string;
+      config_path?: string;
+      args?: string[];
+    }
+  | {
+      type: "script";
+      script_path: string;
+    };
 
-// Rust: pub enum ShurikenType
-export type ShurikenType = { kind: 'Daemon'; ports?: number[]; health_check?: string } | { kind: 'Executable'; add_path: boolean };
+// Matches serde(tag = "type")
+type ShurikenType =
+  | {
+      type: "Daemon";
+      ports?: number[];
+      "health-check"?: string;
+    }
+  | {
+      type: "Executable";
+      "add-path": boolean;
+    };
+
+
 
 // Rust: pub struct ConfigParam
 export interface ConfigParam {
@@ -39,4 +58,23 @@ export interface ConfigParam {
 // Rust: pub struct LogsConfig
 export interface LogsConfig {
     error_log?: string; // PlatformPath as string
+}
+
+export type ArmoryItem = {
+    name: string,
+    label: string,
+    synopsis: string,
+    description: string,
+    version: string,
+    authors: string[],
+    license: string,
+    repository: string,
+    dependencies: string[],
+    platforms: string[],
+    checksum: string
+}
+
+export interface LocalArmoryItem extends ArmoryItem {
+    installed: boolean,
+    localVersion: string
 }

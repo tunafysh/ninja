@@ -1,17 +1,20 @@
 "use client"
-// import { warn, debug, trace, info, error } from '@tauri-apps/plugin-log';
-import { ApplicationMenubar } from "@/components/application-menubar"
+
+import { ApplicationMenubar } from "@/components/ui/application-menubar"
 import { Card, CardContent } from "@/components/ui/card"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
 import Tools from "@/components/pages/backup"
 import Logs from "@/components/pages/logs"
 import { HomeIcon, Cog, FileText, Database, Zap, Server, Globe } from "lucide-react"
 import Scripting from "@/components/pages/scripting"
+import { Toaster } from "sonner"
 import { Shuriken } from "@/lib/types"
+import { useShuriken } from "@/hooks/use-shuriken"
 
 const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Scripting"]
+
 export default function Page() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -20,12 +23,14 @@ export default function Page() {
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const [gridView, setGridView] = useState<"grid" | "list">("grid")
   const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
+  const { allShurikens, refreshShurikens, startShuriken, stopShuriken } = useShuriken()
+
   const tabIcons = [ 
-    <HomeIcon className={`w-4 h-4 mr-1 ${activeIndex != 0? "dark:text-[#ffffff99]": "text-red-500"}`} />, 
-    <Cog className={`w-4 h-4 mr-1 ${activeIndex != 1? "dark:text-[#ffffff99]": "text-orange-500"}`}/>, 
-    <FileText className={`w-4 h-4 mr-1 ${activeIndex != 2? "dark:text-[#ffffff99]": "text-green-500"}`}/>, 
-    <Database className={`w-4 h-4 mr-1 ${activeIndex != 3? "dark:text-[#ffffff99]": "text-purple-500"}`}/>, 
-    <div className="relative">
+    <HomeIcon key="home" className={`w-4 h-4 mr-1 ${activeIndex !== 0 ? "dark:text-[#ffffff99]" : "text-red-500"}`} />, 
+    <Cog key="cog" className={`w-4 h-4 mr-1 ${activeIndex !== 1 ? "dark:text-[#ffffff99]" : "text-orange-500"}`}/>, 
+    <FileText key="file" className={`w-4 h-4 mr-1 ${activeIndex !== 2 ? "dark:text-[#ffffff99]" : "text-green-500"}`}/>, 
+    <Database key="db" className={`w-4 h-4 mr-1 ${activeIndex !== 3 ? "dark:text-[#ffffff99]" : "text-purple-500"}`}/>, 
+    <div key="zap" className="relative">
       <svg className="w-0 h-0 absolute">
         <defs>
           <linearGradient id="zapStrokeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -34,76 +39,14 @@ export default function Page() {
           </linearGradient>
         </defs>
       </svg>
-      <Zap className={`w-4 h-4 mr-1 ${activeIndex != 4? "dark:text-[#ffffff99]": ""}`} 
-           style={activeIndex == 4 ? { 
+      <Zap className={`w-4 h-4 mr-1 ${activeIndex !== 4 ? "dark:text-[#ffffff99]" : ""}`} 
+           style={activeIndex === 4 ? { 
              fill: 'none', 
              stroke: 'url(#zapStrokeGradient)', 
              strokeWidth: '2' 
            } : {}}/>
-    </div>]
-    const [shurikens, setShurikens] = useState<Shuriken[]>([
-      {
-        name: "Apache",
-        service_name: "apache",
-        maintenance: {
-          kind: "Script",
-          script_path: "test.ns",
-        },
-        type: {
-          kind: "Daemon",
-          ports: [80, 443],
-          health_check: "http://localhost:80/health",
-        },
-        status: "stopped",
-        icon: Server,
-        color: "text-green-500"
-      },
-      {
-        name: "MySQL",
-        service_name: "mysql",
-        maintenance: {
-          kind: "Native",
-          bin_path: "mysql",
-          config_path: "mysql.conf",
-          args: ["-u", "root", "-p"],
-        },
-        type: {
-          kind: "Daemon",
-          ports: [3306],
-          health_check: "http://localhost:3306/health",
-        },
-        status: "stopped",
-        icon: Database,
-        color: "text-blue-500"
-      },
-      {
-        name: "FileZilla",
-        service_name: "filezilla",
-        maintenance: {
-          kind: "Native",
-          bin_path: "filezilla",
-          config_path: "filezilla.conf",
-        },
-        type: {
-          kind: "Executable",
-          add_path: true,
-        },
-        status: "stopped",
-        icon: Globe,
-        color: "text-green-500"
-      }
-    ])
-
-  function forwardConsole(
-    fnName: 'log' | 'debug' | 'info' | 'warn' | 'error',
-    logger: (message: string) => Promise<void>
-  ) {
-    const original = console[fnName];
-    console[fnName] = (message) => {
-      original(message);
-      logger(message);
-    };
-  }
+    </div>
+  ]
 
   useEffect(() => {
     // Detect platform
@@ -115,13 +58,7 @@ export default function Page() {
     } else if (userAgent.indexOf("linux") !== -1) {
       setPlatform("linux")
     }
-
-    // forwardConsole('log', trace);
-    // forwardConsole('debug', debug);
-    // forwardConsole('info', info);
-    // forwardConsole('warn', warn);
-    // forwardConsole('error', error);
-  })
+  }, [])
 
   useEffect(() => {
     if (hoveredIndex !== null) {
@@ -136,23 +73,25 @@ export default function Page() {
     }
   }, [hoveredIndex])
 
-  function handleKeyDown(e: KeyboardEvent) {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Detect Ctrl+Tab
     if (e.ctrlKey && !e.shiftKey && e.key === "Tab") {
-      setActiveIndex(activeIndex + 1)
+      e.preventDefault()
+      setActiveIndex(prev => (prev + 1) % tabs.length)
     }
     // Detect Ctrl+Shift+Tab
     if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
-      setActiveIndex(activeIndex - 1)
+      e.preventDefault()
+      setActiveIndex(prev => prev === 0 ? tabs.length - 1 : prev - 1)
     }
-  }
+  }, [])
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [handleKeyDown]);
 
   useEffect(() => {
     const activeElement = tabRefs.current[activeIndex]
@@ -181,7 +120,13 @@ export default function Page() {
   return (
     <div className="relative w-screen h-screen overflow-hidden">
       {/* Application Menubar at the top */}
-      <ApplicationMenubar platform={platform} gridView={gridView} setGridView={setGridView} />
+      <ApplicationMenubar 
+        platform={platform} 
+        gridView={gridView} 
+        setGridView={setGridView} 
+        activeTab={tabs[activeIndex]} 
+        activeWindow="Ninja" 
+      />
 
       {/* Main content container with rounded bottom corners */}
       <main
@@ -242,17 +187,15 @@ export default function Page() {
           </Card>
         </div>
 
+        <Toaster richColors />
+
         {/* Content area with scrolling */}
-        <div className="p-4 overflow-auto scrollbar-hidden
-        
-        
-        
-        
-        
-        
-        " style={{ height: "calc(100vh - 100px)" }}>
+        <div className="p-4 overflow-auto scrollbar-hidden" style={{ height: "calc(100vh - 100px)" }}>
           {activeIndex === 0 ? (
-            <Dashboard shurikens={shurikens} setShurikens={setShurikens} index={activeIndex} setIndex={setActiveIndex} gridView={gridView} />
+            <Dashboard 
+              shurikens={allShurikens}
+              gridView={gridView}
+              onRefresh={refreshShurikens} />
           ) : activeIndex === 1 ? (
             <Configuration />
           ) : activeIndex === 2 ? (

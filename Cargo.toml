@@ -6,8 +6,7 @@ members = [
     "MCP",
     "NSE",
     "xtask",
-    "GUI/src-tauri"
-]
+    "GUI/src-tauri",]
 
 [profile.release]
 opt-level = 3

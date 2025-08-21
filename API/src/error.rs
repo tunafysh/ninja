@@ -1,6 +1,6 @@
 // Simplified error handling with automatic conversions
 #[derive(Debug)]
-pub enum ServiceError {
+pub enum ShurikenError {
     ServiceNotFound(String),
     SpawnFailed(String, std::io::Error),
     NoPid,
@@ -8,35 +8,33 @@ pub enum ServiceError {
     ShurikensDirectoryNotFound,
     InvalidServiceName,
     ConfigParseError(String, toml::de::Error),
-    NoServicesFound,
     IoError(std::io::Error),
 }
 
-impl std::fmt::Display for ServiceError {
+impl std::fmt::Display for ShurikenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ServiceError::ServiceNotFound(name) => write!(f, "Service '{}' not found", name),
-            ServiceError::SpawnFailed(name, err) => {
+            ShurikenError::ServiceNotFound(name) => write!(f, "Service '{}' not found", name),
+            ShurikenError::SpawnFailed(name, err) => {
                 write!(f, "Failed to spawn service '{}': {}", name, err)
             }
-            ServiceError::NoPid => write!(f, "Could not get process ID"),
-            ServiceError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
-            ServiceError::ShurikensDirectoryNotFound => write!(f, "Shurikens directory not found"),
-            ServiceError::InvalidServiceName => write!(f, "Invalid service name"),
-            ServiceError::ConfigParseError(name, err) => {
+            ShurikenError::NoPid => write!(f, "Could not get process ID"),
+            ShurikenError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            ShurikenError::ShurikensDirectoryNotFound => write!(f, "Shurikens directory not found"),
+            ShurikenError::InvalidServiceName => write!(f, "Invalid service name"),
+            ShurikenError::ConfigParseError(name, err) => {
                 write!(f, "Failed to parse config for '{}': {}", name, err)
             }
-            ServiceError::NoServicesFound => write!(f, "No services found in shurikens directory"),
-            ServiceError::IoError(err) => write!(f, "IO error: {}", err),
+            ShurikenError::IoError(err) => write!(f, "IO error: {}", err),
         }
     }
 }
 
-impl std::error::Error for ServiceError {}
+impl std::error::Error for ShurikenError {}
 
 // Automatic error conversions
-impl From<std::io::Error> for ServiceError {
+impl From<std::io::Error> for ShurikenError {
     fn from(err: std::io::Error) -> Self {
-        ServiceError::IoError(err)
+        ShurikenError::IoError(err)
     }
 }

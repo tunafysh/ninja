@@ -1,4 +1,2 @@
-import * as fs from "fs";
 
 console.log("Hello World! its executing");
-fs.write("test.txt", "Hello World!");

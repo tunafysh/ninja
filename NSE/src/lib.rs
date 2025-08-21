@@ -1,120 +1,83 @@
-use std::{fs as filesystem, path::PathBuf};
+use std::{fs, path::PathBuf, collections::HashMap};
 use log::info;
-use rquickjs::{context::EvalOptions, Context, Module, Runtime};
+use serde::{Serialize, Deserialize};
+use mlua::{Error as LuaError, Function, Lua};
+use crate::{modules::make_modules};
 
-mod util;
-use util::*;
+mod modules;
 
-mod api;
-use api::js_ninja_api;
+// copying the same struct from API bc i am too young to deal with compiler race conditions
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConfigParam {
+    pub input: InputType,
+    pub script: String,
+}
 
-mod fs;
-use fs::js_fs_api;
-
-mod shell;
-use shell::js_shell_api;
-
-mod env;
-use env::js_env_api;
-
-mod net;
-use net::js_net_api;
-
-mod sys;
-use sys::js_sys_api;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "UPPERCASE")]
+pub enum InputType {
+    Number {
+        default: Option<i64>,
+        min: Option<i64>,
+        max: Option<i64>,
+    },
+    Text {
+        default: Option<String>,
+        regex: Option<String>,
+    },
+    Boolean {
+        default: Option<bool>,
+    },
+    Choice {
+        default: Option<String>,
+        values: Vec<String>,
+    },
+}
 
 pub struct NinjaEngine {
-    ctx: Context,
+    lua: Lua
 }
 
 impl NinjaEngine {
-    pub fn new() -> Self {
-        let rt = Runtime::new().expect("Failed to create runtime");
-        let ctx = Context::full(&rt).expect("Failed to create context");
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let lua = Lua::new();
 
-        let mut options = EvalOptions::default();
-        options.global = true; // Changed to true for module loading
-        options.promise = true;
+        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
 
-        ctx.with(|ctx| {
-            //importing apis
-            Module::evaluate_def::<js_ninja_api, _>(ctx.clone(), "ninja").expect("Failed to import ninja module");
-            Module::evaluate_def::<js_fs_api, _>(ctx.clone(), "fs").expect("Failed to import fs module");
-            Module::evaluate_def::<js_shell_api, _>(ctx.clone(), "shell").expect("Failed to import shell module");
-            Module::evaluate_def::<js_env_api, _>(ctx.clone(), "env").expect("Failed to import env module");
-            Module::evaluate_def::<js_net_api, _>(ctx.clone(), "net").expect("Failed to import net module");
-            Module::evaluate_def::<js_sys_api, _>(ctx.clone(), "sys").expect("Failed to import sys module");
+        let globals = lua.globals();
 
-            while ctx.execute_pending_job() {}
-            add_global_function(&ctx, "print", 
-            print);
-            add_global_function(&ctx, "__rust_info", info);
-            add_global_function(&ctx, "__rust_warn", warn);
-            add_global_function(&ctx, "__rust_error", error);
-            add_global_function(&ctx, "sleep", sleep);
+        globals.set("fs", fs)?;
+        globals.set("env", env)?;
+        globals.set("shell", shell)?;
+        globals.set("time", time)?;
+        globals.set("json", json)?;
+        globals.set("http", http)?;
+        globals.set("log", log)?;
 
-            ctx.eval::<(), _>(
-            r#"
-                globalThis.console = {
-                    log: (...v) =>  globalThis.print(`${v.join(" ")}`),
-                    info: (...v) =>  globalThis.__rust_info(`${v.join(" ")}`),
-                    warn: (...v) =>  globalThis.__rust_warn(`${v.join(" ")}`),
-                    error: (...v) =>  globalThis.__rust_error(`${v.join(" ")}`)
-                }
-            "#,).expect("Failed to set up console methods");
-        });
-
-        Self {
-            ctx
-        }
+        let engine = Self { lua: lua };
+        Ok(engine)
     }
 
-    pub fn execute(&self, script: &str) -> Result<(), rquickjs::Error> {
-        self.ctx.with(|ctx| {
-            let mut options = EvalOptions::default();
-            options.global = true; // Changed to true for proper context access
-            options.promise = true;
-
-            ctx.eval_with_options(script, options)
-        })
+    pub fn execute(&self, script: &str, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
+        info!("Executing lua script.");
+        self.lua.load(script).exec()
     }
 
-    pub fn execute_file(&self, path: &str) -> Result<(), rquickjs::Error> {
-        self.ctx.with(|ctx| {
-            let mut options = EvalOptions::default();
-            options.global = true; // Changed to true for proper context access
-            options.promise = true;
+    pub fn execute_file(&self, path: &str, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
+        info!("Executing file: {}", path);
 
-            ctx.eval_file_with_options(path, options)
-        })
+        let script = fs::read_to_string(path)?;
+
+        self.lua.load(script).exec()
     }
 
-    pub fn execute_function(
-        &self,
-        function: String,
-        file: &PathBuf,
-    ) -> Result<(), rquickjs::Error> {
-        self.ctx.with(|ctx| {
-            info!("Starting function execution.");
-            info!("Loading file: {}", file.display());
-            
-            let mut options = EvalOptions::default();
-            options.global = true; // Changed to true for proper context access
-            options.promise = true;
+    pub fn execute_function(&self, function: &str, file: &PathBuf, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
+        let script = fs::read_to_string(file)?;
 
-            let script = format!("{}{}", filesystem::read_to_string(file)?, "\nglobalThis.start = start; globalThis.stop = stop"); 
-            
-            ctx.eval_with_options::<(), _>(script, options)?;
-            info!("File loaded successfully: {}", file.display());
-
-            let globals = ctx.globals();
-            let func: rquickjs::Function = globals.get(function.as_str())?;
-
-            // Call the function with no arguments and ignore returned value
-            func.call::<(), ()>(())?;
-            info!("Function executed successfully: {}", function);
-
-            Ok(())
-        })
+        
+        
+        self.lua.load(script).exec()?;
+        let func: Function = self.lua.globals().get(function).expect("Failed to get start function");
+        func.call::<()>(())
     }
 }

@@ -1,22 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RuntimeStatus {
-    pub name: String,
-    pub status: String,
-    pub pid: Option<u32>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ServiceState {
-    pub name: String,
-    pub status: String,
-    pub pid: Option<u32>,
-    pub directory_name: String,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShurikenState {
+    Running,
+    Stopped,
+    Error(String),
 }
 
 // Unified platform-aware path type
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum PlatformPath {
     Simple(String),

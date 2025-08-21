@@ -1,363 +1,367 @@
-use crate::config::{Shuriken, MaintenanceType};
-use crate::error::ServiceError;
-use crate::types::{RuntimeStatus, ServiceState};
-use ninja_engine::NinjaEngine;
-use std::collections::HashMap;
-use std::{env, fs};
-use log::info;
-use std::path::{Path, PathBuf};
-use tokio::process::Child;
+use std::{
+    collections::HashMap, env, io::{self, Read}, path::{Path, PathBuf}
+};
+use tokio::{sync::RwLock, fs};
+use glob::glob;
+use crate::{shuriken::Shuriken, types::ShurikenState};
 
-pub struct ServiceManager {
-    running_processes: HashMap<String, Child>,
-    service_configs: HashMap<String, Shuriken>,
-    service_states: HashMap<String, ServiceState>, // In-memory state tracking
+pub struct ShurikenManager {
+    root_path: PathBuf,
+    shurikens: RwLock<HashMap<String, Shuriken>>,
+    states: RwLock<HashMap<String, ShurikenState>>,
 }
 
-impl ServiceManager {
-    pub fn bootstrap() -> Result<Self, ServiceError> {
-        let args = env::args().collect::<Vec<String>>();
-        let exe_path = PathBuf::from(&args[0]);
-        let path = exe_path.parent().ok_or_else(|| {
-            ServiceError::ConfigError("Failed to determine current directory".to_string())
-        })?;
-        info!("Current directory set to: {}", &path.display());
-        env::set_current_dir(&path)?;
-        
-        // Initialize service states from configs
-        let configs = Self::load_service_configs()?;
-        let mut service_states = HashMap::new();
-        for (directory_name, config) in &configs {
-            service_states.insert(
-                config.shuriken.name.clone(),
-                ServiceState {
-                    name: config.shuriken.name.clone(),
-                    status: "stopped".to_string(),
-                    pid: None,
-                    directory_name: directory_name.clone(),
-                },
-            );
+impl ShurikenManager {
+    pub async fn new() -> Result<Self, io::Error> {
+        let exe_dir = env::current_exe()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+            .parent()
+            .unwrap()
+            .to_path_buf();
+
+        let shurikens_dir = exe_dir.join("shurikens");
+
+        // Create shurikens directory if it doesn't exist
+        if !shurikens_dir.exists() {
+            fs::create_dir(&shurikens_dir).await.map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("Failed to create directory: {}", e))
+            })?;
         }
 
-        Ok(Self {
-            running_processes: HashMap::new(),
-            service_configs: configs,
-            service_states,
-        })
-    }
+        let mut shurikens = HashMap::new();
+        let mut states = HashMap::new();
 
-    pub async fn start_service(&mut self, service_name: &str) -> Result<u32, ServiceError> {
-        let config = self.find_service_by_name(service_name)?.clone();
-        let directory_name = self.find_directory_by_name(service_name)?;
-        let pid = self.spawn_process(&directory_name, &config).await?;
-        println!("Starting shuriken {}...", service_name);
+        // Convert path to glob pattern string
+        let partial_manifest_glob_pattern = shurikens_dir.join("**/manifest.toml");
 
-        self.update_service_status(service_name, "running", Some(pid));
-        Ok(pid)
-    }
+        let manifest_glob_pattern = partial_manifest_glob_pattern
+            .to_str()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Path is not valid UTF-8"))?;
 
-    pub async fn stop_service(&mut self, service_name: &str) -> Result<(), ServiceError> {
-        let directory_name = self.find_directory_by_name(service_name)?;
+        // Read all manifest.toml files
+        for entry in glob(manifest_glob_pattern).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("Glob failed: {}", e))
+        })? {
+            match entry {
+                Ok(path) => {
+                    if let Some(parent) = path.parent() {
+                        let name = parent.file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|s| s.to_owned())
+                            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid directory name"))?;
 
-        // Stop process if we're managing it
-        if let Some(mut child) = self.running_processes.remove(&directory_name) {
-            let _ = child.kill().await;
-        }
+                        let manifest_content = fs::read_to_string(&path).await.map_err(|e| {
+                            io::Error::new(io::ErrorKind::Other, format!("Failed to read manifest {}: {}", path.display(), e))
+                        })?;
 
-        // Also kill by PID from in-memory state
-        if let Some(state) = self.service_states.get(service_name) {
-            if let Some(pid) = state.pid {
-                Self::kill_process_by_pid(pid);
+                        let manifest: Shuriken = toml::from_str(&manifest_content)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse TOML: {}", e)))?;
+
+                        shurikens.insert(name, manifest);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Invalid glob entry: {}", e);
+                }
             }
         }
 
-        self.update_service_status(service_name, "stopped", None);
-        Ok(())
-    }
+        // Load lock files to determine running states
+        let partial_lock_glob_pattern = shurikens_dir.join("**/shuriken.lck");
 
-    pub async fn get_all_services(&mut self) -> Result<Vec<RuntimeStatus>, ServiceError> {
-        self.cleanup_stale_processes().await;
+        let lock_glob_pattern = partial_lock_glob_pattern
+            .to_str()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Path is not valid UTF-8"))?;
 
-        let services = self
-            .service_states
-            .values()
-            .map(|state| RuntimeStatus {
-                name: state.name.clone(),
-                status: state.status.clone(),
-                pid: state.pid,
-            })
-            .collect();
-
-        Ok(services)
-    }
-
-    pub async fn get_running_services(&mut self) -> Result<Vec<RuntimeStatus>, ServiceError> {
-        self.cleanup_stale_processes().await;
-
-        let services = self
-            .service_states
-            .values()
-            .filter(|state| state.status == "running")
-            .filter_map(|state| {
-                if let Some(pid) = state.pid {
-                    if Self::is_process_running(pid) {
-                        Some(RuntimeStatus {
-                            name: state.name.clone(),
-                            status: state.status.clone(),
-                            pid: state.pid,
-                        })
-                    } else {
-                        // Process died, update status
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Ok(services)
-    }
-
-    pub fn list_services(&self) -> Vec<String> {
-        self.service_configs
-            .values()
-            .map(|config| config.shuriken.name.clone())
-            .collect()
-    }
-
-    pub fn get_service_config(&self, directory_name: &str) -> Option<&Shuriken> {
-        self.service_configs.get(directory_name)
-    }
-
-    pub fn get_service_status(&self, service_name: &str) -> Option<RuntimeStatus> {
-        self.service_states.get(service_name).map(|state| RuntimeStatus {
-            name: state.name.clone(),
-            status: state.status.clone(),
-            pid: state.pid,
-        })
-    }
-
-    // Private helper methods
-    async fn cleanup_stale_processes(&mut self) {
-        let service_names: Vec<String> = self.service_states.keys().cloned().collect();
-
-        for service_name in service_names {
-            if let Some(state) = self.service_states.get(&service_name).cloned() {
-                if state.status == "running" {
-                    if let Some(pid) = state.pid {
-                        if !Self::is_process_running(pid) {
-                            self.update_service_status(&service_name, "stopped", None);
-                            self.running_processes.remove(&state.directory_name);
+        for entry in glob(lock_glob_pattern).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("Glob failed for lockfiles: {}", e))
+        })? {
+            match entry {
+                Ok(path) => {
+                    if let Some(parent) = path.parent() {
+                        match parent.file_name() {
+                            Some(name) => {
+                                states.insert(name.display().to_string(), ShurikenState::Running);
+                                ()
+                            }
+                            None => (),
                         }
                     }
                 }
-            }
-        }
-    }
-
-    async fn spawn_process(
-        &mut self,
-        directory_name: &str,
-        config: &Shuriken,
-    ) -> Result<u32, ServiceError> {
-        let service_dir = format!("shurikens/{}", directory_name);
-
-        // Extract execution details from maintenance config
-        let (bin_path, args) = self.extract_execution_details(config)?;
-
-        // Handle script execution via ninja_engine
-        if bin_path.is_empty() {
-            return Ok(0); // Placeholder PID for ninja_engine managed processes
-        }
-
-        let mut command = tokio::process::Command::new(&bin_path);
-        command.current_dir(service_dir);
-
-        if !args.is_empty() {
-            command.args(&args);
-        }
-
-        let child = command
-            .spawn()
-            .map_err(|e| ServiceError::SpawnFailed(config.shuriken.name.clone(), e))?;
-
-        let pid = child.id().ok_or(ServiceError::NoPid)?;
-        self.running_processes
-            .insert(directory_name.to_string(), child);
-
-        Ok(pid)
-    }
-
-    fn extract_execution_details(
-        &self,
-        config: &Shuriken,
-    ) -> Result<(String, Vec<String>), ServiceError> {
-        match &config.shuriken.maintenance {
-            MaintenanceType::Native { bin_path, args, .. } => {
-                Ok((
-                    bin_path.get_path().to_string(),
-                    args.clone().unwrap_or_default(),
-                ))
-            }
-            MaintenanceType::Script { script_path, .. } => {
-                self.execute_ninja_script(&script_path, &config.shuriken.name)?;
-                Ok((String::new(), Vec::new()))
-            }
-            MaintenanceType::Simple(maintenance_type) => {
-                match maintenance_type.as_str() {
-                    "native" => {
-                        let bin_path = config.shuriken.bin_path.as_ref().ok_or_else(|| {
-                            ServiceError::ConfigError(
-                                "bin-path required for native maintenance".to_string(),
-                            )
-                        })?;
-                        Ok((
-                            bin_path.get_path().to_string(),
-                            config.shuriken.args.clone().unwrap_or_default(),
-                        ))
-                    }
-                    "script" => {
-                        let script_path = config.shuriken.script_path.as_ref().ok_or_else(|| {
-                            ServiceError::ConfigError(
-                                "script-path required for script maintenance".to_string(),
-                            )
-                        })?;
-                        self.execute_ninja_script(script_path, &config.shuriken.name)?;
-                        Ok((String::new(), Vec::new()))
-                    }
-                    _ => Err(ServiceError::ConfigError(
-                        "maintenance must be 'native' or 'script'".to_string(),
-                    )),
+                Err(e) => {
+                    eprintln!("Invalid lockfile entry: {}", e);
                 }
             }
         }
+
+        Ok(Self {
+            root_path: exe_dir,
+            shurikens: RwLock::new(shurikens),
+            states: RwLock::new(states),
+        })
     }
 
-    fn execute_ninja_script(
-        &self,
-        script_path: &PathBuf,
-        service_name: &str,
-    ) -> Result<(), ServiceError> {
-        let engine = NinjaEngine::new();
-        env::set_current_dir(format!("shurikens/{}", service_name))?;
-        println!("Executing script: {}", script_path.display());
-        engine
-            .execute_function("start".to_string(), script_path)
-            .map_err(|e| {
-                ServiceError::SpawnFailed(
-                    service_name.to_string(),
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Ninja engine error: {}", e),
-                    ),
-                )
-            })?;
+    async fn update_state(&self, name: &str, new_state: ShurikenState) {
+        let mut state_map = self.states.write().await;
+        state_map.insert(name.to_string(), new_state);
+    }
+
+    pub async fn start(&self, name: &str) -> Result<(), String> {
+        let shurikens = self.shurikens.read().await;
+        let shuriken = shurikens.get(name).ok_or_else(|| format!("No such shuriken: {}", name))?.clone();
+        drop(shurikens); // Drop the lock before await
+
+        let shuriken_dir = self.root_path.join("shurikens").join(name);
+        if !shuriken_dir.exists() {
+            return Err(format!("Shuriken directory not found: {}", shuriken_dir.display()));
+        }
+
+        // Change directory temporarily (but avoid blocking other threads)
+        let original_dir = env::current_dir().map_err(|e| e.to_string())?;
+        env::set_current_dir(&shuriken_dir).map_err(|e| e.to_string())?;
+
+        // Run async start
+        if let Err(e) = shuriken.start().await {
+            env::set_current_dir(original_dir).ok();
+            return Err(format!("Failed to start shuriken '{}': {}", name, e));
+        }
+
+        env::set_current_dir(original_dir).map_err(|e| e.to_string())?;
+
+        self.update_state(name, ShurikenState::Running).await;
         Ok(())
     }
 
-    fn load_service_configs() -> Result<HashMap<String, Shuriken>, ServiceError> {
-        let shurikens_dir = Path::new("shurikens");
+    pub async fn stop(&self, name: &str) -> Result<(), String> {
+        let shurikens = self.shurikens.read().await;
+        let shuriken = shurikens.get(name).ok_or_else(|| format!("No such shuriken: {}", name))?.clone();
+        drop(shurikens); // Drop the lock
 
-        if !shurikens_dir.exists() {
-            return Err(ServiceError::ShurikensDirectoryNotFound);
+        let shuriken_dir = self.root_path.join("shurikens").join(name);
+        if !shuriken_dir.exists() {
+            return Err(format!("Shuriken directory not found: {}", shuriken_dir.display()));
         }
 
-        let mut configs = HashMap::new();
+        let original_dir = env::current_dir().map_err(|e| e.to_string())?;
+        env::set_current_dir(&shuriken_dir).map_err(|e| e.to_string())?;
 
-        for entry in fs::read_dir(shurikens_dir)? {
-            let entry = entry?;
-            let path = entry.path();
+        if let Err(e) = shuriken.stop().await {
+            env::set_current_dir(original_dir).ok();
+            return Err(format!("Failed to stop shuriken '{}': {}", name, e));
+        }
 
-            if path.is_dir() {
-                let directory_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .ok_or(ServiceError::InvalidServiceName)?
-                    .to_string();
+        env::set_current_dir(original_dir).map_err(|e| e.to_string())?;
 
-                let manifest_path = path.join("manifest.toml");
-                if manifest_path.exists() {
-                    let toml_content = fs::read_to_string(&manifest_path)?;
-                    let config: Shuriken = toml::from_str(&toml_content)
-                        .map_err(|e| ServiceError::ConfigParseError(directory_name.clone(), e))?;
+        self.update_state(name, ShurikenState::Stopped).await;
+        Ok(())
+    }
 
-                    configs.insert(directory_name, config);
+    pub async fn list(&self, running: bool) -> Result<Vec<Shuriken>, io::Error> {
+        let shurikens = self.shurikens.read().await;
+        let mut result = Vec::new();
+
+        if !running {
+            // Return all known shurikens
+            result = shurikens.values().cloned().collect();
+            return Ok(result);
+        }
+
+        // For 'running', re-scan for shuriken.lck files
+        let shurikens_dir = self.root_path.join("shurikens");
+        let partial_lock_glob_pattern = shurikens_dir
+            .join("**/shuriken.lck");
+
+        let lock_glob_pattern = partial_lock_glob_pattern
+            .to_str()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path to UTF-8"))?;
+
+        let mut detected_running = Vec::new();
+
+        for entry in glob(lock_glob_pattern)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Glob failed: {}", e)))?
+        {
+            match entry {
+                Ok(lock_path) => {
+                    if let Some(parent) = lock_path.parent() {
+                        if let Some(name) = parent.file_name().and_then(|n| n.to_str()) {
+                            detected_running.push(name.to_owned());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Invalid lockfile entry: {}", e);
                 }
             }
         }
 
-        if configs.is_empty() {
-            return Err(ServiceError::NoServicesFound);
+        // Now update our internal state map and filter result
+        let mut states = self.states.write().await;
+        states.clear(); // Optional: keep state fully in sync
+        for name in &detected_running {
+            states.insert(name.clone(), ShurikenState::Running);
         }
 
-        Ok(configs)
-    }
-
-    fn find_service_by_name(&self, name: &str) -> Result<&Shuriken, ServiceError> {
-        self.service_configs
-            .values()
-            .find(|config| config.shuriken.name == name)
-            .ok_or_else(|| ServiceError::ServiceNotFound(name.to_string()))
-    }
-
-    fn find_directory_by_name(&self, name: &str) -> Result<String, ServiceError> {
-        self.service_configs
-            .iter()
-            .find(|(_, config)| config.shuriken.name == name)
-            .map(|(directory, _)| directory.clone())
-            .ok_or_else(|| ServiceError::ServiceNotFound(name.to_string()))
-    }
-
-    fn update_service_status(&mut self, service_name: &str, status: &str, pid: Option<u32>) {
-        if let Some(state) = self.service_states.get_mut(service_name) {
-            state.status = status.to_string();
-            state.pid = pid;
-        }
-    }
-
-    fn is_process_running(pid: u32) -> bool {
-        #[cfg(unix)]
-        {
-            use std::process::Command;
-            Command::new("kill")
-                .arg("-0")
-                .arg(pid.to_string())
-                .output()
-                .map(|output| output.status.success())
-                .unwrap_or(false)
+        // Only include detected running shurikens that we know about
+        for name in &detected_running {
+            if let Some(shuriken) = shurikens.get(name) {
+                result.push(shuriken.clone());
+            }
         }
 
-        #[cfg(windows)]
-        {
-            use std::process::Command;
-            Command::new("tasklist")
-                .arg("/FI")
-                .arg(format!("PID eq {}", pid))
-                .output()
-                .map(|output| {
-                    let output_str = String::from_utf8_lossy(&output.stdout);
-                    output_str.contains(&pid.to_string())
-                })
-                .unwrap_or(false)
+        Ok(result)
+    }   
+
+    pub async fn get(&self, name: String) -> Result<Shuriken, io::Error> {
+        let partial_shuriken = &self.shurikens.read().await;
+        let maybe_shuriken = partial_shuriken.get(&name);
+        if let Some(shuriken) = maybe_shuriken {
+            Ok(shuriken.clone())
+        }
+        else {
+            Err(io::Error::new(io::ErrorKind::Other, format!("No shuriken of name {} found", name)))
         }
     }
 
-    fn kill_process_by_pid(pid: u32) {
-        #[cfg(unix)]
-        {
-            use std::process::Command;
-            let _ = Command::new("kill").arg(pid.to_string()).output();
+     pub async fn install(&self, path: PathBuf) -> Result<(), io::Error> {
+        if !path.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Path does not exist"));
         }
 
-        #[cfg(windows)]
-        {
-            use std::process::Command;
-            let _ = Command::new("tasklist")
-                .arg("/PID")
-                .arg(pid.to_string())
-                .arg("/F")
-                .output();
+        if !path.ends_with(".shuriken") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid shuriken file type, expected .shuriken",
+            ));
         }
+
+        // Open the ZIP archive
+        let std_file = std::fs::File::open(&path).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to open shuriken file: {}", e),
+            )
+        })?;
+
+        let mut archive = zip::ZipArchive::new(std_file).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to read zip archive: {}", e),
+            )
+        })?;
+
+        let current_target = format!("{}-{}", env::consts::OS, env::consts::ARCH);
+
+        // Installation directory: shurikens/<package-name>
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid shuriken filename"))?;
+        let install_dir = PathBuf::from("shurikens").join(stem);
+
+        let mut found_target = false;
+        let mut found_root_files = false;
+
+        for i in 0..archive.len() {
+            let mut zip_file = archive.by_index(i).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to access file in archive: {}", e),
+                )
+            })?;
+
+            let zip_file_name = zip_file.name();
+            let zip_file_path = Path::new(zip_file_name);
+
+            // === Case 1: Root file (no parent or parent is empty) ===
+            if zip_file_path.parent().map_or(true, |p| p.as_os_str().is_empty()) {
+                // Must be a file (not a directory like "linux-x86_64/")
+                if !zip_file.is_dir() && !zip_file_name.contains('/') && !zip_file_name.starts_with('\\') {
+                    found_root_files = true;
+
+                    let output_path = install_dir.join(zip_file_name);
+
+                    // Ensure install dir exists
+                    fs::create_dir_all(&install_dir).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to create install directory: {}", e))
+                    })?;
+
+                    let mut content = Vec::new();
+                    zip_file.read_to_end(&mut content).map_err(|e| {
+                        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read root file: {}", e))
+                    })?;
+
+                    let mut out_file = fs::File::create(&output_path).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to create output file: {}", e))
+                    })?;
+
+                    tokio::io::copy(&mut &content[..], &mut out_file).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to write root file: {}", e))
+                    })?;
+                }
+
+                continue;
+            }
+
+            // === Case 2: Entry inside the target platform directory (e.g. linux-x86_64/bin/app) ===
+            let relative_path = zip_file_path.strip_prefix(&current_target).map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{}",e.to_string())))?;
+            
+                if relative_path.as_os_str().is_empty() {
+                    found_target = true;
+                    // Ensure install dir exists (again, safe to call multiple times)
+                    fs::create_dir_all(&install_dir).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to create install directory: {}", e))
+                    })?;
+                    continue;
+                }
+
+                found_target = true;
+                let output_path = install_dir.join(relative_path);
+
+                if zip_file.is_dir() {
+                    fs::create_dir_all(&output_path).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to create directory: {}", e))
+                    })?;
+            
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent).await.map_err(|e| {
+                            io::Error::new(io::ErrorKind::Other, format!("Failed to create parent directory: {}", e))
+                        })?;
+                    }
+
+                    let mut content = Vec::new();
+                    zip_file.read_to_end(&mut content).map_err(|e| {
+                        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read file from zip: {}", e))
+                    })?;
+
+                    let mut out_file = fs::File::create(&output_path).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to create output file: {}", e))
+                    })?;
+
+                    tokio::io::copy(&mut &content[..], &mut out_file).await.map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Failed to write file: {}", e))
+                    })?;
+                }
+            }
+            
+            // Final validation
+            if !found_target {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "No directory or contents found for target '{}' in the shuriken package",
+                    current_target
+                ),
+            ));
+        }
+
+        if !found_root_files {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No files found in the root of the shuriken package (e.g. manifest.toml, README.md)",
+            ));
+        }
+
+        Ok(())
     }
+
 }

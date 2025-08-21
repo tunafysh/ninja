@@ -3,7 +3,9 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
-    "main"
+    "main",
+    "armory",
+    "forge"
   ],
   "permissions": [
     "core:default",
@@ -14,8 +16,10 @@
     "core:window:allow-maximize",
     "core:app:allow-app-hide",
     "core:app:allow-app-show",
+    "opener:allow-open-url",
     "log:default",
-    "log:default",
-    "shell:default"
+    "dialog:default",
+    "shell:default",
+    "deep-link:default"
   ]
 }

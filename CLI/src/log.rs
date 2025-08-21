@@ -2,6 +2,7 @@ use log::LevelFilter;
 use file_rotate::{FileRotate, ContentLimit, suffix::AppendCount};
 use std::io::Write;
 use std::sync::Mutex;
+use owo_colors::OwoColorize;
 
 // Custom writer that wraps FileRotate
 pub struct RotatingWriter {
@@ -63,15 +64,20 @@ pub fn setup_logger(level: LevelFilter) -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(move |out, message, record| {
             out.finish(format_args!(
-                "-- [{}] [{}] {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                "[{}] [{}] {:15}: {}",
+                chrono::Local::now().format("%d/%m/%Y %H:%M:%S"),
                 colors.color(record.level()),
+                record.target().magenta(),
                 message
             ))
         })
+        .level(level)
+        .filter(|metadata| {
+            // Block all logs from RustPython
+            !metadata.target().starts_with("rustpython")
+        })
         .chain(std::io::stdout())
         .chain(Box::new(rotating_writer) as Box<dyn Write + Send>)
-        .level(level)
         .apply()?;
 
     Ok(())

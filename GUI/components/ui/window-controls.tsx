@@ -6,8 +6,8 @@ import { Minus, Square, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 type WindowControlsProps = {
-  onMinimize?: () => void
-  onMaximize?: () => void
+  onMinimize?: () => void,
+  onMaximize?: () => void,
   onClose?: () => void
 }
 
@@ -45,45 +45,50 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
           <Minus className="invisible h-2 w-2 text-yellow-900 group-hover:visible" />
           <span className="sr-only">Minimize</span>
         </button>
-        <button
-          onClick={onMaximize}
+        {onMaximize !== undefined && (
+          <button
+          onClick={onMinimize}
           className="group flex h-3 w-3 items-center justify-center rounded-full bg-green-500 transition-colors hover:bg-green-600"
-          title="Maximize"
+          title="Minimize"
         >
           <Square className="invisible h-2 w-2 text-green-900 group-hover:visible" />
-          <span className="sr-only">Maximize</span>
+          <span className="sr-only">Minimize</span>
         </button>
+        )}
       </div>
     )
   }
 
   // Windows/Linux/Default style - icons always visible
   return (
-    <div className="flex items-center">
+    <div className="flex items-center mr-2">
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-none hover:bg-muted"
+        className="h-8 w-8 rounded-sm hover:bg-muted"
         onClick={onMinimize}
         title="Minimize"
       >
         <Minus className="h-4 w-4" />
         <span className="sr-only">Minimize</span>
       </Button>
+    {onMaximize!== undefined && (
+
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-none hover:bg-muted"
+        className="h-8 w-8 rounded-sm hover:bg-muted"
         onClick={onMaximize}
-        title="Maximize"
+        title="Close"
       >
-        <Square className="h-4 w-4" />
-        <span className="sr-only">Maximize</span>
+        <Square className="h-8 w-8" />
+        <span className="sr-only">Close</span>
       </Button>
+    )}
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-none hover:bg-destructive hover:text-destructive-foreground"
+        className="h-8 w-8 rounded-sm hover:bg-destructive hover:text-destructive-foreground"
         onClick={onClose}
         title="Close"
       >
