@@ -8,16 +8,17 @@ export interface ConfigField  {
 
 export type Shuriken = {
     shuriken: ShurikenConfig
+    config?: Record<string, ConfigParam>
+    logs?: LogsConfig
 }
 
 export type ShurikenConfig = {
     name: string
     service_name: string
     maintenance: MaintenanceType
-    type: ShurikenType
-    config?: Record<string, ConfigParam>
+    type: string
     status: "running" | "stopped"
-    logs?: LogsConfig
+    add_path: boolean;
 }
 
 // Rust: pub enum MaintenanceType
@@ -33,19 +34,6 @@ type MaintenanceType =
       type: "script";
       script_path: string;
     };
-
-// Matches serde(tag = "type")
-type ShurikenType =
-  | {
-      type: "Daemon";
-      ports?: number[];
-      "health-check"?: string;
-    }
-  | {
-      type: "Executable";
-      "add-path": boolean;
-    };
-
 
 
 // Rust: pub struct ConfigParam

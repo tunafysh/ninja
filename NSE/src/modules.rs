@@ -1,94 +1,47 @@
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
-use ::reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Method};
 use serde_json::Value;
-use std::{env, fs, io::Write, path::Path, process, str::FromStr, sync::Arc};
+use std::{env, fs, io::{self, Write}, path::Path, process::{Command, Output}, time::Duration};
 use chrono::prelude::*;
-use reqwest::blocking as reqwest;
 
-fn make_request(url: String, method: Option<String>, headers: Option<Table>) -> Result<Table> {
-    let lua = Lua::new();
-    let method = match method {
-        Some(e) => Method::from_str(&e),
-        None => Method::from_str("get")
-    };
-    
-    let method = match method {
-        Ok(e) => e,
+fn run_windows_command(command: &str) -> Result<std::process::Output> {
+    use std::process::Stdio;
+
+
+    match Command::new("cmd")
+        .arg("/C")
+        .arg(command)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped()) 
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(output) => return Ok(output),
         Err(_) => {
-            eprintln!("Invalid method type!");
-            Method::GET
-        }   
-    };
-    
-    let lua_headers = match headers {
-        Some(e) => e,
-        None => lua.create_table()?
-    };
-    
-    let mut headers = HeaderMap::new();
-    
-    for pair in lua_headers.pairs::<String, String>() {
-        let (key, value) = pair?;
-
-        let name = HeaderName::try_from(&key)
-            .map_err(|e| mlua::Error::external(format!("Invalid header name '{}': {}", key, e)))?;
-
-        let value = HeaderValue::try_from(&value)
-            .map_err(|e| mlua::Error::external(format!("Invalid header name '{}': {}", value, e)))?;
-
-        headers.insert(name, value);
-    }
-    
-    let request = reqwest::Client::new().request(method, url)
-        .headers(headers)
-        .send();
-    
-    let request = match request {
-        Ok(res) => res,
-        Err(e) => {
-            eprintln!("Failed to send request: {}", e);
-            let arc_error = Arc::new(e) as Arc<dyn std::error::Error + Send + Sync>;
-            return Err(mlua::Error::ExternalError(arc_error))
+            Err(mlua::Error::external(io::Error::new(io::ErrorKind::NotFound, "No shell found")))
         }
-    };
-    
-    let response_headers = lua.create_table()?;
-
-    let request_headers = request.headers();
-    
-    for pair in request_headers {
-        let (name, value) = pair;
-
-        let value = match value.to_str() {
-            Ok(e) => e.to_string(),
-            Err(e) => {
-                eprintln!("Failed to convert header value to string. Reason:{}",e);
-                "".to_string()
-            }
-        };
-        response_headers.set(name.to_string(), value)?;
     }
 
-    let response_status = request.status().as_u16();
-
-    let response_text = match &request.text() {
-        Ok(e) => e.to_string(),
-        Err(_) => {
-            eprintln!("Failed to get response body.");
-            "".to_string()
-        }
-    };
-        
-    let response = lua.create_table()?;
-    
-    response.set("status", response_status)?;
-    response.set("body", response_text)?;
-    response.set("status", response_headers)?;
-    
-    Ok(response)
+    // If all failed, return the last error
 }
 
+#[cfg(unix)]
+fn run_unix_command(command: &str) -> Result<std::process::Output> {
+    use std::process::Stdio;
+
+    let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
+
+    match Command::new(shell)
+        .args(["-c", command])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(output) => Ok(output),
+        Err(e) => Err(mlua::Error::external(e)),
+    }
+}
 
 pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table)>  {
     let fs_module = lua.create_table()?;
@@ -101,15 +54,15 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     // ================= fs module =================
 
-    fs_module.set("read_file",lua.create_function( |_, path: String| {
+    fs_module.set("read",lua.create_function( |_, path: String| {
         Ok(fs::read_to_string(path)?)
     })?)?;
 
-    fs_module.set("write_file",lua.create_function( |_, (path, content): (String, String)| {
+    fs_module.set("write",lua.create_function( |_, (path, content): (String, String)| {
         Ok(fs::write(path, content)?)
     })?)?;
 
-    fs_module.set("append_file",lua.create_function( |_, (path, content): (String, String)| {
+    fs_module.set("append",lua.create_function( |_, (path, content): (String, String)| {
         let mut file = fs::OpenOptions::new()
             .append(true)
             .open(path)?;
@@ -117,7 +70,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         Ok(file.write_all(content.as_bytes())?)
     })?)?;
 
-    fs_module.set("remove_file",lua.create_function( |_, path: String| {
+    fs_module.set("remove",lua.create_function( |_, path: String| {
         Ok(fs::remove_file(path)?)
     })?)?;
 
@@ -189,24 +142,45 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         Ok(table)
     })?)?;
 
+    env_module.set("cwd",lua.create_function( |_, _: ()| {
+	    Ok(env::current_dir()?)
+    })?)?;
+
     // ================= shell module =================
 
-    shell_module.set("exec", lua.create_function(|lua, command: String| {
+    shell_module.set(
+    "exec",
+    lua.create_function(|lua, command: String| {
+        // Create result table
         let result_table = lua.create_table()?;
-        let cmd = process::Command::new(command)
-        .output()?;
-    
-        let exit_code = cmd.status.code();
-        if cmd.status.success() {
-            result_table.set("exit_code", 0)?;
-        }
-        else {
-            result_table.set("exit_code", exit_code.unwrap_or(-1))?;
-        }
 
-        let (stdout, stderr) = (String::from_utf8_lossy(&cmd.stdout).to_string(), String::from_utf8_lossy(&cmd.stderr).to_string());
-        result_table.set("stdout", stdout)?;
-        result_table.set("stderr", stderr)?;
+        // Run command and capture output
+        #[cfg(windows)]
+        let output: Result<Output> = run_windows_command(&command);
+
+        #[cfg(unix)]
+        let output: Result<Output> = run_unix_command(&command);
+
+        #[cfg(not(any(windows, unix)))]
+        let output: Result<Output> =
+            Err(mlua::Error::external("Unsupported OS"));
+
+
+        match output {
+            Ok(cmd_output) => {
+                let exit_code = cmd_output.status.code().unwrap_or(-1);
+                result_table.set("code", exit_code)?;
+                let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
+                result_table.set("stdout", stdout)?;
+                result_table.set("stderr", stderr)?;
+            }
+            Err(e) => {
+                result_table.set("code", -1)?;
+                result_table.set("stdout", "")?;
+                result_table.set("stderr", format!("Command execution failed: {}", e))?;
+            }
+        }
 
         Ok(result_table)
     })?)?;
@@ -249,6 +223,11 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         Ok(Utc::now().format(format.as_str()).to_string())
     })?)?;
 
+    time_module.set("sleep", lua.create_function(|_, seconds: f64| {
+        let dur = Duration::from_secs_f64(seconds);
+        Ok(std::thread::sleep(dur))
+    })?)?;
+
     // ================= json module =================
 
     json_module.set("encode", lua.create_function(|_, data: Table| {
@@ -278,9 +257,11 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     // ================= http module =================
 
-    http_module.set("fetch", lua.create_function(|_, (url, method, headers): (String, Option<String>, Option<Table>)| {
-        make_request(url, method, headers)
-    })?)?;
+    //TODO find a reqwest substitute bc bro this shi sucks
+    // http_module.set("fetch", lua.create_function(|_, (url, method, headers): (String, Option<String>, Option<Table>)| {
+    //     make_request(url, method, headers)
+    // })?)?;
+
 
     // ================= log module =================
 

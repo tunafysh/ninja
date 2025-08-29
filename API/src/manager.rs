@@ -2,13 +2,14 @@ use std::{
     collections::HashMap, env, io::{self, Read}, path::{Path, PathBuf}
 };
 use tokio::{sync::RwLock, fs};
-use glob::glob;
+use globwalk::glob;
 use crate::{shuriken::Shuriken, types::ShurikenState};
+use either::Either::{self, Right, Left};
 
 pub struct ShurikenManager {
-    root_path: PathBuf,
-    shurikens: RwLock<HashMap<String, Shuriken>>,
-    states: RwLock<HashMap<String, ShurikenState>>,
+    pub root_path: PathBuf,
+    pub shurikens: RwLock<HashMap<String, Shuriken>>,
+    pub states: RwLock<HashMap<String, ShurikenState>>,
 }
 
 impl ShurikenManager {
@@ -32,7 +33,7 @@ impl ShurikenManager {
         let mut states = HashMap::new();
 
         // Convert path to glob pattern string
-        let partial_manifest_glob_pattern = shurikens_dir.join("**/manifest.toml");
+        let partial_manifest_glob_pattern = shurikens_dir.join("**/.ninja/manifest.toml");
 
         let manifest_glob_pattern = partial_manifest_glob_pattern
             .to_str()
@@ -44,8 +45,10 @@ impl ShurikenManager {
         })? {
             match entry {
                 Ok(path) => {
-                    if let Some(parent) = path.parent() {
-                        let name = parent.file_name()
+                    let partial_path = path.into_path();
+                    if let Some(path) = partial_path.parent() {       
+                        if let Some(parent) = path.parent() {
+                            let name = parent.file_name()
                             .and_then(|n| n.to_str())
                             .map(|s| s.to_owned())
                             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid directory name"))?;
@@ -56,9 +59,10 @@ impl ShurikenManager {
 
                         let manifest: Shuriken = toml::from_str(&manifest_content)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse TOML: {}", e)))?;
-
+                        
                         shurikens.insert(name, manifest);
                     }
+                }
                 }
                 Err(e) => {
                     eprintln!("Invalid glob entry: {}", e);
@@ -67,7 +71,7 @@ impl ShurikenManager {
         }
 
         // Load lock files to determine running states
-        let partial_lock_glob_pattern = shurikens_dir.join("**/shuriken.lck");
+        let partial_lock_glob_pattern = shurikens_dir.join("**/.ninja/shuriken.lck");
 
         let lock_glob_pattern = partial_lock_glob_pattern
             .to_str()
@@ -78,14 +82,17 @@ impl ShurikenManager {
         })? {
             match entry {
                 Ok(path) => {
-                    if let Some(parent) = path.parent() {
-                        match parent.file_name() {
-                            Some(name) => {
+                    let partial_path = path.into_path();
+                    if let Some(path) = partial_path.parent() {
+                        if let Some(parent) = path.parent() {
+                            match parent.file_name() {
+                                Some(name) => {
                                 states.insert(name.display().to_string(), ShurikenState::Running);
                                 ()
                             }
                             None => (),
                         }
+                    }
                     }
                 }
                 Err(e) => {
@@ -156,60 +163,7 @@ impl ShurikenManager {
         Ok(())
     }
 
-    pub async fn list(&self, running: bool) -> Result<Vec<Shuriken>, io::Error> {
-        let shurikens = self.shurikens.read().await;
-        let mut result = Vec::new();
-
-        if !running {
-            // Return all known shurikens
-            result = shurikens.values().cloned().collect();
-            return Ok(result);
-        }
-
-        // For 'running', re-scan for shuriken.lck files
-        let shurikens_dir = self.root_path.join("shurikens");
-        let partial_lock_glob_pattern = shurikens_dir
-            .join("**/shuriken.lck");
-
-        let lock_glob_pattern = partial_lock_glob_pattern
-            .to_str()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path to UTF-8"))?;
-
-        let mut detected_running = Vec::new();
-
-        for entry in glob(lock_glob_pattern)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Glob failed: {}", e)))?
-        {
-            match entry {
-                Ok(lock_path) => {
-                    if let Some(parent) = lock_path.parent() {
-                        if let Some(name) = parent.file_name().and_then(|n| n.to_str()) {
-                            detected_running.push(name.to_owned());
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Invalid lockfile entry: {}", e);
-                }
-            }
-        }
-
-        // Now update our internal state map and filter result
-        let mut states = self.states.write().await;
-        states.clear(); // Optional: keep state fully in sync
-        for name in &detected_running {
-            states.insert(name.clone(), ShurikenState::Running);
-        }
-
-        // Only include detected running shurikens that we know about
-        for name in &detected_running {
-            if let Some(shuriken) = shurikens.get(name) {
-                result.push(shuriken.clone());
-            }
-        }
-
-        Ok(result)
-    }   
+    
 
     pub async fn get(&self, name: String) -> Result<Shuriken, io::Error> {
         let partial_shuriken = &self.shurikens.read().await;
@@ -219,6 +173,28 @@ impl ShurikenManager {
         }
         else {
             Err(io::Error::new(io::ErrorKind::Other, format!("No shuriken of name {} found", name)))
+        }
+    }
+
+    pub async fn list(&self, state: bool) -> Result<Either<Vec<(String, ShurikenState)>, Vec<String>>, io::Error> {
+        if state {
+            let mut values: Vec<(String, ShurikenState)> = Vec::new();
+            let partial_states = &self.states.read().await.clone().to_owned();
+
+            for (k, v) in partial_states.iter() {
+                values.push((k.clone(), v.clone()));
+            }
+
+            Ok(Left(values))
+        } else {
+            let mut values: Vec<String> = Vec::new();
+            let map = &self.shurikens.read().await.clone();
+
+            for key in map.keys() {
+                values.push(key.clone())
+            }
+ 
+            Ok(Right(values))
         }
     }
 

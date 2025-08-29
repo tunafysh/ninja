@@ -31,34 +31,7 @@ pub enum MaintenanceType {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ConfigParam {
-    pub input: InputType,
-    pub script: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LogsConfig {
     #[serde(rename = "log-path")]
     pub log_path: PlatformPath,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "UPPERCASE")]
-pub enum InputType {
-    Number {
-        default: Option<i64>,
-        min: Option<i64>,
-        max: Option<i64>,
-    },
-    Text {
-        default: Option<String>,
-        regex: Option<String>,
-    },
-    Boolean {
-        default: Option<bool>,
-    },
-    Choice {
-        default: Option<String>,
-        values: Vec<String>,
-    },
 }

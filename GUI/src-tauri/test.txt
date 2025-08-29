@@ -1,0 +1,1 @@
+a new app instance was opened with ["C:\\Users\\Hanan\\Desktop\\ninja\\target\\debug\\ninja.exe", "shurikenctl://test/"] and the deep link event was already triggered

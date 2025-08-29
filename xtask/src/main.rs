@@ -68,10 +68,7 @@ fn detect_target_triple() -> String {
 }
 
 fn build_library(debug: bool) {
-    let target = detect_target_triple();
-    let release_dir = PathBuf::from("target/release");
-
-    let status = Command::new("cargo")
+    Command::new("cargo")
         .args(["build", if debug { "--debug" } else { "--release"}, "--package", "ninja-api"])
         .status()
         .expect("building the library failed");

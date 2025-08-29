@@ -2,7 +2,8 @@
 name = "ninja"
 version = "0.1.0"
 description = "A control panel similar to XAMPP"
-authors = ["you"]
+authors = ["Hanan Smani"]
+license = "Ninja End User License Agreement (2025)"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -33,4 +34,6 @@ tauri-plugin-shell = "2"
 tauri-plugin-deep-link = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = {version = "2", features = ["deep-link"] }
+
+

@@ -1,15 +1,18 @@
 // main.rs
 use std::{fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit};
-use ninja::{ types::PlatformPath, manager::ShurikenManager, config::{MaintenanceType, ShurikenConfig}, api::server, shuriken::Shuriken};
+use ninja::{ api::server, config::{MaintenanceType, ShurikenConfig}, manager::ShurikenManager, shuriken::Shuriken, types::{PlatformPath, ShurikenState}};
 use clap::{Parser, Subcommand, Args};
 use ::log::info;
 use owo_colors::OwoColorize;
 use clap_verbosity_flag::Verbosity;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
+use ninja_mcp::server as mcpserver;
 
 mod log;
 use log::setup_logger;
 
+mod repl;
+use repl::repl_mode;
 
 #[derive(Parser)]
 #[command(name = "ninja")]
@@ -19,11 +22,11 @@ pub struct NinjaCli {
     #[command(subcommand)]
     pub command: Option<Commands>,
     
-    #[arg(long, hide = true)]
-    pub mcp: bool,
+    #[arg(long)]
+    pub repl: bool,
 
     #[arg(long, hide = true)]
-    pub api: bool,
+    pub mcp: bool,
 
     #[command(flatten)]
     verbose: Verbosity,
@@ -82,14 +85,19 @@ pub struct RunArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logger
-    
     let args = NinjaCli::parse();
-
-    setup_logger(args.verbose.into())?;
     
+    // Initialize logger
+    setup_logger(args.verbose.into())?;
+
+    if args.repl {
+        repl_mode().await?;
+        exit(0)
+    }
+
     if args.mcp {
         info!("Starting up as an MCP server.");
+        mcpserver().await?;
         return Ok(())
     }
 
@@ -120,19 +128,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::List) => {
             
-            let all_shurikens = manager.list(false).await?;
-            let all_shuriken_names: Vec<String> = all_shurikens.into_iter().map(|e| e.shuriken.name).collect();
-            let running = manager.list(true).await?;
-            let running_set: std::collections::HashSet<String> = running.into_iter().map(|e| e.shuriken.name.clone()).collect();
+            let partial_shurikens = manager.list(true).await?.left(); 
+            if partial_shurikens.is_some() {
+                let shurikens = partial_shurikens.unwrap();
+                
 
-
-            println!("{}", "Shurikens:\n".blue().bold());
-            for shuriken in all_shuriken_names {
-                if running_set.contains(&shuriken) {
-                    println!("{} {}", shuriken, "running".green());
-                } else {
-                    println!("{} {}", shuriken, "stopped".red());
+                println!("{}", "Shurikens:\n".blue().bold());
+                for (name, state) in shurikens {
+                    if state == ShurikenState::Running {
+                        println!("{} {}", name, "running".green());
+                    }
+                    else {
+                        println!("{} {}", name, "stopped".red());
+                    }
                 }
+            }
+            else {
+                eprintln!("Failed to list shurikens, None returned.")
             }
             
             println!(); // for styling purposes
@@ -146,12 +158,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             })?;
 
             if Path::new(content).exists() {
-                match rt.execute_file(content, None) {
+                match rt.execute_file(content) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
             } else {
-                match rt.execute(content, None) {
+                match rt.execute(content) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }

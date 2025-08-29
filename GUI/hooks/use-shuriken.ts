@@ -26,7 +26,7 @@ export const useShuriken = () => {
     }
   }, [handleError])
 
-  const updateLocalStatus = useCallback((name: string, status: "running" | "stopped") => {
+  const updateStatus = useCallback((name: string, status: "running" | "stopped") => {
     setAllShurikens(prev =>
       prev.map(s =>
         s.shuriken.name === name
@@ -37,26 +37,26 @@ export const useShuriken = () => {
   }, [])
 
   const startShuriken = useCallback(async (name: string) => {
-    updateLocalStatus(name, "running") // optimistic update
+    updateStatus(name, "running") // optimistic update
     try {
       await invoke('start_shuriken', { name })
       await refreshShurikens()
     } catch (err) {
       handleError(err)
-      updateLocalStatus(name, "stopped") // revert if failed
+      updateStatus(name, "stopped") // revert if failed
     }
-  }, [refreshShurikens, handleError, updateLocalStatus])
+  }, [refreshShurikens, handleError, updateStatus])
 
   const stopShuriken = useCallback(async (name: string) => {
-    updateLocalStatus(name, "stopped") // optimistic update
+    updateStatus(name, "stopped") // optimistic update
     try {
       await invoke('stop_shuriken', { name })
       await refreshShurikens()
     } catch (err) {
       handleError(err)
-      updateLocalStatus(name, "running") // revert if failed
+      updateStatus(name, "running") // revert if failed
     }
-  }, [refreshShurikens, handleError, updateLocalStatus])
+  }, [refreshShurikens, handleError, updateStatus])
 
   return {
     loading,

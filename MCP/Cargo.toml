@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mcpr = { version = "0.2.3", features = ["tokio"] }
-tokio = { version = "1.47.1", features = ["full"] }
 ninja-api = { path = "../API"}
+ninja-engine = { path = "../NSE"}
+serde_json = "1.0.143"
+tokio = { version = "1.47.1", features = ["io-std", "io-util", "macros", "signal"] }
+rmcp = { version = "0.6.0", features = ["server", "transport-io", "macros", "schemars"] }
+serde = "1.0.219"
+log = "0.4.27"

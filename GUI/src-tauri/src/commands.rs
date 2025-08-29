@@ -1,4 +1,4 @@
-use ninja::{ShurikenManager, Shuriken};
+use ninja::{manager::ShurikenManager, shuriken::Shuriken};
 
 #[tauri::command]
 pub async fn start_shuriken(name: &str) -> Result<(), String> {
@@ -19,7 +19,7 @@ pub async fn start_shuriken(name: &str) -> Result<(), String> {
 #[tauri::command]
 pub async fn stop_shuriken(name: &str) -> Result<(), String> {
     log::info!("Stopping service...");
-    let mut service_manager = ShurikenManager::new().await.map_err(|e| e.to_string())?;
+    let service_manager = ShurikenManager::new().await.map_err(|e| e.to_string())?;
     match service_manager.stop(name).await {
         Ok(_) => {
             log::info!("Service stopped successfully.");
@@ -36,7 +36,7 @@ pub async fn stop_shuriken(name: &str) -> Result<(), String> {
 pub async fn get_all_shurikens() -> Result<Vec<Shuriken>, String> {
     log::info!("Retrieving all services...");
     let manager = ShurikenManager::new().await.map_err(|e| e.to_string())?;
-    Ok(manager.list(false).await)
+    Ok(manager.list(false).await.map_err(|e| e.to_string())?)
 }
 
 #[tauri::command]

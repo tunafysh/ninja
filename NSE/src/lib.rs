@@ -1,17 +1,10 @@
-use std::{fs, path::PathBuf, collections::HashMap};
+use std::{fs, path::PathBuf};
 use log::info;
 use serde::{Serialize, Deserialize};
 use mlua::{Error as LuaError, Function, Lua};
-use crate::{modules::make_modules};
 
 mod modules;
-
-// copying the same struct from API bc i am too young to deal with compiler race conditions
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ConfigParam {
-    pub input: InputType,
-    pub script: String,
-}
+use modules::make_modules;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "UPPERCASE")]
@@ -20,17 +13,21 @@ pub enum InputType {
         default: Option<i64>,
         min: Option<i64>,
         max: Option<i64>,
+        value: i64
     },
     Text {
         default: Option<String>,
         regex: Option<String>,
+        value: String
     },
     Boolean {
         default: Option<bool>,
+        value: bool
     },
     Choice {
         default: Option<String>,
         values: Vec<String>,
+        value: String
     },
 }
 
@@ -42,9 +39,9 @@ impl NinjaEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let lua = Lua::new();
 
-        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
-
         let globals = lua.globals();
+
+        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
 
         globals.set("fs", fs)?;
         globals.set("env", env)?;
@@ -58,12 +55,12 @@ impl NinjaEngine {
         Ok(engine)
     }
 
-    pub fn execute(&self, script: &str, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
+    pub fn execute(&self, script: &str) -> Result<(), LuaError> {
         info!("Executing lua script.");
         self.lua.load(script).exec()
     }
 
-    pub fn execute_file(&self, path: &str, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
+    pub fn execute_file(&self, path: &str) -> Result<(), LuaError> {
         info!("Executing file: {}", path);
 
         let script = fs::read_to_string(path)?;
@@ -71,13 +68,30 @@ impl NinjaEngine {
         self.lua.load(script).exec()
     }
 
-    pub fn execute_function(&self, function: &str, file: &PathBuf, context: Option<HashMap<String, ConfigParam>>) -> Result<(), LuaError> {
-        let script = fs::read_to_string(file)?;
+    pub fn execute_function(
+        &self,
+        function: &str,
+        path: &PathBuf,
+    ) -> Result<(), LuaError> {
+        let globals = self.lua.globals();
 
+        let script = std::fs::read_to_string(path)?;
         
-        
-        self.lua.load(script).exec()?;
-        let func: Function = self.lua.globals().get(function).expect("Failed to get start function");
+        // First try evaluating the script and capturing its return value
+        let value = self.lua.load(&script).eval::<mlua::Value>()?;
+    
+        // Try to get the function from return value if it's a table
+        let func: Function = match value {
+            mlua::Value::Table(table) => {
+                table.get(function)?
+            }
+            _ => {
+                // Fall back to looking in globals
+                globals.get(function)?
+            }
+        };
+    
         func.call::<()>(())
     }
+
 }
