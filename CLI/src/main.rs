@@ -1,6 +1,6 @@
 // main.rs
 use std::{fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit};
-use ninja::{ api::server, config::{MaintenanceType, ShurikenConfig}, manager::ShurikenManager, shuriken::Shuriken, types::{PlatformPath, ShurikenState}};
+use ninja::{ api::server, manager::ShurikenManager, shuriken::{Shuriken, MaintenanceType, ShurikenMetadata}, types::{PlatformPath, ShurikenState}};
 use clap::{Parser, Subcommand, Args};
 use ::log::info;
 use owo_colors::OwoColorize;
@@ -270,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
             println!("Generating manifest for '{}'", name);
             let manifest = Shuriken {
-                shuriken: ShurikenConfig {
+                shuriken: ShurikenMetadata {
                     name: name.clone(),
                     service_name: service_name.clone(),
                     maintenance,

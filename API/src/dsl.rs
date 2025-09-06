@@ -1,82 +1,111 @@
-use crate::manager::ShurikenManager;
+use crate::{manager::ShurikenManager, templater::{infer_value, Value}};
 use either::Either;
-use chumsky::prelude::*;
 use std::{io, path::PathBuf};
-use tokio::task::JoinHandle;
 use std::sync::Arc;
+use anyhow::{Result, Error};
 use tokio::sync::RwLock;
-use ninja_engine::{InputType, NinjaEngine};
-
-fn infer_input_type(value: &str) -> InputType {
-    let val = value.trim();
-
-    if let Ok(n) = val.parse::<i64>() {
-        InputType::Number {
-            default: None,
-            min: None,
-            max: None,
-            value: n,
-        }
-    } else if val.eq_ignore_ascii_case("true") {
-        InputType::Boolean {
-            default: None,
-            value: true,
-        }
-    } else if val.eq_ignore_ascii_case("false") {
-        InputType::Boolean {
-            default: None,
-            value: false,
-        }
-    } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
-        InputType::Text {
-            default: None,
-            regex: None,
-            value: val[1..val.len() - 1].to_string(),
-        }
-    } else {
-        InputType::Text {
-            default: None,
-            regex: None,
-            value: val.to_string(),
-        }
-    }
-}
-
+use ninja_engine::NinjaEngine;
+use regex::Regex;
 
 #[derive(Debug, Clone)]
-pub struct Command {
-    pub name: String,
-    pub args: Args,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Args {
+pub enum Command {
+    HttpStart(u16),
+    Start,
+    Stop,
+    Select(String),
+    Get(String),
+    Exit,
+    Configure,
+    Set { key: String, value: Value },
+    List,
+    ListState,
+    Install(PathBuf),
+    Toggle(String),
+    Execute(PathBuf),
     None,
-    Single(String),
-    Double { key: String, value: String },
 }
 
-fn args_parser() -> ! {
-    // Quoted string: "hello"
-    todo!()
+// ---- Comment-safe remover ----
+fn remove_comments(line: &str) -> String {
+    let mut in_quotes = false;
+    let mut result = String::new();
+
+    for c in line.chars() {
+        match c {
+            '"' => {
+                in_quotes = !in_quotes; // toggle quotes
+                result.push(c);
+            }
+            '#' if !in_quotes => {
+                // everything after this is a comment
+                break;
+            }
+            _ => result.push(c),
+        }
+    }
+
+    result
 }
 
-fn command_parser() -> ! {
-    todo!()
+// ---- Preprocessor ----
+fn preprocessor(script: &str) -> Vec<String> {
+    script
+        .lines()
+        .map(|line| remove_comments(line).trim().replace("=", "")) // remove comments, trim, drop '='
+        .filter(|line| !line.is_empty())                            // remove empty lines
+        .map(|line| line.to_string())
+        .collect()
 }
 
-fn commands_parser() -> ! {
-    todo!()
+// ---- Command Parser ----
+fn command_parser(lines: Vec<String>) -> Result<Vec<Command>> {
+    let tokenizer = Regex::new(r#"^(\w+)(?:\s+(\S+))?(?:\s+(.+))?$"#) // allow last arg to include spaces
+        .map_err(|e| Error::msg(format!("Failed to create tokenizer: {}", e)))?;
+
+    let mut commands = Vec::new();
+
+    for line in lines {
+        if let Some(caps) = tokenizer.captures(&line) {
+            let cmd = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let arg1 = caps.get(2).map(|m| m.as_str());
+            let arg2 = caps.get(3).map(|m| m.as_str());
+
+            let command = match cmd.to_lowercase().as_str() {
+                "http" => match (arg1, arg2) {
+                    (Some("start"), Some(port)) => Command::HttpStart(port.parse().unwrap_or(80)),
+                    _ => Command::None,
+                },
+                "start" => Command::Start,
+                "stop" => Command::Stop,
+                "select" => arg1.map_or(Command::None, |a| Command::Select(a.to_string())),
+                "get" => arg1.map_or(Command::None, |a| Command::Get(a.to_string())),
+                "set" => match (arg1, arg2) {
+                    (Some(k), Some(v)) => Command::Set { key: k.to_string(), value: infer_value(v) },
+                    _ => Command::None,
+                },
+                "list" => match arg1 {
+                    Some(a) if a.eq_ignore_ascii_case("state") => Command::ListState,
+                    _ => Command::List,
+                },
+                "install" => arg1.map_or(Command::None, |a| Command::Install(PathBuf::from(a))),
+                "toggle" => arg1.map_or(Command::None, |a| Command::Toggle(a.to_string())),
+                "execute" => arg1.map_or(Command::None, |a| Command::Execute(PathBuf::from(a))),
+                "exit" => Command::Exit,
+                "configure" => Command::Configure,
+                _ => Command::None,
+            };
+
+            commands.push(command);
+        }
+    }
+
+    Ok(commands)
 }
 
-fn parse_commands(input: &str) -> Vec<Command> {
-    vec![]
-}
 
 pub struct DslContext {
     pub manager: ShurikenManager,
     pub selected: Arc<RwLock<Option<String>>>,
-    pub http_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
 }
 
 impl DslContext {
@@ -84,39 +113,26 @@ impl DslContext {
         Self {
             manager,
             selected: Arc::new(RwLock::new(None)),
-            http_handle: Arc::new(RwLock::new(None)),
         }
     }
 }
 
-pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<String, io::Error> {
-    let parsed_commands = parse_commands(&script);
+pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<String>> {
+    let processed_script = preprocessor(script.as_str());
+    let parsed_commands = command_parser(processed_script)?;
 
-    let mut output = Vec::new();
+    let mut output: Vec<String> = Vec::new();
 
     for command in parsed_commands {
-        match (command.name.as_str(), command.args.clone()) {
+        match command {
             // HTTP server
-            ("http", Args::Double { key, value }) if key == "start" => {
-                if let Ok(port) = value.parse::<u16>() {
+            Command::HttpStart(port) => {
                     
-                    output.push(format!("HTTP server started on port {}", port));
-                } else {
-                    output.push(format!("Invalid port: {}", value));
-                }
-            }
-            ("http", Args::Single(ref s)) if s == "stop" => {
-                let mut handle_lock = ctx.http_handle.write().await;
-                if let Some(handle) = handle_lock.take() {
-                    handle.abort();
-                    output.push("HTTP server stopped".into());
-                } else {
-                    output.push("HTTP server not running".into());
-                }
+                output.push(format!("HTTP server started on port {}", port));
             }
 
             // Select shuriken
-            ("select", Args::Single(name)) => {
+            Command::Select(name) => {
                 if ctx.manager.shurikens.read().await.contains_key(&name) {
                     *ctx.selected.write().await = Some(name.clone());
                     output.push(format!("Selected shuriken '{}'", name));
@@ -125,36 +141,48 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<String
                 }
             }
 
+            Command::Configure => {
+                if let Some(name) = &*ctx.selected.read().await {
+                    let mut shurikens = ctx.manager.shurikens.write().await;
+                    if let Some(shuriken) = shurikens.get_mut(name) {
+                        shuriken.configure().await.map_err(|e| Error::msg(e))?;
+
+                        output.push(format!("Generated configuration for shuriken {} successfully.", &name));
+                    } 
+                }
+            }
+
             // Config commands
-            ("set", Args::Double { key, value }) => {
+            Command::Set { key, value } => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name) {
                         if let Some(cfg) = &mut shuriken.config {
-                            cfg.insert(key.clone(), infer_input_type(&value));
-                            output.push(format!("Set {} = {} for {}", key, value, shuriken_name));
+                            let cloned_value = value.clone();
+                            cfg.fields.insert(key.clone(), value);
+                            output.push(format!("Set {} = {} for {}", key, cloned_value.render(), shuriken_name));
                         }
                     }
                 }
             }
 
-            ("get", Args::Single(key)) | ("show", Args::Single(key)) => {
+            Command::Get(key) => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let shurikens = ctx.manager.shurikens.read().await;
                     if let Some(shuriken) = shurikens.get(shuriken_name) {
                         if let Some(cfg) = &shuriken.config {
-                            output.push(format!("{:?} = {:?}", key, cfg.get(&key)));
+                            output.push(format!("{:?} = {:?}", key, cfg.fields.get(&key)));
                         }
                     }
                 }
             }
 
-            ("toggle", Args::Single(key)) => {
+            Command::Toggle(key) => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name) {
                         if let Some(cfg) = &mut shuriken.config {
-                            if let Some(InputType::Boolean { value, .. }) = cfg.get_mut(&key) {
+                            if let Some(Value::Bool(value)) = cfg.fields.get_mut(&key) {
                                 *value = !*value;
                                 output.push(format!("Toggled {} to {}", key, value));
                             }
@@ -164,13 +192,13 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<String
             }
 
             // Shuriken management
-            ("list", Args::None) => {
+            Command::List => {
                 match ctx.manager.list(false).await? {
                     Either::Right(names) => output.push(format!("Shurikens: {:?}", names)),
                     _ => {}
                 }
             }
-            ("list", Args::Single(arg)) if arg == "state" => {
+            Command::ListState => {
                 match ctx.manager.list(true).await? {
                     Either::Left(states) => {
                         for (name, state) in states {
@@ -180,44 +208,50 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<String
                     _ => {}
                 }
             }
-            ("start", Args::Single(name)) => {
-                match ctx.manager.start(&name).await {
-                    Ok(_) => output.push(format!("Started {}", name)),
-                    Err(e) => output.push(format!("Error: {}", e)),
+
+            Command::Start => {
+                if let Some(name) = &*ctx.selected.read().await {
+                    match ctx.manager.start(&name).await {
+                        Ok(_) => output.push(format!("Started {}", name)),
+                        Err(e) => output.push(format!("Error: {}", e)),
+                    }
                 }
             }
-            ("stop", Args::Single(name)) => {
-                match ctx.manager.stop(&name).await {
-                    Ok(_) => output.push(format!("Stopped {}", name)),
-                    Err(e) => output.push(format!("Error: {}", e)),
+            Command::Stop => {
+                if let Some(name) = &*ctx.selected.read().await {
+
+                    match ctx.manager.stop(&name).await {
+                        Ok(_) => output.push(format!("Stopped {}", name)),
+                        Err(e) => output.push(format!("Error: {}", e)),
+                    }
                 }
             }
-            ("execute", Args::Single(script_path)) => {
+
+            Command::Execute(script_path) => {
                 let engine = NinjaEngine::new()
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-                engine.execute_file(script_path.as_str())
+                engine.execute_file(script_path.display().to_string().as_str())
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             }
-            ("install", Args::Single(file_path)) => {
-                let pb = PathBuf::from(file_path);
-                match ctx.manager.install(pb).await {
+            Command::Install(file_path) => {
+                match ctx.manager.install(file_path).await {
                     Ok(_) => output.push("Installed successfully".into()),
                     Err(e) => output.push(format!("Install failed: {}", e)),
                 }
             }
 
             // Exit the shuriken
-            ("exit", Args::None) => {
+            Command::Exit => {
                 *ctx.selected.write().await = None;
                 output.push("Deselected current shuriken".into());
             }
 
             // Unsupported
-            (name, args) => {
-                output.push(format!("Invalid or unsupported command: {} {:?}", name, args));
+            Command::None => {
+                output.push(format!("Invalid or unsupported command:"));
             }
         }
     }
 
-    Ok(output.join("\n"))
+    Ok(output)
 }

@@ -1,11 +1,51 @@
 use log::info;
 use serde::{Serialize, Deserialize};
-use serde_json::{json, Value};
+use serde_json::{json, Value as JsonValue};
 use tokio::{fs, process::Command};
-use std::{collections::HashMap, path::Path};
-use crate::{config::{LogsConfig, MaintenanceType, ShurikenConfig}};
-use ninja_engine::{InputType, NinjaEngine};
+use std::{collections::HashMap, path::{Path, PathBuf}};
+use crate::{templater::{Templater, Value}, types::PlatformPath};
+use ninja_engine::NinjaEngine;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShurikenConfig {
+    pub config_path: PathBuf,
+    pub fields: HashMap<String, Value>
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShurikenMetadata {
+    pub name: String,
+    #[serde(rename = "service-name")]
+    pub service_name: String,
+    pub maintenance: MaintenanceType,
+    #[serde(rename = "type")]
+    pub shuriken_type: String,
+     #[serde(rename = "add-path")]
+    pub add_path: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type")] // tag field determines the variant
+pub enum MaintenanceType {
+    Native {
+        #[serde(rename = "bin-path")]
+        bin_path: PlatformPath,
+        #[serde(rename = "config-path")]
+        config_path: Option<PathBuf>,
+        args: Option<Vec<String>>,
+    },
+    Script {
+        #[serde(rename = "script-path")]
+        script_path: PathBuf,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LogsConfig {
+    #[serde(rename = "log-path")]
+    pub log_path: PlatformPath,
+}
 
 pub fn kill_process_by_pid(pid_num: u32) -> bool {
     let pid = Pid::from_u32(pid_num);
@@ -88,8 +128,8 @@ pub fn get_process_start_time(pid: u32) -> Option<u64> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shuriken {
-    pub shuriken: ShurikenConfig,
-    pub config: Option<HashMap<String, InputType>>,
+    pub shuriken: ShurikenMetadata,
+    pub config: Option<ShurikenConfig>,
     pub logs: Option<LogsConfig>,
 }
 
@@ -160,6 +200,16 @@ impl Shuriken {
         }
     }
 
+    pub async fn configure(&self) -> Result<(), String> {
+        if let Some(ctx) = &self.config {
+            let fields = ctx.fields.clone();
+            let templater = Templater::new(fields);
+
+            templater.generate_config(ctx.config_path.clone()).await.map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     pub async fn stop(&self) -> Result<(), String> {
         info!("Stopping shuriken {}", self.shuriken.name);
 
@@ -171,7 +221,7 @@ impl Shuriken {
                     .await
                     .map_err(|e| format!("Failed to read lockfile: {}", e))?;
 
-                let lockdata: Value = serde_json::from_str(&lock_contents)
+                let lockdata: JsonValue = serde_json::from_str(&lock_contents)
                     .map_err(|e| format!("Failed to parse lockfile JSON: {}", e))?;
 
                 let pid: u32 = serde_json::from_value(lockdata["pid"].clone())

@@ -98,6 +98,16 @@ async fn list_shurikens(manager: web::Data<ShurikenManager>) -> Result<HttpRespo
     
 }
 
+#[get("/api/stop")]
+async fn stop_api() -> HttpResponse {
+    // Spawn a task so we can respond before exiting
+    tokio::spawn(async {
+        std::process::exit(0);
+    });
+
+    HttpResponse::Ok().body("Exiting immediately")
+}
+
 pub async fn server(port: u16) -> std::io::Result<()> {
     let manager = Arc::new(ShurikenManager::new().await.expect("Failed to create manager for web API"));
     let manager_data = web::Data::new(manager);

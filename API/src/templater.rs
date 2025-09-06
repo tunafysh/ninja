@@ -1,5 +1,6 @@
 use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use regex::{Captures, Regex};
+use serde::{Deserialize, Serialize};
 use tokio::fs;
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ impl Display for TemplateError {
 
 impl Error for TemplateError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Value {
     String(String),
     Number(i64),
@@ -56,6 +57,22 @@ impl Value {
             Value::Bool(b) => b.to_string(),
             Value::Map(_) => "[object map]".to_string(), // you usually don’t want maps inline
         }
+    }
+}
+
+pub fn infer_value(value: &str) -> Value {
+    let val = value.trim();
+
+    if let Ok(n) = val.parse::<i64>() {
+        Value::Number(n)
+    } else if val.eq_ignore_ascii_case("true") {
+        Value::Bool(true)
+    } else if val.eq_ignore_ascii_case("false") {
+        Value::Bool(false)
+    } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
+        Value::String(val[1..val.len() - 1].to_string())
+    } else {
+        Value::String(val.to_string())
     }
 }
 
