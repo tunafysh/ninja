@@ -2,7 +2,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use serde_json::{json, Value as JsonValue};
 use tokio::{fs, process::Command};
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{collections::HashMap, env, path::{Path, PathBuf}};
 use crate::{templater::{Templater, Value}, types::PlatformPath};
 use ninja_engine::NinjaEngine;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
@@ -28,6 +28,7 @@ pub struct ShurikenMetadata {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")] // tag field determines the variant
 pub enum MaintenanceType {
+    #[serde(rename = "native")]
     Native {
         #[serde(rename = "bin-path")]
         bin_path: PlatformPath,
@@ -35,6 +36,7 @@ pub enum MaintenanceType {
         config_path: Option<PathBuf>,
         args: Option<Vec<String>>,
     },
+    #[serde(rename = "script")]
     Script {
         #[serde(rename = "script-path")]
         script_path: PathBuf,
@@ -45,6 +47,29 @@ pub enum MaintenanceType {
 pub struct LogsConfig {
     #[serde(rename = "log-path")]
     pub log_path: PlatformPath,
+}
+
+fn kill_process_by_name(name: &str) -> bool {
+    let mut sys = System::new_all();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    for (_pid, process) in sys.processes() {
+        if process.name() == name {
+            if process.kill_with(Signal::Kill).unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> bool {
+    if let Some(actual_start_time) = get_process_start_time(pid) {
+        if actual_start_time == expected_start_time {
+            return kill_process_by_pid(pid);
+        }
+    }
+    false
 }
 
 pub fn kill_process_by_pid(pid_num: u32) -> bool {
@@ -177,6 +202,9 @@ impl Shuriken {
                 Ok(())
             }
             MaintenanceType::Script { script_path } => {
+
+                env::set_current_dir(".ninja").map_err(|e| e.to_string())?;
+
                 let engine = NinjaEngine::new()
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 
@@ -191,9 +219,11 @@ impl Shuriken {
                 let lock_str = serde_json::to_string(&lockfile_data)
                     .map_err(|e| format!("Failed to serialize lockfile: {}", e))?;
 
-                fs::write(".ninja/shuriken.lck", lock_str)
+                fs::write("shuriken.lck", lock_str)
                     .await
                     .map_err(|e| format!("Failed to write shuriken.lck: {}", e))?;
+
+                env::set_current_dir("..").map_err(|e| e.to_string())?;
 
                 Ok(())
             }
@@ -226,16 +256,27 @@ impl Shuriken {
 
                 let pid: u32 = serde_json::from_value(lockdata["pid"].clone())
                     .map_err(|e| format!("Invalid PID in lockfile: {}", e))?;
+                let start_time: u64 = serde_json::from_value(lockdata["start_time"].clone())
+                    .map_err(|e| format!("Invalid start_time in lockfile: {}", e))?;
+                let name: String = serde_json::from_value(lockdata["name"].clone())
+                    .map_err(|e| format!("Invalid name in lockfile: {}", e))?;
 
-                if !kill_process_by_pid(pid) {
-                    return Err(format!("Failed to terminate process with PID {}", pid));
+                // Try by name first
+                if !kill_process_by_name(&name) {
+                    // Fallback to PID + start time
+                    if !kill_process_by_pid_and_start_time(pid, start_time) {
+                        return Err(format!(
+                            "Failed to terminate shuriken {} (PID {}, start_time {})",
+                            name, pid, start_time
+                        ));
+                    }
                 }
-                
+
                 if Path::new(".ninja/shuriken.lck").exists() {
-                    fs::remove_file("shuriken.lck")
-                    .await
-                    .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
-                };
+                    fs::remove_file(".ninja/shuriken.lck")
+                        .await
+                        .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
+                }
 
                 Ok(())
             }
@@ -244,7 +285,11 @@ impl Shuriken {
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 
                 engine.execute_function("stop", script_path)
-                    .map_err(|e| format!("Failed to execute 'stop' in script '{}': {}", script_path.display(), e))?;
+                    .map_err(|e| format!(
+                        "Failed to execute 'stop' in script '{}': {}",
+                        script_path.display(),
+                        e
+                    ))?;
 
                 fs::remove_file(".ninja/shuriken.lck")
                     .await

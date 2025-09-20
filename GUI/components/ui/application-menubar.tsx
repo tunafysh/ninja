@@ -30,7 +30,7 @@ export function ApplicationMenubar({ platform, gridView, setGridView, activeTab,
 
   return (
     <div 
-      className={`fixed flex z-50 ${platform === "mac" ? "h-8" : "h-10"} justify-between items-center border-b bg-background drag w-full`} 
+      className={`fixed flex z-[999] ${platform === "mac" ? "h-8" : "h-10"} justify-between items-center border-b bg-background drag w-full`} 
       style={{ 
         borderTopLeftRadius: '7px', 
         borderTopRightRadius: '7px' 
@@ -122,32 +122,6 @@ export function ApplicationMenubar({ platform, gridView, setGridView, activeTab,
             </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
-        {activeWindow != 'Forge' && activeWindow != 'Armory' && (
-          <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">
-              Tools
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            <DropdownMenuItem onClick={() => {
-              // For Tauri: open in default browser, not in-app webview
-              invoke("toggle_armory_window").catch((reason) => console.error(reason))
-            }}>
-              <Sparkle className="mr-2 h-4 w-4" />
-              <span>Armory</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              // For Tauri: open in default browser, not in-app webview
-              invoke("toggle_forge_window").catch((reason) => console.error(reason))
-            }}>
-              <Anvil className="mr-2 h-4 w-4" />
-              <span>Forge</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        )}
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 px-2 text-sm">

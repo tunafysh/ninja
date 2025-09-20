@@ -107,7 +107,6 @@ impl Templater {
                         } else {
                             root_val.get_path(&path)
                         };
-
                         return val.map(|v| v.render()).unwrap_or_else(|| format!("{{{{ {} }}}}", expr));
                     }
                 }

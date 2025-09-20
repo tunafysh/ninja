@@ -101,6 +101,8 @@ async fn list_shurikens(manager: web::Data<ShurikenManager>) -> Result<HttpRespo
 #[get("/api/stop")]
 async fn stop_api() -> HttpResponse {
     // Spawn a task so we can respond before exiting
+    // also if you say this is not graceful then i give you full permission to bang your head on your desk
+    // to come up with a solution for this. I hate handles.
     tokio::spawn(async {
         std::process::exit(0);
     });

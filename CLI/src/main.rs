@@ -1,12 +1,12 @@
 // main.rs
 use std::{fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit};
 use ninja::{ api::server, manager::ShurikenManager, shuriken::{Shuriken, MaintenanceType, ShurikenMetadata}, types::{PlatformPath, ShurikenState}};
-use clap::{Parser, Subcommand, Args};
 use ::log::info;
 use owo_colors::OwoColorize;
-use clap_verbosity_flag::Verbosity;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use ninja_mcp::server as mcpserver;
+use clap_verbosity_flag::Verbosity;
+use clap::{Args, Parser, Subcommand};
 
 mod log;
 use log::setup_logger;
@@ -14,10 +14,12 @@ use log::setup_logger;
 mod repl;
 use repl::repl_mode;
 
+
 #[derive(Parser)]
 #[command(name = "ninja")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Ninja CLI - The command line version of ninja")]
+#[command(long_about = "test")]
 pub struct NinjaCli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -29,7 +31,7 @@ pub struct NinjaCli {
     pub mcp: bool,
 
     #[command(flatten)]
-    verbose: Verbosity,
+    pub verbose: Verbosity,
 }
 
 #[derive(Subcommand)]

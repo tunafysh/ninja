@@ -1,23 +1,17 @@
 import { LucideIcon } from "lucide-react";
 
-export interface ConfigField  {
-    name: string;
-    input: "SWITCH" | "NUMBER" | "TEXT";
-    script_path?: string;
-}
-
 export type Shuriken = {
     shuriken: ShurikenConfig
-    config?: Record<string, ConfigParam>
+    config?: Record<string, Value>
     logs?: LogsConfig
+    status: "running" | "stopped"
 }
 
 export type ShurikenConfig = {
     name: string
     service_name: string
     maintenance: MaintenanceType
-    type: string
-    status: "running" | "stopped"
+    type: "daemon" | "executable"
     add_path: boolean;
 }
 
@@ -35,13 +29,11 @@ type MaintenanceType =
       script_path: string;
     };
 
-
-// Rust: pub struct ConfigParam
-export interface ConfigParam {
-    input: string;
-    default?: any; // toml::Value is dynamic
-    script: string;
-}
+export type Value =
+  | { type: "String"; value: string }
+  | { type: "Number"; value: number }
+  | { type: "Bool"; value: boolean }
+  | { type: "Map"; value: Record<string, Value> };
 
 // Rust: pub struct LogsConfig
 export interface LogsConfig {

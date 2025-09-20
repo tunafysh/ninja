@@ -23,11 +23,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
     devMode: false,
     serverurl: "https://ninja-rs.vercel.app",
     checkUpdates: true,
-    backups: {
-      enabled:true,
-      path:"./backups",
-      schedule:"manual"
-    }
   })
 
   return (
@@ -73,7 +68,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
                         },
                         serverurl: config.serverurl,
                         checkUpdates: config.checkUpdates,
-                        backups: config.backups,
                         devMode: config.devMode
                       })
                     }
@@ -117,7 +111,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
                             },
                             serverurl: config.serverurl,
                             checkUpdates: config.checkUpdates,
-                            backups: config.backups,
                             devMode: config.devMode
                           })
                         }
@@ -180,7 +173,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
                     mcp: config.mcp,
                     serverurl: e.target.value,
                     checkUpdates: config.checkUpdates,
-                    backups: config.backups,
                     devMode: config.devMode
                   })} value={config.serverurl} type="url" />
                 </div>
@@ -205,110 +197,12 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
                       mcp:config.mcp,
                       serverurl: config.serverurl,
                       checkUpdates: e,
-                      backups: config.backups,
                       devMode: config.devMode
                     })
                   }} checked={config.checkUpdates} />
                 </div>
               </div>
             </motion.div>
-
-            <AnimatePresence>
-            <motion.div
-              className="w-full p-4 bg-muted rounded-md mt-4"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex items-center justify-between w-full px-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Enable backups</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="backup-switch"
-                    onCheckedChange={(e) =>
-                      setConfig({
-                        mcp: config.mcp,
-                        serverurl: config.serverurl,
-                        checkUpdates: config.checkUpdates,
-                        backups: {
-                          enabled: e,
-                          path: config.backups.path,
-                          schedule: config.backups.schedule
-                        },
-                        devMode: config.devMode
-                      })
-                    }
-
-                    checked={config.backups.enabled}
-                  />
-                </div>
-              </div>
-                  
-              {/* Animate the config fields when MCP is enabled */}
-              {config.backups.enabled && (
-                <motion.div
-                  key="backup-options"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 1, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <motion.div className="space-y-2 flex justify-between mt-4">
-                    <Label htmlFor="backup-transport" className="text-sm ml-4 font-medium">
-                      Backup Options
-                    </Label>
-                  </motion.div>
-                      
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <div className="flex justify-between ml-4 mt-4">
-                      <p>Path</p>
-                      <Input
-                      className="w-fit mb-2 mr-2"
-                        onChange={(e) => {
-                          setConfig({
-                            mcp: config.mcp,
-                            serverurl: config.serverurl,
-                            checkUpdates: config.checkUpdates,
-                            backups: {
-                              enabled: config.backups.enabled,
-                              path: e.target.value,
-                              schedule: config.backups.schedule
-                            },
-                            devMode: config.devMode
-                          })
-                        }}
-                        value={config.backups.path}
-                      />
-                    </div>
-
-                    <div className="flex justify-between ml-4 mt-2">
-                      <p>Backup Schedule</p>
-                      <Select>
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Schedule" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
-                          <SelectItem value="manual">Manual</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-            </motion.div>
-          </AnimatePresence>
 
         </TabsContent>
       </Tabs>

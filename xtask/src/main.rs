@@ -23,8 +23,6 @@ enum Commands {
     BuildAll,
     /// Clean renamed binaries
     Clean,
-    /// Generate manpage for shurikenctl.
-    GenManpage,
 }
 
 fn main() {
@@ -46,7 +44,6 @@ fn main() {
             build_gui();
         },
         Commands::Clean => clean_binaries(),
-        Commands::GenManpage => generate_manpage(),
     }
 }
 
@@ -138,17 +135,4 @@ fn clean_binaries() {
             println!("Removed {}", renamed.display());
         }
     }
-}
-
-fn generate_manpage() {
-    // use clap_mangen::Man;
-    // use std::fs::File;
-    // use ninja_cli::cli; // must expose cli() fn from ninja_cli
-
-    // let cmd = cli();
-    // let man = Man::new(cmd);
-    // let mut buffer = File::create("target/ninja_cli.1").expect("create failed");
-    // man.render(&mut buffer).expect("render failed");
-
-    // println!("✓ Generated manpage at target/ninja_cli.1");
 }

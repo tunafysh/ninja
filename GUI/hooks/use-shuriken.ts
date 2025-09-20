@@ -1,62 +1,74 @@
 import { useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Shuriken } from '@/lib/types'
+import { toast } from 'sonner'
 
 export const useShuriken = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [allShurikens, setAllShurikens] = useState<Shuriken[]>([])
 
-  const handleError = useCallback((err: unknown) => {
+  const handleError = useCallback((err: unknown, context?: string) => {
     const msg = err instanceof Error ? err.message : String(err)
     setError(msg)
-    console.error('Shuriken Error:', msg)
+    toast.error(msg)
+    console.error(`[Shuriken ERROR] ${context ?? "unknown"}:`, msg, err)
   }, [])
 
+  /** Queries all shurikens directly (no events here) */
   const refreshShurikens = useCallback(async () => {
+    console.log("[Shuriken] Refreshing all shurikens...")
     setLoading(true)
     try {
       const data = await invoke<Shuriken[]>('get_all_shurikens')
+      console.log("[Shuriken] Retrieved shurikens:", data)
       setAllShurikens(data)
     } catch (err) {
-      handleError(err)
+      handleError(err, "refreshShurikens")
       setAllShurikens([])
     } finally {
       setLoading(false)
+      console.log("[Shuriken] Finished refresh")
     }
   }, [handleError])
 
+  /** Update local status optimistically */
   const updateStatus = useCallback((name: string, status: "running" | "stopped") => {
-    setAllShurikens(prev =>
-      prev.map(s =>
-        s.shuriken.name === name
-          ? { ...s, status }
-          : s
-      )
+  console.log(`[Shuriken] Updating status of "${name}" → ${status}`)
+  setAllShurikens(prev =>
+    prev.map(s =>
+      s.shuriken.name === name
+        ? { ...s, shuriken: { ...s.shuriken, status } } // update inside shuriken
+        : s
     )
-  }, [])
+  )
+}, [])
 
+  /** Start shuriken (event listener will confirm success/failure) */
   const startShuriken = useCallback(async (name: string) => {
-    updateStatus(name, "running") // optimistic update
+    console.log(`[Shuriken] Attempting to start "${name}" (optimistic update applied)`)
+    updateStatus(name, "running") // optimistic
     try {
       await invoke('start_shuriken', { name })
-      await refreshShurikens()
+      console.log(`[Shuriken] Invoked start for "${name}"`)
     } catch (err) {
-      handleError(err)
-      updateStatus(name, "stopped") // revert if failed
+      handleError(err, `startShuriken(${name})`)
+      updateStatus(name, "stopped") // revert if immediate failure
     }
-  }, [refreshShurikens, handleError, updateStatus])
+  }, [handleError, updateStatus])
 
+  /** Stop shuriken (event listener will confirm success/failure) */
   const stopShuriken = useCallback(async (name: string) => {
-    updateStatus(name, "stopped") // optimistic update
+    console.log(`[Shuriken] Attempting to stop "${name}" (optimistic update applied)`)
+    updateStatus(name, "stopped") // optimistic
     try {
       await invoke('stop_shuriken', { name })
-      await refreshShurikens()
+      console.log(`[Shuriken] Invoked stop for "${name}"`)
     } catch (err) {
-      handleError(err)
-      updateStatus(name, "running") // revert if failed
+      handleError(err, `stopShuriken(${name})`)
+      updateStatus(name, "running") // revert if immediate failure
     }
-  }, [refreshShurikens, handleError, updateStatus])
+  }, [handleError, updateStatus])
 
   return {
     loading,
@@ -65,6 +77,9 @@ export const useShuriken = () => {
     refreshShurikens,
     startShuriken,
     stopShuriken,
-    clearError: () => setError(null),
+    clearError: () => {
+      console.log("[Shuriken] Clearing error")
+      setError(null)
+    },
   }
 }

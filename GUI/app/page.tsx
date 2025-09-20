@@ -7,13 +7,13 @@ import Dashboard from "@/components/pages/dashboard"
 import Configuration from "@/components/pages/config"
 import Tools from "@/components/pages/backup"
 import Logs from "@/components/pages/logs"
-import { HomeIcon, Cog, FileText, Database, Zap, Server, Globe } from "lucide-react"
-import Scripting from "@/components/pages/scripting"
-import { Toaster } from "sonner"
-import { Shuriken } from "@/lib/types"
+import { HomeIcon, Cog, FileText, Database, Sparkle } from "lucide-react"
+import Armory from "@/components/pages/armory"
+import { Toaster } from "@/components/ui/sonner"
 import { useShuriken } from "@/hooks/use-shuriken"
+import DslCommandPalette from "@/components/mini-repl"
 
-const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Scripting"]
+const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Armory"]
 
 export default function Page() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -23,6 +23,7 @@ export default function Page() {
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const [gridView, setGridView] = useState<"grid" | "list">("grid")
   const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
+  const [commandOpened, setCommandOpened] = useState<boolean>(false)
   const { allShurikens, refreshShurikens, startShuriken, stopShuriken } = useShuriken()
 
   const tabIcons = [ 
@@ -39,8 +40,8 @@ export default function Page() {
           </linearGradient>
         </defs>
       </svg>
-      <Zap className={`w-4 h-4 mr-1 ${activeIndex !== 4 ? "dark:text-[#ffffff99]" : ""}`} 
-           style={activeIndex === 4 ? { 
+
+      <Sparkle className={`mr-1 h-4 w-4 ${activeIndex !== 4 ? "dark:text-[#ffffff99]" : ""}`} style={activeIndex === 4 ? { 
              fill: 'none', 
              stroke: 'url(#zapStrokeGradient)', 
              strokeWidth: '2' 
@@ -83,6 +84,11 @@ export default function Page() {
     if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
       e.preventDefault()
       setActiveIndex(prev => prev === 0 ? tabs.length - 1 : prev - 1)
+    }
+
+    if (e.ctrlKey && e.key === "k") {
+      e.preventDefault()
+      setCommandOpened(!commandOpened)
     }
   }, [])
 
@@ -128,6 +134,11 @@ export default function Page() {
         activeWindow="Ninja" 
       />
 
+      {/* Command menu */}
+      {commandOpened && (
+        <DslCommandPalette commandOpened setCommandOpened={setCommandOpened} />
+      )}
+
       {/* Main content container with rounded bottom corners */}
       <main
         className="absolute w-full overflow-hidden"
@@ -138,7 +149,7 @@ export default function Page() {
           borderBottomRightRadius: "7px",
         }}
       >
-        <div className={`flex flex-row items-center ${platform === "mac" ? "pt-2" : "pt-4"}`}>
+        <div className={`flex flex-row select-none items-center ${platform === "mac" ? "pt-2" : "pt-4"}`}>
           <Card className="w-full border-none shadow-none relative flex items-center py-2 justify-center bg-transparent">
             <CardContent className="p-0">
               <div className="relative">
@@ -193,7 +204,7 @@ export default function Page() {
         <div className="p-4 overflow-auto scrollbar-hidden" style={{ height: "calc(100vh - 100px)" }}>
           {activeIndex === 0 ? (
             <Dashboard 
-              shurikens={allShurikens}
+              shurikens={allShurikens} 
               gridView={gridView}
               onRefresh={refreshShurikens} />
           ) : activeIndex === 1 ? (
@@ -203,7 +214,7 @@ export default function Page() {
           ) : activeIndex === 3 ? (
             <Tools />
           ) : activeIndex === 4 ? (
-            <Scripting />
+            <Armory platform={platform} />
           ) : null}
         </div>
       </main>

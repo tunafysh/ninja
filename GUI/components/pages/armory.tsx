@@ -5,8 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export default function StorePage() {
-    const [platform, setPlatform] = useState<"mac" | "windows" | "linux" | "unknown">("unknown")
+export default function Armory({platform}: {platform: "mac" | "windows" | "linux" | "unknown"}) {
     const [shurikens, setShurikens] = useState([
       {
         "name": "Apache HTTP Server",
@@ -79,21 +78,9 @@ export default function StorePage() {
         "checksum": "sha256:abc123...",
       }
     ])
-    useEffect(() => {
-        // Detect platform
-        const userAgent = window.navigator.userAgent.toLowerCase()
-        if (userAgent.indexOf("mac") !== -1) {
-          setPlatform("mac")
-        } else if (userAgent.indexOf("win") !== -1) {
-          setPlatform("windows")
-        } else if (userAgent.indexOf("linux") !== -1) {
-          setPlatform("linux")
-        }
-    })
 
     return (
         <div className="relative w-screen h-screen overflow-hidden flex justify-center">
-            <ApplicationMenubar platform={platform} activeWindow="Armory" />
             <div className={`h-full w-5/6 ${platform == "mac"? "mt-8": "mt-10"}`}>
               <div id="search" className="w-full flex justify-center items-center my-10">
                 <div className="relative w-full">

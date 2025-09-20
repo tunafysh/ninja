@@ -1,7 +1,10 @@
+use ninja::manager::ShurikenManager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri::{Manager, LogicalSize};
 
 mod commands;
 use commands::*;
+use tokio::sync::Mutex;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,10 +35,19 @@ pub fn run() {
             stop_shuriken,
             get_all_shurikens,
             get_running_shurikens,
-            enable_mcp,
-            disable_mcp
+            execute_dsl
         ])
         .setup(|app| {
+            app.manage(Mutex::new(
+                tauri::async_runtime::block_on(ShurikenManager::new()).expect("Failed to spawn a shuriken manager")
+            ));
+
+            let partial_win = app.get_webview_window("main");
+
+            if let Some(win) = partial_win {
+                win.set_size(LogicalSize::new(900, 560))?;
+            }
+            
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;

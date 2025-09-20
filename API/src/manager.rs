@@ -1,15 +1,16 @@
 use std::{
-    collections::HashMap, env, io::{self, Read}, path::{Path, PathBuf}
+    collections::HashMap, env, io, path::PathBuf, sync::Arc
 };
 use tokio::{sync::RwLock, fs};
 use globwalk::glob;
 use crate::{shuriken::Shuriken, types::ShurikenState};
 use either::Either::{self, Right, Left};
 
+#[derive(Clone)]
 pub struct ShurikenManager {
     pub root_path: PathBuf,
-    pub shurikens: RwLock<HashMap<String, Shuriken>>,
-    pub states: RwLock<HashMap<String, ShurikenState>>,
+    pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
+    pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
 }
 
 impl ShurikenManager {
@@ -35,6 +36,7 @@ impl ShurikenManager {
         // Convert path to glob pattern string
         let partial_manifest_glob_pattern = shurikens_dir.join("**/.ninja/manifest.toml");
 
+        
         let manifest_glob_pattern = partial_manifest_glob_pattern
             .to_str()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Path is not valid UTF-8"))?;
@@ -45,23 +47,24 @@ impl ShurikenManager {
         })? {
             match entry {
                 Ok(path) => {
+                    println!("{}",path.file_name().display());
                     let partial_path = path.into_path();
+                    let manifest_path = partial_path.clone();
+                    let manifest_content = fs::read_to_string(manifest_path.clone()).await.map_err(|e| {
+                            io::Error::new(io::ErrorKind::Other, format!("Failed to read manifest {}: {}", manifest_path.display(), e))
+                    })?;
                     if let Some(path) = partial_path.parent() {       
                         if let Some(parent) = path.parent() {
                             let name = parent.file_name()
                             .and_then(|n| n.to_str())
                             .map(|s| s.to_owned())
-                            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid directory name"))?;
-
-                        let manifest_content = fs::read_to_string(&path).await.map_err(|e| {
-                            io::Error::new(io::ErrorKind::Other, format!("Failed to read manifest {}: {}", path.display(), e))
-                        })?;
-
-                        let manifest: Shuriken = toml::from_str(&manifest_content)
-                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse TOML: {}", e)))?;
+                            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid directory name"))?;    
                         
-                        shurikens.insert(name, manifest);
-                    }
+                        let manifest: Shuriken = toml::from_str(&manifest_content)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse TOML: {}", e)))?;
+                    
+                    shurikens.insert(name, manifest);
+                }
                 }
                 }
                 Err(e) => {
@@ -103,8 +106,8 @@ impl ShurikenManager {
 
         Ok(Self {
             root_path: exe_dir,
-            shurikens: RwLock::new(shurikens),
-            states: RwLock::new(states),
+            shurikens: Arc::new(RwLock::new(shurikens)),
+            states: Arc::new(RwLock::new(states)),
         })
     }
 
@@ -159,7 +162,7 @@ impl ShurikenManager {
 
         env::set_current_dir(original_dir).map_err(|e| e.to_string())?;
 
-        self.update_state(name, ShurikenState::Stopped).await;
+        self.update_state(name, ShurikenState::Idle).await;
         Ok(())
     }
 
