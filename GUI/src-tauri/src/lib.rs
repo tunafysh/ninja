@@ -1,6 +1,6 @@
 use ninja::manager::ShurikenManager;
+use tauri::{LogicalSize, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-use tauri::{Manager, LogicalSize};
 
 mod commands;
 use commands::*;
@@ -10,17 +10,21 @@ use tokio::sync::Mutex;
 pub fn run() {
     log::info!("Starting Tauri application...");
     let mut builder = tauri::Builder::default();
-        #[cfg(desktop)]
-        {
-            builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let _ = app.dialog()
-                .message(format!("The deep-link works with the arguments {} was executed successfully", argv.join(", ")))
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let _ = app
+                .dialog()
+                .message(format!(
+                    "The deep-link works with the arguments {} was executed successfully",
+                    argv.join(", ")
+                ))
                 .kind(MessageDialogKind::Info)
                 .title("The deep-link works")
                 .blocking_show();
-            }));
-        }
-        builder = builder
+        }));
+    }
+    builder = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -39,7 +43,8 @@ pub fn run() {
         ])
         .setup(|app| {
             app.manage(Mutex::new(
-                tauri::async_runtime::block_on(ShurikenManager::new()).expect("Failed to spawn a shuriken manager")
+                tauri::async_runtime::block_on(ShurikenManager::new())
+                    .expect("Failed to spawn a shuriken manager"),
             ));
 
             let partial_win = app.get_webview_window("main");
@@ -47,7 +52,7 @@ pub fn run() {
             if let Some(win) = partial_win {
                 win.set_size(LogicalSize::new(900, 560))?;
             }
-            
+
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -62,7 +67,7 @@ pub fn run() {
             Ok(())
         });
 
-        builder
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

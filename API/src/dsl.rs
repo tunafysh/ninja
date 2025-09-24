@@ -1,11 +1,14 @@
-use crate::{manager::ShurikenManager, templater::{infer_value, Value}};
+use crate::{
+    manager::ShurikenManager,
+    templater::{Value, infer_value},
+};
+use anyhow::{Error, Result};
 use either::Either;
-use std::{io, path::PathBuf};
-use std::sync::Arc;
-use anyhow::{Result, Error};
-use tokio::sync::RwLock;
 use ninja_engine::NinjaEngine;
-use regex::Regex;
+use shlex::split;
+use std::sync::Arc;
+use std::{io, path::PathBuf};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -25,83 +28,100 @@ pub enum Command {
     None,
 }
 
-// ---- Comment-safe remover ----
-fn remove_comments(line: &str) -> String {
-    let mut in_quotes = false;
-    let mut result = String::new();
+// ---- Preprocessor ----
+fn parser(script: &str) -> Vec<Vec<String>> {
+    let lines: Vec<&str> = script.split('\n').collect();
 
-    for c in line.chars() {
-        match c {
-            '"' => {
-                in_quotes = !in_quotes; // toggle quotes
-                result.push(c);
+    let mut output: Vec<Vec<String>> = Vec::new();
+
+    for line in lines {
+        if let Some(tokens) = split(line) {
+            let tokens: Vec<String> = tokens
+                .into_iter()
+                .filter(|token| {
+                    let token = token.trim();
+                    !token.is_empty() && token != "="
+                })
+                .collect();
+
+            if !tokens.is_empty() {
+                output.push(tokens)
             }
-            '#' if !in_quotes => {
-                // everything after this is a comment
-                break;
-            }
-            _ => result.push(c),
         }
     }
 
-    result
-}
-
-// ---- Preprocessor ----
-fn preprocessor(script: &str) -> Vec<String> {
-    script
-        .lines()
-        .map(|line| remove_comments(line).trim().replace("=", "")) // remove comments, trim, drop '='
-        .filter(|line| !line.is_empty())                            // remove empty lines
-        .map(|line| line.to_string())
-        .collect()
+    output
 }
 
 // ---- Command Parser ----
-fn command_parser(lines: Vec<String>) -> Result<Vec<Command>> {
-    let tokenizer = Regex::new(r#"^(\w+)(?:\s+(\S+))?(?:\s+(.+))?$"#) // allow last arg to include spaces
-        .map_err(|e| Error::msg(format!("Failed to create tokenizer: {}", e)))?;
+fn command_parser(script: &str) -> Result<Vec<Command>> {
+    let tokens = parser(script);
 
     let mut commands = Vec::new();
 
-    for line in lines {
-        if let Some(caps) = tokenizer.captures(&line) {
-            let cmd = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let arg1 = caps.get(2).map(|m| m.as_str());
-            let arg2 = caps.get(3).map(|m| m.as_str());
-
-            let command = match cmd.to_lowercase().as_str() {
-                "http" => match (arg1, arg2) {
-                    (Some("start"), Some(port)) => Command::HttpStart(port.parse().unwrap_or(80)),
-                    _ => Command::None,
-                },
-                "start" => Command::Start,
-                "stop" => Command::Stop,
-                "select" => arg1.map_or(Command::None, |a| Command::Select(a.to_string())),
-                "get" => arg1.map_or(Command::None, |a| Command::Get(a.to_string())),
-                "set" => match (arg1, arg2) {
-                    (Some(k), Some(v)) => Command::Set { key: k.to_string(), value: infer_value(v) },
-                    _ => Command::None,
-                },
-                "list" => match arg1 {
-                    Some(a) if a.eq_ignore_ascii_case("state") => Command::ListState,
-                    _ => Command::List,
-                },
-                "install" => arg1.map_or(Command::None, |a| Command::Install(PathBuf::from(a))),
-                "toggle" => arg1.map_or(Command::None, |a| Command::Toggle(a.to_string())),
-                "execute" => arg1.map_or(Command::None, |a| Command::Execute(PathBuf::from(a))),
-                "exit" => Command::Exit,
-                "configure" => Command::Configure,
+    for token in tokens {
+        let command = match token[0].as_str() {
+            "http" => match (token[1].as_str(), &token[2]) {
+                ("start", port) => Command::HttpStart(port.parse().unwrap_or(80)),
                 _ => Command::None,
-            };
+            },
+            "start" => Command::Start,
+            "stop" => Command::Stop,
+            "select" => {
+                if !token[1].is_empty() {
+                    Command::Select(token[1].clone())
+                } else {
+                    Command::None
+                }
+            }
+            "get" => {
+                if !token[1].is_empty() {
+                    Command::Get(token[1].clone())
+                } else {
+                    Command::None
+                }
+            }
+            "set" => {
+                let (k, v) = (&token[1], &token[2]);
+                Command::Set {
+                key: k.clone(),
+                value: infer_value(v),
+            }
+            },
+            "list" => match token[1].clone() {
+                a if a.eq_ignore_ascii_case("state") => Command::ListState,
+                _ => Command::List,
+            },
+            "install" => {
+                if !token[1].is_empty() {
+                    Command::Install(PathBuf::from(token[1].clone()))
+                } else {
+                    Command::None
+                }
+            }
+            "toggle" => {
+                if !token[1].is_empty() {
+                    Command::Toggle(token[1].clone())
+                } else {
+                    Command::None
+                }
+            }
+            "execute" => {
+                if !token[1].is_empty() {
+                    Command::Execute(PathBuf::from(token[1].clone()))
+                } else {
+                    Command::None
+                }
+            }
+            "exit" => Command::Exit,
+            "configure" => Command::Configure,
+            _ => Command::None,
+        };
 
-            commands.push(command);
-        }
+        commands.push(command);
     }
-
     Ok(commands)
 }
-
 
 pub struct DslContext {
     pub manager: ShurikenManager,
@@ -118,8 +138,7 @@ impl DslContext {
 }
 
 pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<String>> {
-    let processed_script = preprocessor(script.as_str());
-    let parsed_commands = command_parser(processed_script)?;
+    let parsed_commands = command_parser(script.as_str())?;
 
     let mut output: Vec<String> = Vec::new();
 
@@ -127,7 +146,6 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
         match command {
             // HTTP server
             Command::HttpStart(port) => {
-                    
                 output.push(format!("HTTP server started on port {}", port));
             }
 
@@ -145,10 +163,13 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 if let Some(name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(name) {
-                        shuriken.configure().await.map_err(|e| Error::msg(e))?;
+                        shuriken.configure().await.map_err(Error::msg)?;
 
-                        output.push(format!("Generated configuration for shuriken {} successfully.", &name));
-                    } 
+                        output.push(format!(
+                            "Generated configuration for shuriken {} successfully.",
+                            &name
+                        ));
+                    }
                 }
             }
 
@@ -156,62 +177,53 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
             Command::Set { key, value } => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(shuriken_name) {
-                        if let Some(cfg) = &mut shuriken.config {
+                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                        && let Some(cfg) = &mut shuriken.config {
                             let cloned_value = value.clone();
                             cfg.fields.insert(key.clone(), value);
-                            output.push(format!("Set {} = {} for {}", key, cloned_value.render(), shuriken_name));
+                            output.push(format!(
+                                "Set {} = {} for {}",
+                                key,
+                                cloned_value.render(),
+                                shuriken_name
+                            ));
                         }
-                    }
                 }
             }
 
             Command::Get(key) => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let shurikens = ctx.manager.shurikens.read().await;
-                    if let Some(shuriken) = shurikens.get(shuriken_name) {
-                        if let Some(cfg) = &shuriken.config {
+                    if let Some(shuriken) = shurikens.get(shuriken_name)
+                        && let Some(cfg) = &shuriken.config {
                             output.push(format!("{:?} = {:?}", key, cfg.fields.get(&key)));
                         }
-                    }
                 }
             }
 
             Command::Toggle(key) => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(shuriken_name) {
-                        if let Some(cfg) = &mut shuriken.config {
-                            if let Some(Value::Bool(value)) = cfg.fields.get_mut(&key) {
+                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                        && let Some(cfg) = &mut shuriken.config
+                            && let Some(Value::Bool(value)) = cfg.fields.get_mut(&key) {
                                 *value = !*value;
                                 output.push(format!("Toggled {} to {}", key, value));
                             }
-                        }
-                    }
                 }
             }
 
             // Shuriken management
-            Command::List => {
-                match ctx.manager.list(false).await? {
-                    Either::Right(names) => output.push(format!("Shurikens: {:?}", names)),
-                    _ => {}
+            Command::List => if let Either::Right(names) = ctx.manager.list(false).await? { output.push(format!("Shurikens: {:?}", names)) },
+            Command::ListState => if let Either::Left(states) = ctx.manager.list(true).await? {
+                for (name, state) in states {
+                    output.push(format!("{} -> {:?}", name, state));
                 }
-            }
-            Command::ListState => {
-                match ctx.manager.list(true).await? {
-                    Either::Left(states) => {
-                        for (name, state) in states {
-                            output.push(format!("{} -> {:?}", name, state));
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            },
 
             Command::Start => {
                 if let Some(name) = &*ctx.selected.read().await {
-                    match ctx.manager.start(&name).await {
+                    match ctx.manager.start(name).await {
                         Ok(_) => output.push(format!("Started {}", name)),
                         Err(e) => output.push(format!("Error: {}", e)),
                     }
@@ -219,8 +231,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
             }
             Command::Stop => {
                 if let Some(name) = &*ctx.selected.read().await {
-
-                    match ctx.manager.stop(&name).await {
+                    match ctx.manager.stop(name).await {
                         Ok(_) => output.push(format!("Stopped {}", name)),
                         Err(e) => output.push(format!("Error: {}", e)),
                     }
@@ -229,16 +240,15 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
 
             Command::Execute(script_path) => {
                 let engine = NinjaEngine::new()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-                engine.execute_file(script_path.display().to_string().as_str())
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| io::Error::other(e.to_string()))?;
+                engine
+                    .execute_file(script_path.display().to_string().as_str())
+                    .map_err(|e| io::Error::other(e.to_string()))?;
             }
-            Command::Install(file_path) => {
-                match ctx.manager.install(file_path).await {
-                    Ok(_) => output.push("Installed successfully".into()),
-                    Err(e) => output.push(format!("Install failed: {}", e)),
-                }
-            }
+            Command::Install(file_path) => match ctx.manager.install(file_path).await {
+                Ok(_) => output.push("Installed successfully".into()),
+                Err(e) => output.push(format!("Install failed: {}", e)),
+            },
 
             // Exit the shuriken
             Command::Exit => {
@@ -248,7 +258,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
 
             // Unsupported
             Command::None => {
-                output.push(format!("Invalid or unsupported command:"));
+                output.push("Invalid or unsupported command.".to_string());
             }
         }
     }

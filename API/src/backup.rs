@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::io;
+use std::process::Command;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BackupFrequency {
@@ -20,10 +20,14 @@ pub fn install_backup_schedule(frequency: BackupFrequency) -> io::Result<()> {
         Command::new("schtasks")
             .args(&[
                 "/Create",
-                "/TN", "NinjaBackup",
-                "/TR", "ninja backup",
-                "/SC", schedule,
-                "/ST", "03:00", // 3 AM
+                "/TN",
+                "NinjaBackup",
+                "/TR",
+                "ninja backup",
+                "/SC",
+                schedule,
+                "/ST",
+                "03:00", // 3 AM
             ])
             .status()?;
     }

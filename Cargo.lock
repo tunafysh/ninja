@@ -3020,6 +3020,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "shlex",
  "sysinfo",
  "tar",
  "tokio",

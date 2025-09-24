@@ -1,7 +1,7 @@
-use std::{fs, path::PathBuf};
 use log::info;
-use serde::{Serialize, Deserialize};
 use mlua::{Error as LuaError, Function, Lua};
+use serde::{Deserialize, Serialize};
+use std::{fs, path::PathBuf};
 
 mod modules;
 use modules::make_modules;
@@ -13,26 +13,26 @@ pub enum InputType {
         default: Option<i64>,
         min: Option<i64>,
         max: Option<i64>,
-        value: i64
+        value: i64,
     },
     Text {
         default: Option<String>,
         regex: Option<String>,
-        value: String
+        value: String,
     },
     Boolean {
         default: Option<bool>,
-        value: bool
+        value: bool,
     },
     Choice {
         default: Option<String>,
         values: Vec<String>,
-        value: String
+        value: String,
     },
 }
 
 pub struct NinjaEngine {
-    lua: Lua
+    lua: Lua,
 }
 
 impl NinjaEngine {
@@ -68,30 +68,23 @@ impl NinjaEngine {
         self.lua.load(script).exec()
     }
 
-    pub fn execute_function(
-        &self,
-        function: &str,
-        path: &PathBuf,
-    ) -> Result<(), LuaError> {
+    pub fn execute_function(&self, function: &str, path: &PathBuf) -> Result<(), LuaError> {
         let globals = self.lua.globals();
 
         let script = std::fs::read_to_string(path)?;
-        
+
         // First try evaluating the script and capturing its return value
         let value = self.lua.load(&script).eval::<mlua::Value>()?;
-    
+
         // Try to get the function from return value if it's a table
         let func: Function = match value {
-            mlua::Value::Table(table) => {
-                table.get(function)?
-            }
+            mlua::Value::Table(table) => table.get(function)?,
             _ => {
                 // Fall back to looking in globals
                 globals.get(function)?
             }
         };
-    
+
         func.call::<()>(())
     }
-
 }

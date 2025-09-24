@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShurikenState {
-    #[serde(rename= "running")]
+    #[serde(rename = "running")]
     Running,
-    #[serde(rename= "idle")]
+    #[serde(rename = "idle")]
     Idle,
     Error(String),
 }

@@ -1,27 +1,33 @@
+use crate::{
+    templater::{Templater, Value},
+    types::PlatformPath,
+};
 use log::info;
-use serde::{Serialize, Deserialize};
-use serde_json::{json, Value as JsonValue};
-use tokio::{fs, process::Command};
-use std::{collections::HashMap, env, path::{Path, PathBuf}};
-use crate::{templater::{Templater, Value}, types::PlatformPath};
 use ninja_engine::NinjaEngine;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value as JsonValue, json};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
+use tokio::{fs, process::Command};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenConfig {
     pub config_path: PathBuf,
-    pub fields: HashMap<String, Value>
+    pub fields: HashMap<String, Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenMetadata {
     pub name: String,
-    #[serde(rename = "service-name")]
-    pub service_name: String,
+    #[serde(rename = "id")]
+    pub id: String,
     pub maintenance: MaintenanceType,
     #[serde(rename = "type")]
     pub shuriken_type: String,
-     #[serde(rename = "add-path")]
+    #[serde(rename = "add-path")]
     pub add_path: bool,
 }
 
@@ -53,21 +59,19 @@ fn kill_process_by_name(name: &str) -> bool {
     let mut sys = System::new_all();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 
-    for (_pid, process) in sys.processes() {
-        if process.name() == name {
-            if process.kill_with(Signal::Kill).unwrap_or(false) {
-                return true;
-            }
+    for process in sys.processes().values() {
+        if process.name() == name && process.kill_with(Signal::Kill).unwrap_or(false) {
+            return true;
         }
     }
     false
 }
 
 fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> bool {
-    if let Some(actual_start_time) = get_process_start_time(pid) {
-        if actual_start_time == expected_start_time {
-            return kill_process_by_pid(pid);
-        }
+    if let Some(actual_start_time) = get_process_start_time(pid)
+        && actual_start_time == expected_start_time
+    {
+        return kill_process_by_pid(pid);
     }
     false
 }
@@ -102,7 +106,7 @@ pub fn get_process_start_time(pid: u32) -> Option<u64> {
 
     #[cfg(target_os = "macos")]
     {
-        use libc::{proc_pidinfo, PROC_PIDTASKALLINFO};
+        use libc::{PROC_PIDTASKALLINFO, proc_pidinfo};
         use std::mem::MaybeUninit;
 
         let mut info = MaybeUninit::<libc::proc_taskallinfo>::uninit();
@@ -126,8 +130,10 @@ pub fn get_process_start_time(pid: u32) -> Option<u64> {
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::System::Threading::{OpenProcess, GetProcessTimes, PROCESS_QUERY_INFORMATION};
         use windows::Win32::Foundation::FILETIME;
+        use windows::Win32::System::Threading::{
+            GetProcessTimes, OpenProcess, PROCESS_QUERY_INFORMATION,
+        };
 
         unsafe {
             let handle = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
@@ -174,10 +180,12 @@ impl Shuriken {
                     cmd.args(args);
                 }
 
-                let mut process = cmd.spawn()
+                let mut process = cmd
+                    .spawn()
                     .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
-                let pid = process.id()
+                let pid = process
+                    .id()
                     .ok_or_else(|| "Failed to get PID of spawned process".to_string())?;
 
                 let start_time = get_process_start_time(pid)
@@ -193,23 +201,27 @@ impl Shuriken {
                 let lock_str = serde_json::to_string(&lockfile_data)
                     .map_err(|e| format!("Failed to serialize lockfile data: {}", e))?;
 
-                fs::write(".ninja/shuriken.lck", lock_str)
+                fs::write("shuriken.lck", lock_str)
                     .await
                     .map_err(|e| format!("Failed to write lockfile: {}", e))?;
 
-                tokio::spawn(async move { let _ = process.wait().await; });
+                tokio::spawn(async move {
+                    let _ = process.wait().await;
+                });
 
                 Ok(())
             }
             MaintenanceType::Script { script_path } => {
-
-                env::set_current_dir(".ninja").map_err(|e| e.to_string())?;
-
                 let engine = NinjaEngine::new()
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 
-                engine.execute_function("start", script_path)
-                    .map_err(|e| format!("Failed to execute function 'start' in script '{}': {}", script_path.display(), e))?;
+                engine.execute_function("start", script_path).map_err(|e| {
+                    format!(
+                        "Failed to execute function 'start' in script '{}': {}",
+                        script_path.display(),
+                        e
+                    )
+                })?;
 
                 let lockfile_data = json!({
                     "name": self.shuriken.name,
@@ -223,8 +235,6 @@ impl Shuriken {
                     .await
                     .map_err(|e| format!("Failed to write shuriken.lck: {}", e))?;
 
-                env::set_current_dir("..").map_err(|e| e.to_string())?;
-
                 Ok(())
             }
         }
@@ -235,7 +245,10 @@ impl Shuriken {
             let fields = ctx.fields.clone();
             let templater = Templater::new(fields);
 
-            templater.generate_config(ctx.config_path.clone()).await.map_err(|e| e.to_string())?;
+            templater
+                .generate_config(ctx.config_path.clone())
+                .await
+                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -247,7 +260,7 @@ impl Shuriken {
 
         match maintenance {
             MaintenanceType::Native { .. } => {
-                let lock_contents = fs::read_to_string(".ninja/shuriken.lck")
+                let lock_contents = fs::read_to_string("shuriken.lck")
                     .await
                     .map_err(|e| format!("Failed to read lockfile: {}", e))?;
 
@@ -272,8 +285,8 @@ impl Shuriken {
                     }
                 }
 
-                if Path::new(".ninja/shuriken.lck").exists() {
-                    fs::remove_file(".ninja/shuriken.lck")
+                if Path::new("shuriken.lck").exists() {
+                    fs::remove_file("shuriken.lck")
                         .await
                         .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
                 }
@@ -284,14 +297,15 @@ impl Shuriken {
                 let engine = NinjaEngine::new()
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 
-                engine.execute_function("stop", script_path)
-                    .map_err(|e| format!(
+                engine.execute_function("stop", script_path).map_err(|e| {
+                    format!(
                         "Failed to execute 'stop' in script '{}': {}",
                         script_path.display(),
                         e
-                    ))?;
+                    )
+                })?;
 
-                fs::remove_file(".ninja/shuriken.lck")
+                fs::remove_file("shuriken.lck")
                     .await
                     .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
 

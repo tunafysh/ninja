@@ -1,8 +1,13 @@
-use log::{info, error};
+use log::{error, info};
 use tokio::sync::Mutex;
 
-use ninja::{dsl::{execute_commands, DslContext}, manager::ShurikenManager, shuriken::{ShurikenConfig, ShurikenMetadata, LogsConfig}, types::ShurikenState};
-use serde::{Serialize, Deserialize};
+use ninja::{
+    dsl::{execute_commands, DslContext},
+    manager::ShurikenManager,
+    shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
+    types::ShurikenState,
+};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,7 +15,7 @@ pub struct ShurikenWithStatus {
     pub shuriken: ShurikenMetadata,
     pub config: Option<ShurikenConfig>,
     pub logs: Option<LogsConfig>,
-    pub status: ShurikenState
+    pub status: ShurikenState,
 }
 
 #[tauri::command]
@@ -58,12 +63,22 @@ pub async fn get_all_shurikens(
     info!("Retrieving all shurikens...");
     let mut output = Vec::new();
     let manager = manager.lock().await;
-    if let Some(list) = manager.list(false).await.map_err(|e| e.to_string())?.right() {
+    if let Some(list) = manager
+        .list(false)
+        .await
+        .map_err(|e| e.to_string())?
+        .right()
+    {
         for name in list {
             let shuriken = manager.get(name.clone()).await.map_err(|e| e.to_string())?;
-            if let Some(partial_status) = manager.states.read().await.get(&name){
+            if let Some(partial_status) = manager.states.read().await.get(&name) {
                 let status = partial_status.clone();
-                output.push(ShurikenWithStatus { shuriken: shuriken.shuriken, config: shuriken.config, logs: shuriken.logs, status });
+                output.push(ShurikenWithStatus {
+                    shuriken: shuriken.shuriken,
+                    config: shuriken.config,
+                    logs: shuriken.logs,
+                    status,
+                });
             }
         }
         Ok(output)
@@ -84,7 +99,12 @@ pub async fn get_running_shurikens(
         for (name, status) in list {
             if status == ShurikenState::Running {
                 let shuriken = manager.get(name).await.map_err(|e| e.to_string())?;
-                output.push(ShurikenWithStatus { shuriken: shuriken.shuriken, config: shuriken.config, logs: shuriken.logs, status });
+                output.push(ShurikenWithStatus {
+                    shuriken: shuriken.shuriken,
+                    config: shuriken.config,
+                    logs: shuriken.logs,
+                    status,
+                });
             }
         }
         Ok(output)
@@ -96,11 +116,13 @@ pub async fn get_running_shurikens(
 #[tauri::command]
 pub async fn execute_dsl(
     command: &str,
-    manager: State<'_, Mutex<ShurikenManager>>
+    manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<String, String> {
     info!("Executing command {}", command);
     let manager = manager.blocking_lock();
     let context = DslContext::new(manager.clone());
-    let res = execute_commands(&context, command.to_string()).await.map_err(|e| e.to_string())?;
+    let res = execute_commands(&context, command.to_string())
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(res.join("\n"))
 }

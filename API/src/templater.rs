@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use tokio::fs;
 
 #[derive(Debug)]
@@ -19,7 +19,11 @@ impl Display for TemplateError {
                 write!(f, "An unexpected internal error occurred. Message: {}", msg)
             }
             TemplateError::NotFound(tmpl) => write!(f, "Template {} not found!", tmpl),
-            TemplateError::PathNotFound(path) => write!(f, "Path {} not found or it doesn't exist at all", path.display())
+            TemplateError::PathNotFound(path) => write!(
+                f,
+                "Path {} not found or it doesn't exist at all",
+                path.display()
+            ),
         }
     }
 }
@@ -82,9 +86,7 @@ pub struct Templater {
 
 impl Templater {
     pub fn new(context: HashMap<String, Value>) -> Self {
-        Self {
-            context,
-        }
+        Self { context }
     }
 
     pub fn parse_template(&self, template: &str) -> Result<String, TemplateError> {
@@ -99,32 +101,36 @@ impl Templater {
                 let mut parts = expr.split('.');
                 let first = parts.next();
 
-                if let Some(root_key) = first {
-                    if let Some(root_val) = self.context.get(root_key) {
-                        let path = parts.collect::<Vec<_>>().join(".");
-                        let val = if path.is_empty() {
-                            Some(root_val)
-                        } else {
-                            root_val.get_path(&path)
-                        };
-                        return val.map(|v| v.render()).unwrap_or_else(|| format!("{{{{ {} }}}}", expr));
-                    }
+                if let Some(root_key) = first
+                    && let Some(root_val) = self.context.get(root_key)
+                {
+                    let path = parts.collect::<Vec<_>>().join(".");
+                    let val = if path.is_empty() {
+                        Some(root_val)
+                    } else {
+                        root_val.get_path(&path)
+                    };
+                    return val
+                        .map(|v| v.render())
+                        .unwrap_or_else(|| format!("{{{{ {} }}}}", expr));
                 }
 
                 // If not found, keep the placeholder intact
                 format!("{{{{ {} }}}}", expr)
             })
             .to_string())
-    }  
+    }
 
     pub async fn generate_config(&self, config_path: PathBuf) -> Result<(), TemplateError> {
         let template_path = PathBuf::from(".ninja/config.tmpl");
         let template_path_err = template_path.clone(); //for error purposes
-        let template_file = fs::read_to_string(template_path).await.map_err(|_| {
-            TemplateError::PathNotFound(template_path_err)
-        })?;
-        let parsed_template = &self.parse_template(&template_file.as_str())?;
+        let template_file = fs::read_to_string(template_path)
+            .await
+            .map_err(|_| TemplateError::PathNotFound(template_path_err))?;
+        let parsed_template = &self.parse_template(template_file.as_str())?;
         let config_path_err = config_path.clone();
-        Ok(fs::write(config_path, parsed_template).await.map_err(|_| TemplateError::PathNotFound(config_path_err))?)
-    }  
+        fs::write(config_path, parsed_template)
+            .await
+            .map_err(|_| TemplateError::PathNotFound(config_path_err))
+    }
 }

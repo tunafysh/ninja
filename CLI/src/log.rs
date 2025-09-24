@@ -1,8 +1,8 @@
+use file_rotate::{ContentLimit, FileRotate, suffix::AppendCount};
 use log::LevelFilter;
-use file_rotate::{FileRotate, ContentLimit, suffix::AppendCount};
+use owo_colors::OwoColorize;
 use std::io::Write;
 use std::sync::Mutex;
-use owo_colors::OwoColorize;
 
 // Custom writer that wraps FileRotate
 pub struct RotatingWriter {
@@ -31,17 +31,27 @@ impl Write for RotatingWriter {
 
 pub fn setup_logger(level: LevelFilter) -> Result<(), fern::InitError> {
     let log_path = match std::env::consts::OS {
-        "linux" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/.local/share/com.tunafysh.ninja/logs/shurikenctl.log"),
-        "macos" => format!("{}{}",std::env::var("HOME").expect("Failed to get environment variable"), "/Library/Application Support/com.tunafysh.ninja/logs/shurikenctl.log"),
-        "windows" => format!("{}{}",std::env::var("LOCALAPPDATA").expect("Failed to get environment variable"), "\\com.tunafysh.ninja\\logs\\shurikenctl.log"),
+        "linux" => format!(
+            "{}{}",
+            std::env::var("HOME").expect("Failed to get environment variable"),
+            "/.local/share/com.tunafysh.ninja/logs/shurikenctl.log"
+        ),
+        "macos" => format!(
+            "{}{}",
+            std::env::var("HOME").expect("Failed to get environment variable"),
+            "/Library/Application Support/com.tunafysh.ninja/logs/shurikenctl.log"
+        ),
+        "windows" => format!(
+            "{}{}",
+            std::env::var("LOCALAPPDATA").expect("Failed to get environment variable"),
+            "\\com.tunafysh.ninja\\logs\\shurikenctl.log"
+        ),
         _ => "logs/shurikenctl.log".to_string(),
     };
 
     // Ensure the directory exists
     if let Some(parent) = std::path::Path::new(&log_path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            fern::InitError::Io(e)
-        })?;
+        std::fs::create_dir_all(parent).map_err(fern::InitError::Io)?;
     }
 
     // Configure log rotation

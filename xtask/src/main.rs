@@ -1,5 +1,5 @@
-use std::{fs, path::PathBuf, process::Command};
 use clap::{Parser, Subcommand};
+use std::{fs, path::PathBuf, process::Command};
 
 #[derive(Parser)]
 #[command(name = "xtask")]
@@ -27,22 +27,22 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     match cli.command {
         Commands::BuildLibs => build_library(cli.debug),
-        Commands::BuildCLI =>{
+        Commands::BuildCLI => {
             build_library(cli.debug);
             build_commands();
-        },
+        }
         Commands::BuildNinja => {
             build_library(cli.debug);
             build_gui();
-        },
+        }
         Commands::BuildAll => {
             build_library(cli.debug);
             build_commands();
             build_gui();
-        },
+        }
         Commands::Clean => clean_binaries(),
     }
 }
@@ -66,7 +66,12 @@ fn detect_target_triple() -> String {
 
 fn build_library(debug: bool) {
     Command::new("cargo")
-        .args(["build", if debug { "--debug" } else { "--release"}, "--package", "ninja-api"])
+        .args([
+            "build",
+            if debug { "--debug" } else { "--release" },
+            "--package",
+            "ninja-api",
+        ])
         .status()
         .expect("building the library failed");
 }
@@ -75,9 +80,7 @@ fn build_commands() {
     let target = detect_target_triple();
     let release_dir = PathBuf::from("target/release");
 
-    let binaries = vec![
-        ("shurikenctl", "ninja-cli"),
-    ];
+    let binaries = vec![("shurikenctl", "ninja-cli")];
 
     for (bin, pkg) in binaries {
         let status = Command::new("cargo")
@@ -119,9 +122,7 @@ fn clean_binaries() {
     let target = detect_target_triple();
     let release_dir = PathBuf::from("target/release");
 
-    let binaries = vec![
-        "ninja_cli",
-    ];
+    let binaries = vec!["ninja_cli"];
 
     for bin in binaries {
         let renamed = release_dir.join(if cfg!(windows) {

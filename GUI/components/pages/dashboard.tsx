@@ -18,13 +18,17 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
   const { startShuriken, stopShuriken } = useShuriken();
   
   const toggleShuriken = async (shuriken: Shuriken) => {
-    if (shuriken.shuriken.type !== "Daemon") return
-    if (shuriken.shuriken.status === "running") {
+    if (shuriken.shuriken.type !== "daemon") return
+    if (shuriken.status === "running") {
       await stopShuriken(shuriken.shuriken.name)
     } else {
       await startShuriken(shuriken.shuriken.name)
     }
   }
+
+  useEffect(() => {
+    onRefresh()
+  }, [])
 
   useEffect(() => {
     console.log(shurikens)
@@ -48,18 +52,18 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                   <Card key={service.shuriken.name} className="bg-card border-border py-0">
                     <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                       <div className="flex items-center gap-1">
-                        <div className={`p-1.5 rounded-md mr-4 bg-muted ${service.shuriken.status === "running" ? "bg-green-500" : "bg-primary/10"}`} />
+                        <div className={`p-1.5 rounded-md mr-4 ${service.status === "running" ? "bg-green-500" : "bg-muted"}`} />
                         <CardTitle className="text-sm md:text-base">{service.shuriken.name}</CardTitle>
                       </div>
                     </CardHeader>
-                    <CardFooter className={`h-full p-3 pr-2 md:p-4 ${service.shuriken.type === "Daemon" ? "pt-0" : "mt-4"} flex gap-2`}>
+                    <CardFooter className={`h-full p-3 pr-2 md:p-4 ${service.shuriken.type === "daemon" ? "pt-0" : "mt-4"} flex gap-2`}>
                       <Button
-                        variant={service.shuriken.type === "Daemon" ? (service.shuriken.status === "running" ? "destructive" : "default") : "outline"}
+                        variant={service.shuriken.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                         className="text-xs md:text-sm h-8 px-0"
                         style={{ width: "90%" }}
                         onClick={() => toggleShuriken(service)}
                       >
-                        {service.shuriken.type === "Daemon" ? (service.shuriken.status === "running" ? "Stop" : "Start") : "Manage"}
+                        {service.shuriken.type === "daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -91,15 +95,15 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                   {shurikens.map((service) => (
                     <TableRow key={service.shuriken.name}>
                       <TableCell className="text-center">{service.shuriken.name}</TableCell>
-                      <TableCell className="text-center">{service.shuriken.status}</TableCell>
-                      <TableCell className="text-center">{service.shuriken.type === "Daemon"? "Daemon": "Executable"}</TableCell>
+                      <TableCell className="text-center">{service.status}</TableCell>
+                      <TableCell className="text-center">{service.shuriken.type === "daemon"? "daemon": "executable"}</TableCell>
                       <TableCell className="flex justify-center">
                         <Button
-                          variant={service.shuriken.type === "Daemon" ? (service.shuriken.status === "running" ? "destructive" : "default") : "outline"}
+                          variant={service.shuriken.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                           style={{ width: "40%" }}
                           onClick={() => toggleShuriken(service)}
                         >
-                          {service.shuriken.type === "Daemon" ? (service.shuriken.status === "running" ? "Stop" : "Start") : "Manage"}
+                          {service.shuriken.type === "daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
                         </Button>
                       </TableCell>
                     </TableRow>
