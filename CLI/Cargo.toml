@@ -8,7 +8,7 @@ path = "src/main.rs"
 name = "shurikenctl"
 
 [dependencies]
-clap = { version = "4.5.37", default-features = false, features = ["cargo"] }
+clap = { version = "4.5.37", default-features = false, features = ["cargo", "derive", "help"] }
 owo-colors = { version = "4.2.0", features = ["supports-color"] }
 tokio = { version = "1.45.1", features = ["full"] }
 ninja-engine = { path = "../NSE"}

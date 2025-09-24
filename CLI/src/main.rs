@@ -1,7 +1,7 @@
+use clap_verbosity_flag::Verbosity;
 // main.rs
 use ::log::info;
 use clap::{Args, Parser, Subcommand};
-use clap_verbosity_flag::Verbosity;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
     api::server,
@@ -27,51 +27,40 @@ use repl::repl_mode;
 #[derive(Parser)]
 #[command(name = "ninja")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Ninja CLI - The command line version of ninja")]
-#[command(long_about = "test")]
-pub struct NinjaCli {
+#[command(about = "shurikenctl - The command line version of Ninja")]
+struct NinjaCli {
     #[command(subcommand)]
-    pub command: Option<Commands>,
-
-    #[arg(long)]
-    pub repl: bool,
+    pub command: Commands,
 
     #[arg(long, hide = true)]
     pub mcp: bool,
 
+    #[arg(long)]
+    pub repl: bool,
+
     #[command(flatten)]
-    pub verbose: Verbosity,
+    verbose: Verbosity,
 }
 
 #[derive(Subcommand)]
-pub enum Commands {
+enum Commands {
     /// Start a shuriken
     Start(StartArgs),
     /// Stop a shuriken
     Stop(StopArgs),
     /// Run a script using the Ninja Runtime
     Run(RunArgs),
-    /// List all shuriken services and their statuses
+    /// List shuriken services with their statuses
     List,
-    /// Generate a manifest file
+    /// Generate a new shuriken with specified manifest
     Manifest,
-    /// Start shurikenctl as an API endpoint (hidden)
+    /// Start up the HTTP API with a specified port (optional but recommended).
     Api(ApiArgs),
-    /// Configure a shuriken using the config DSL specified in docs
-    Config(ConfigArgs),
 }
 
 #[derive(Args)]
-pub struct ConfigArgs {
-    #[arg(help = "the name of the shuriken to configure.")]
-    pub shuriken: String,
-    #[arg(last = true)]
-    pub command: String,
-}
-
-#[derive(Args)]
-#[clap(hide = true)]
 pub struct ApiArgs {
+    /// The port for the HTTP api to use
     pub port: u16,
 }
 
@@ -94,12 +83,19 @@ pub struct RunArgs {
     pub file_script: Option<String>,
 }
 
+#[derive(Args)]
+pub struct ListArgs {
+    /// Show all shurikens and their statuses
+    #[arg(short = 'f', long)]
+    pub full: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = NinjaCli::parse();
 
     // Initialize logger
-    setup_logger(args.verbose.into())?;
+    setup_logger(::log::LevelFilter::Info)?;
 
     if args.repl {
         repl_mode().await?;
@@ -118,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
     match args.command {
-        Some(Commands::Start(shuriken_args)) => {
+        Commands::Start(shuriken_args) => {
             let shuriken_name = shuriken_args.shuriken;
 
             println!("Starting shuriken {}...\n", shuriken_name);
@@ -131,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             }
         }
-        Some(Commands::Stop(shuriken_args)) => {
+        Commands::Stop(shuriken_args) => {
             let shuriken_name = shuriken_args.shuriken;
 
             println!("Stopping shuriken {}...\n", shuriken_name);
@@ -144,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             }
         }
-        Some(Commands::List) => {
+        Commands::List => {
             let partial_shurikens = manager.list(true).await?.left();
             if partial_shurikens.is_some() {
                 let shurikens = partial_shurikens.unwrap();
@@ -163,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!(); // for styling purposes
         }
-        Some(Commands::Run(script_args)) => {
+        Commands::Run(script_args) => {
             let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
             let rt = ninja_engine::NinjaEngine::new().map_err(|e| {
@@ -183,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some(Commands::Manifest) => {
+        Commands::Manifest => {
             let theme = ColorfulTheme::default();
             let maintenance_types = ["native", "script"];
 
@@ -317,17 +313,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Manifest for '{}' generated successfully!", name);
         }
-        Some(Commands::Api(args)) => {
+        Commands::Api(args) => {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;
         }
-        Some(Commands::Config(args)) => {
-            info!(
-                "Configuring shuriken {} with parameters {}",
-                args.shuriken, args.command
-            )
-        }
-        None => eprintln!("No subcommand selected. Exiting..."),
     }
 
     Ok(())

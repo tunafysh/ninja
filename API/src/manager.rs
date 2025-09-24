@@ -23,11 +23,9 @@ impl ShurikenManager {
 
         // Create shurikens directory if it doesn't exist
         if !shurikens_dir.exists() {
-            fs::create_dir(&shurikens_dir).await.map_err(|e| {
-                io::Error::other(
-                    format!("Failed to create directory: {}", e),
-                )
-            })?;
+            fs::create_dir(&shurikens_dir)
+                .await
+                .map_err(|e| io::Error::other(format!("Failed to create directory: {}", e)))?;
         }
 
         let mut shurikens = HashMap::new();
@@ -47,41 +45,41 @@ impl ShurikenManager {
             match entry {
                 Ok(path) => {
                     let partial_path = path.into_path();
+                    println!("{:#?}", partial_path.clone());
                     let manifest_path = partial_path.clone();
                     let manifest_content = fs::read_to_string(manifest_path.clone())
                         .await
                         .map_err(|e| {
-                            io::Error::other(
-                                format!(
-                                    "Failed to read manifest {}: {}",
-                                    manifest_path.display(),
-                                    e
-                                ),
-                            )
+                            io::Error::other(format!(
+                                "Failed to read manifest {}: {}",
+                                manifest_path.display(),
+                                e
+                            ))
                         })?;
                     if let Some(path) = partial_path.parent()
-                        && let Some(parent) = path.parent() {
-                            let name = parent
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .map(|s| s.to_owned())
-                                .ok_or_else(|| {
-                                    io::Error::new(
-                                        io::ErrorKind::InvalidInput,
-                                        "Invalid directory name",
-                                    )
-                                })?;
+                        && let Some(parent) = path.parent()
+                    {
+                        let name = parent
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|s| s.to_owned())
+                            .ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::InvalidInput,
+                                    "Invalid directory name",
+                                )
+                            })?;
 
-                            let manifest: Shuriken =
-                                toml::from_str(&manifest_content).map_err(|e| {
-                                    io::Error::new(
-                                        io::ErrorKind::InvalidData,
-                                        format!("Failed to parse TOML: {}", e),
-                                    )
-                                })?;
+                        let manifest: Shuriken =
+                            toml::from_str(&manifest_content).map_err(|e| {
+                                io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    format!("Failed to parse TOML: {}", e),
+                                )
+                            })?;
 
-                            shurikens.insert(name, manifest);
-                        }
+                        shurikens.insert(name, manifest);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Invalid glob entry: {}", e);
@@ -107,7 +105,6 @@ impl ShurikenManager {
                         && let Some(name) = parent.file_name()
                     {
                         states.insert(name.display().to_string(), ShurikenState::Running);
-                        
                     }
                 }
                 Err(e) => {

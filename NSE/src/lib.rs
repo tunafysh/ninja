@@ -51,7 +51,7 @@ impl NinjaEngine {
         globals.set("http", http)?;
         globals.set("log", log)?;
 
-        let engine = Self { lua: lua };
+        let engine = Self { lua };
         Ok(engine)
     }
 

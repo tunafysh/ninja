@@ -84,10 +84,10 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
             "set" => {
                 let (k, v) = (&token[1], &token[2]);
                 Command::Set {
-                key: k.clone(),
-                value: infer_value(v),
+                    key: k.clone(),
+                    value: infer_value(v),
+                }
             }
-            },
             "list" => match token[1].clone() {
                 a if a.eq_ignore_ascii_case("state") => Command::ListState,
                 _ => Command::List,
@@ -178,16 +178,17 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name)
-                        && let Some(cfg) = &mut shuriken.config {
-                            let cloned_value = value.clone();
-                            cfg.fields.insert(key.clone(), value);
-                            output.push(format!(
-                                "Set {} = {} for {}",
-                                key,
-                                cloned_value.render(),
-                                shuriken_name
-                            ));
-                        }
+                        && let Some(cfg) = &mut shuriken.config
+                    {
+                        let cloned_value = value.clone();
+                        cfg.fields.insert(key.clone(), value);
+                        output.push(format!(
+                            "Set {} = {} for {}",
+                            key,
+                            cloned_value.render(),
+                            shuriken_name
+                        ));
+                    }
                 }
             }
 
@@ -195,9 +196,10 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
                     let shurikens = ctx.manager.shurikens.read().await;
                     if let Some(shuriken) = shurikens.get(shuriken_name)
-                        && let Some(cfg) = &shuriken.config {
-                            output.push(format!("{:?} = {:?}", key, cfg.fields.get(&key)));
-                        }
+                        && let Some(cfg) = &shuriken.config
+                    {
+                        output.push(format!("{:?} = {:?}", key, cfg.fields.get(&key)));
+                    }
                 }
             }
 
@@ -206,20 +208,27 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name)
                         && let Some(cfg) = &mut shuriken.config
-                            && let Some(Value::Bool(value)) = cfg.fields.get_mut(&key) {
-                                *value = !*value;
-                                output.push(format!("Toggled {} to {}", key, value));
-                            }
+                        && let Some(Value::Bool(value)) = cfg.fields.get_mut(&key)
+                    {
+                        *value = !*value;
+                        output.push(format!("Toggled {} to {}", key, value));
+                    }
                 }
             }
 
             // Shuriken management
-            Command::List => if let Either::Right(names) = ctx.manager.list(false).await? { output.push(format!("Shurikens: {:?}", names)) },
-            Command::ListState => if let Either::Left(states) = ctx.manager.list(true).await? {
-                for (name, state) in states {
-                    output.push(format!("{} -> {:?}", name, state));
+            Command::List => {
+                if let Either::Right(names) = ctx.manager.list(false).await? {
+                    output.push(format!("Shurikens: {:?}", names))
                 }
-            },
+            }
+            Command::ListState => {
+                if let Either::Left(states) = ctx.manager.list(true).await? {
+                    for (name, state) in states {
+                        output.push(format!("{} -> {:?}", name, state));
+                    }
+                }
+            }
 
             Command::Start => {
                 if let Some(name) = &*ctx.selected.read().await {
@@ -239,8 +248,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
             }
 
             Command::Execute(script_path) => {
-                let engine = NinjaEngine::new()
-                    .map_err(|e| io::Error::other(e.to_string()))?;
+                let engine = NinjaEngine::new().map_err(|e| io::Error::other(e.to_string()))?;
                 engine
                     .execute_file(script_path.display().to_string().as_str())
                     .map_err(|e| io::Error::other(e.to_string()))?;
