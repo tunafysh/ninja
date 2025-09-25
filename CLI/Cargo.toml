@@ -9,17 +9,16 @@ name = "shurikenctl"
 
 [dependencies]
 clap = { version = "4.5.37", default-features = false, features = ["cargo", "derive", "help"] }
-owo-colors = { version = "4.2.0", features = ["supports-color"] }
-tokio = { version = "1.45.1", features = ["full"] }
+owo-colors = { version = "4.2.0", default-features = false, features = ["supports-color"] }
+tokio = { version = "1.45.1", default-features = false }
 ninja-engine = { path = "../NSE"}
-log = "0.4.27"
-fern = { version = "0.7.1", features = ["colored", "chrono"] }
-chrono = "0.4.41"
-file-rotate = "0.8.0"
+log = { version = "0.4.27", default-features = false }
+fern = { version = "0.7.1", default-features = false, features = ["colored", "chrono"] }
+chrono = { version = "0.4.41", default-features = false }
+file-rotate = { version = "0.8.0", default-features = false }
 ninja-api = { path = "../API" }
 ninja-mcp = { path = "../MCP" }
-clap-verbosity-flag = "3.0.3"
-serde = "1.0.219"
-toml = "0.9.4"
-dialoguer = { version = "0.11.0", features = ["completion"] }
-terminal_size = "0.4.2"
+clap-verbosity-flag = { version = "3.0.3", default-features = true }
+serde = { version = "1.0.219", default-features = false }
+toml = { version = "0.9.4", default-features = false, features = ["display", "serde"] }
+dialoguer = { version = "0.11.0", default-features = false }

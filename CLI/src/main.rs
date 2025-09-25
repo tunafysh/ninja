@@ -30,7 +30,7 @@ use repl::repl_mode;
 #[command(about = "shurikenctl - The command line version of Ninja")]
 struct NinjaCli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 
     #[arg(long, hide = true)]
     pub mcp: bool,
@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = NinjaCli::parse();
 
     // Initialize logger
-    setup_logger(::log::LevelFilter::Info)?;
+    setup_logger(args.verbose.into())?;
 
     if args.repl {
         repl_mode().await?;
@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to initialize service manager: {}", e))?;
 
     match args.command {
-        Commands::Start(shuriken_args) => {
+        Some(Commands::Start(shuriken_args)) => {
             let shuriken_name = shuriken_args.shuriken;
 
             println!("Starting shuriken {}...\n", shuriken_name);
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             }
         }
-        Commands::Stop(shuriken_args) => {
+        Some(Commands::Stop(shuriken_args)) => {
             let shuriken_name = shuriken_args.shuriken;
 
             println!("Stopping shuriken {}...\n", shuriken_name);
@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             }
         }
-        Commands::List => {
+        Some(Commands::List) => {
             let partial_shurikens = manager.list(true).await?.left();
             if partial_shurikens.is_some() {
                 let shurikens = partial_shurikens.unwrap();
@@ -159,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!(); // for styling purposes
         }
-        Commands::Run(script_args) => {
+        Some(Commands::Run(script_args)) => {
             let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
             let rt = ninja_engine::NinjaEngine::new().map_err(|e| {
@@ -179,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Commands::Manifest => {
+        Some(Commands::Manifest) => {
             let theme = ColorfulTheme::default();
             let maintenance_types = ["native", "script"];
 
@@ -313,10 +313,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Manifest for '{}' generated successfully!", name);
         }
-        Commands::Api(args) => {
+        Some(Commands::Api(args)) => {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;
         }
+        None => {}
     }
 
     Ok(())

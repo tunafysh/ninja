@@ -32,8 +32,8 @@ pub async fn repl_mode() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let mut prompt = "ninja".to_string();
         match rt.selected.read().await.clone() {
-            Some(e) => prompt.push_str(format!(" / {}> ", e).as_str()),
-            None => prompt.push_str(" > "),
+            Some(e) => prompt.push_str(format!("/{}> ", e).as_str()),
+            None => prompt.push_str("> "),
         };
 
         let input = get_input(prompt.as_str())?;

@@ -45,7 +45,6 @@ impl ShurikenManager {
             match entry {
                 Ok(path) => {
                     let partial_path = path.into_path();
-                    println!("{:#?}", partial_path.clone());
                     let manifest_path = partial_path.clone();
                     let manifest_content = fs::read_to_string(manifest_path.clone())
                         .await
@@ -113,7 +112,6 @@ impl ShurikenManager {
             }
         }
 
-        println!("{:#?}", shurikens);
 
         Ok(Self {
             root_path: exe_dir,
@@ -214,8 +212,6 @@ impl ShurikenManager {
                 values.push((k.clone(), v.clone()));
             }
 
-            println!("{:#?}", values);
-
             Ok(Left(values))
         } else {
             let mut values: Vec<String> = Vec::new();
@@ -225,7 +221,6 @@ impl ShurikenManager {
                 values.push(key.clone())
             }
 
-            println!("{:#?}", values);
             Ok(Right(values))
         }
     }

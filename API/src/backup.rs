@@ -1,5 +1,8 @@
-use std::io;
+use std::{io, env};
 use std::process::Command;
+use opendal::Operator;
+use opendal::services::{Fs, Gdrive};
+use tokio::fs;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BackupFrequency {
@@ -81,5 +84,29 @@ pub fn uninstall_backup_schedule() -> io::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+pub enum AuthProvider{
+    Google,
+    Microsoft
+}
+
+pub async fn create_backup() -> Result<(), String> {
+    let exe_path = env::current_exe().map_err(|e| e.to_string())?;
+    let path = exe_path.join("backups");
+    if !path.exists() {
+        fs::create_dir_all(path.clone()).await.map_err(|e| e.to_string())?;
+    }
+
+    let path_str = path.clone();
+
+    let fs_builder = Fs::default().root(&path_str.display().to_string());
+    let _fs_op = Operator::new(fs_builder).map_err(|e| e.to_string())?.finish();
+
+    let gdrive_builder = Gdrive::default();
+    let _gdrive_op = Operator::new(gdrive_builder).map_err(|e| e.to_string())?.finish();
+
+    
     Ok(())
 }

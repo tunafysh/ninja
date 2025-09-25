@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::{fs, path::PathBuf, process::Command};
+use owo_colors::OwoColorize;
 
 #[derive(Parser)]
 #[command(name = "xtask")]
@@ -31,7 +32,6 @@ fn main() {
     match cli.command {
         Commands::BuildLibs => build_library(cli.debug),
         Commands::BuildCLI => {
-            build_library(cli.debug);
             build_commands();
         }
         Commands::BuildNinja => {
@@ -39,7 +39,7 @@ fn main() {
             build_gui();
         }
         Commands::BuildAll => {
-            build_library(cli.debug);
+        //  build_library(cli.debug); //for later when i finish the FFI
             build_commands();
             build_gui();
         }
@@ -104,7 +104,7 @@ fn build_commands() {
         let _ = fs::remove_file(&renamed); // clean existing
         fs::rename(&orig, &renamed).expect("rename failed");
 
-        println!("Renamed {} → {}", orig.display(), renamed.display());
+        println!("{:>12} {} -> {}", "Renamed".green().bold(), orig.display(), renamed.display());
     }
 }
 
@@ -133,7 +133,7 @@ fn clean_binaries() {
 
         if renamed.exists() {
             fs::remove_file(&renamed).expect("Failed to remove binary");
-            println!("Removed {}", renamed.display());
+            println!("{:>12} {}", "Removed".green().bold(), renamed.display());
         }
     }
 }
