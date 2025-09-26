@@ -11,7 +11,6 @@ import { HomeIcon, Cog, FileText, Database, Sparkle } from "lucide-react"
 import Armory from "@/components/pages/armory"
 import { Toaster } from "@/components/ui/sonner"
 import { useShuriken } from "@/hooks/use-shuriken"
-import DslCommandPalette from "@/components/mini-repl"
 
 const tabs = ["Dashboard", "Configuration", "Logs", "Backup", "Armory"]
 
@@ -136,7 +135,7 @@ export default function Page() {
 
       {/* Command menu */}
       {commandOpened && (
-        <DslCommandPalette commandOpened setCommandOpened={setCommandOpened} />
+        <p>work in progress</p>
       )}
 
       {/* Main content container with rounded bottom corners */}
