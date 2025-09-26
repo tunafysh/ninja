@@ -61,7 +61,7 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
-                let window = _app.get_webview_window("main").unwrap();
+                let window = app.get_webview_window("main").unwrap();
                 window.set_shadow(true).unwrap();
             };
             Ok(())
