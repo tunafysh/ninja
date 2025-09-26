@@ -14,12 +14,6 @@ const tabs = ["Ninja"]
 
 export default function Configuration({configtmp, setConfigtmp}: {configtmp?: NinjaConfig, setConfigtmp?: Dispatch<SetStateAction<NinjaConfig>>}) {
   const [config, setConfig] = useState<NinjaConfig>({
-    mcp: {
-      enabled: false,
-      transport: "stdio",
-      hostname: "localhost",
-      port: 8080,
-    },
     devMode: false,
     serverurl: "https://ninja-rs.vercel.app",
     checkUpdates: true,
@@ -42,119 +36,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
             </Button>
         </div>
         <TabsContent value="ninja">
-          <AnimatePresence>
-            <motion.div
-              className="w-full p-4 bg-muted rounded-md"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex items-center justify-between w-full px-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Enable MCP</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="mcp-switch"
-                    onCheckedChange={(e) =>
-                      setConfig({
-                        mcp: {
-                          enabled: e,
-                          transport: config.mcp.transport,
-                          hostname: config.mcp.hostname || "localhost",
-                          port: config.mcp.port || 8080,
-                        },
-                        serverurl: config.serverurl,
-                        checkUpdates: config.checkUpdates,
-                        devMode: config.devMode
-                      })
-                    }
-
-                    checked={config.mcp.enabled}
-                  />
-                </div>
-              </div>
-                  
-              {/* Animate the config fields when MCP is enabled */}
-              {config.mcp.enabled && (
-                <motion.div
-                  key="mcp-options"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 1, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <motion.div className="space-y-2 flex justify-between mt-4">
-                    <Label htmlFor="mcp-transport" className="text-sm font-medium">
-                      Transport
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <Label
-                        className={`${
-                          config.mcp.transport === "stdio"
-                            ? "text-foreground"
-                            : "text-foreground/50"
-                        }`}
-                      >
-                        STDIO
-                      </Label>
-                      <Switch
-                        id="mcp-transport"
-                        onCheckedChange={(e) =>
-                          setConfig({
-                            mcp: {
-                              ...config.mcp,
-                              transport: e ? "http" : "stdio",
-                            },
-                            serverurl: config.serverurl,
-                            checkUpdates: config.checkUpdates,
-                            devMode: config.devMode
-                          })
-                        }
-                      />
-                      <Label
-                        className={`${
-                          config.mcp.transport === "http"
-                            ? "text-foreground"
-                            : "text-foreground/50"
-                        }`}
-                      >
-                        HTTP
-                      </Label>
-                    </div>
-                  </motion.div>
-                      
-                  <motion.div
-                    className={`${
-                      config.mcp.transport === "http"
-                        ? "text-foreground"
-                        : "text-foreground/50"
-                    }`}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <h2 className="p-2 py-4 text-lg">Transport options</h2>
-                    <div className="flex justify-between ml-2 mt-2">
-                      <p>Port</p>
-                      <Input
-                        type="number"
-                        placeholder="8080"
-                        className="w-48"
-                        min={1025}
-                        max={65535}
-                        disabled={config.mcp.transport !== "http"}
-                      />
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-            </motion.div>
-          </AnimatePresence>
           
           <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -170,7 +51,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
 
                 <div className="flex items-center gap-2">
                   <Input onChange={(e) => setConfig({
-                    mcp: config.mcp,
                     serverurl: e.target.value,
                     checkUpdates: config.checkUpdates,
                     devMode: config.devMode
@@ -194,7 +74,6 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
                 <div className="flex items-center gap-2">
                   <Switch onCheckedChange={(e) => {
                     setConfig({
-                      mcp:config.mcp,
                       serverurl: config.serverurl,
                       checkUpdates: e,
                       devMode: config.devMode

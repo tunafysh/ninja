@@ -171,9 +171,7 @@ export function ApplicationMenubar({ platform, gridView, setGridView, activeTab,
         {platform !== "mac" && (
           <div className="flex items-center">
             <WindowControls
-              //@ts-ignore
               onMinimize={() => Window.getCurrent().minimize()}
-              //@ts-ignore
               onClose={() => activeWindow == "Forge" || activeWindow == "Armory"? invoke("toggle_"+activeWindow.toLowerCase()+"_window").catch((reason) => console.error(reason)) :Window.getCurrent().close()}
             />
           </div>

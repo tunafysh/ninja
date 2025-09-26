@@ -107,7 +107,7 @@ const AnimatedTabs = React.forwardRef<HTMLDivElement, AnimatedTabsProps>(
 )
 AnimatedTabs.displayName = "AnimatedTabs"
 
-interface AnimatedTabsListProps extends React.HTMLAttributes<HTMLDivElement> {}
+type AnimatedTabsListProps = React.HTMLAttributes<HTMLDivElement>
 
 const AnimatedTabsList = React.forwardRef<HTMLDivElement, AnimatedTabsListProps>(({ className, ...props }, ref) => {
   const { hoverStyle, hoveredIndex, activeStyle } = React.useContext(TabsContext)
