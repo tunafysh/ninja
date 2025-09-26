@@ -97,7 +97,7 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
               <div className="grid gap-4 grid-cols-4 mt-10">
                   {
                     shurikens.map((shuriken) => (
-                      <ArmoryCard shuriken={shuriken} />
+                      <ArmoryCard shuriken={shuriken} key={shuriken.name} />
                     ))
                   }
               </div>
