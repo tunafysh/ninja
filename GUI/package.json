@@ -49,8 +49,7 @@
     "react-resizable-panels": "^2.1.9",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
-    "tw-animate-css": "^1.3.6",
-    "window": "link:@tauri-apps\\api\\window"
+    "tw-animate-css": "^1.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
