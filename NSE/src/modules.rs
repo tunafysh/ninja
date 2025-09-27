@@ -299,7 +299,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     // ================= http module =================
 
-    //TODO find a reqwest substitute bc bro this shi sucks
+    //TODO find a reqwest substitute bc bro this shi sucks (actually just make the function async.
     // http_module.set("fetch", lua.create_function(|_, (url, method, headers): (String, Option<String>, Option<Table>)| {
     //     make_request(url, method, headers)
     // })?)?;
@@ -347,4 +347,116 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         http_module,
         log_module,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mlua::Lua;
+
+    fn setup_lua() -> (Lua, (Table, Table, Table, Table, Table, Table, Table)) {
+        let lua = Lua::new();
+        let modules = make_modules(&lua).expect("failed to create modules");
+        (lua, modules)
+    }
+
+    #[test]
+    fn test_fs_write_and_read() {
+        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua();
+        let path = "testfile.txt";
+
+        // Write a file
+        let write_fn: mlua::Function = fs_module.get("write").unwrap();
+        write_fn.call::<()>((path.to_string(), "hello world".to_string())).unwrap();
+
+        // Read it back
+        let read_fn: mlua::Function = fs_module.get("read").unwrap();
+        let content: String = read_fn.call(path.to_string()).unwrap();
+        assert_eq!(content, "hello world");
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_fs_append() {
+        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua();
+        let path = "appendfile.txt";
+
+        // Write initial
+        let write_fn: mlua::Function = fs_module.get("write").unwrap();
+        write_fn.call::<()>((path.to_string(), "first".to_string())).unwrap();
+
+        // Append
+        let append_fn: mlua::Function = fs_module.get("append").unwrap();
+        append_fn.call::<()>((path.to_string(), " second".to_string())).unwrap();
+
+        // Read back
+        let read_fn: mlua::Function = fs_module.get("read").unwrap();
+        let content: String = read_fn.call(path.to_string()).unwrap();
+        assert_eq!(content, "first second");
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_env_get_set_remove() {
+        let (_lua, (_, env_module, _, _, _, _, _)) = setup_lua();
+
+        let set_fn: mlua::Function = env_module.get("set").unwrap();
+        set_fn.call::<()>(("TEST_ENV".to_string(), "value".to_string())).unwrap();
+
+        let get_fn: mlua::Function = env_module.get("get").unwrap();
+        let value: Option<String> = get_fn.call("TEST_ENV".to_string()).unwrap();
+        assert_eq!(value, Some("value".to_string()));
+
+        let remove_fn: mlua::Function = env_module.get("remove").unwrap();
+        remove_fn.call::<()>("TEST_ENV".to_string()).unwrap();
+
+        let value: Option<String> = get_fn.call("TEST_ENV".to_string()).unwrap();
+        assert_eq!(value, None);
+    }
+
+    #[test]
+    fn test_shell_exec() {
+        let (_lua, (_, _, shell_module, _, _, _, _)) = setup_lua();
+        let exec_fn: mlua::Function = shell_module.get("exec").unwrap();
+
+        #[cfg(unix)]
+        let result: Table = exec_fn.call("echo hello").unwrap();
+        #[cfg(windows)]
+        let result: Table = exec_fn.call("echo hello").unwrap();
+
+        let code: i64 = result.get("code").unwrap();
+        let stdout: String = result.get("stdout").unwrap();
+
+        assert_eq!(code, 0);
+        assert!(stdout.contains("hello"));
+    }
+
+    #[test]
+    fn test_time_now_and_sleep() {
+        let (_lua, (_, _, _, time_module, _, _, _)) = setup_lua();
+
+        let now_fn: mlua::Function = time_module.get("now").unwrap();
+        let formatted: String = now_fn.call("%Y-%m-%d".to_string()).unwrap();
+        assert!(formatted.contains('-'));
+    }
+
+    #[test]
+    fn test_json_encode_decode() {
+        let (lua, (_, _, _, _, json_module, _, _)) = setup_lua();
+
+        let encode_fn: mlua::Function = json_module.get("encode").unwrap();
+        let decode_fn: mlua::Function = json_module.get("decode").unwrap();
+
+        let table = lua.create_table().unwrap();
+        table.set("foo", "bar").unwrap();
+
+        let json: String = encode_fn.call(table.clone()).unwrap();
+        assert!(json.contains("foo"));
+
+        let decoded: Table = decode_fn.call(json).unwrap();
+        let foo: String = decoded.get("foo").unwrap();
+        assert_eq!(foo, "bar");
+    }
 }

@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono = { version = "0.4.41", default-features = false }
+chrono = { version = "0.4.41", default-features = false, features = ["now"]}
 log = { version = "0.4.27", default-features = false }
 mlua = { version = "0.11.1", default-features = false, features = ["anyhow", "luau", "serde", "send"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.140", default-features = false }
+serde_json = { version = "1.0.140" }
+
+[features]
+default = []
+testing = []

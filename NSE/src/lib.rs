@@ -1,37 +1,14 @@
 use log::info;
 use mlua::{Error as LuaError, Function, Lua};
-use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 mod modules;
 use modules::make_modules;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "UPPERCASE")]
-pub enum InputType {
-    Number {
-        default: Option<i64>,
-        min: Option<i64>,
-        max: Option<i64>,
-        value: i64,
-    },
-    Text {
-        default: Option<String>,
-        regex: Option<String>,
-        value: String,
-    },
-    Boolean {
-        default: Option<bool>,
-        value: bool,
-    },
-    Choice {
-        default: Option<String>,
-        values: Vec<String>,
-        value: String,
-    },
-}
-
 pub struct NinjaEngine {
+    #[cfg(feature = "testing")]
+    pub lua: Lua,
+    #[cfg(not(feature = "testing"))]
     lua: Lua,
 }
 
