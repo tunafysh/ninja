@@ -3140,8 +3140,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "log",
- "ninja-api",
- "ninja-engine",
+ "ninja-core",
  "serde",
  "serde_json",
  "tauri",
@@ -3160,27 +3159,9 @@ name = "ninja-api"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "anyhow",
- "chrono",
- "either",
- "flate2",
- "globwalk",
- "ignore",
- "keyring",
- "libc",
- "log",
- "ninja-engine",
- "opendal",
- "regex",
+ "ninja-core",
  "serde",
- "serde_json",
- "shlex",
- "sysinfo",
- "tar",
  "tokio",
- "toml 0.8.23",
- "urlencoding",
- "windows",
 ]
 
 [[package]]
@@ -3195,7 +3176,7 @@ dependencies = [
  "file-rotate",
  "log",
  "ninja-api",
- "ninja-engine",
+ "ninja-core",
  "ninja-mcp",
  "owo-colors",
  "serde",
@@ -3204,14 +3185,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "ninja-engine"
+name = "ninja-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
+ "either",
+ "flate2",
+ "globwalk",
+ "ignore",
+ "keyring",
+ "libc",
  "log",
  "mlua",
+ "opendal",
+ "regex",
  "serde",
  "serde_json",
+ "serde_with",
+ "shlex",
+ "sysinfo",
+ "tar",
+ "tokio",
+ "toml 0.8.23",
+ "urlencoding",
+ "windows",
 ]
 
 [[package]]
@@ -3219,8 +3217,7 @@ name = "ninja-mcp"
 version = "0.1.0"
 dependencies = [
  "log",
- "ninja-api",
- "ninja-engine",
+ "ninja-core",
  "rmcp",
  "serde",
  "serde_json",
@@ -5782,8 +5779,7 @@ version = "0.1.0"
 dependencies = [
  "assert_fs",
  "either",
- "ninja-api",
- "ninja-engine",
+ "ninja-core",
  "serde_json",
  "tempfile",
  "tokio",

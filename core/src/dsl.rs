@@ -1,14 +1,15 @@
+use super::scripting::NinjaEngine;
 use crate::{
     manager::ShurikenManager,
-    templater::{Value, infer_value},
+    types::Value,
 };
 use anyhow::{Error, Result};
 use either::Either;
-use ninja_engine::NinjaEngine;
 use shlex::split;
 use std::sync::Arc;
 use std::{io, path::PathBuf};
 use tokio::sync::RwLock;
+use toml::Value as TomlValue;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -85,7 +86,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
                 let (k, v) = (&token[1], &token[2]);
                 Command::Set {
                     key: k.clone(),
-                    value: infer_value(v),
+                    value: Value::from(v.as_str()),
                 }
             }
             "list" => match token[1].clone() {
@@ -181,7 +182,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                         && let Some(cfg) = &mut shuriken.config
                     {
                         let cloned_value = value.clone();
-                        cfg.fields.insert(key.clone(), value);
+                        cfg.fields.insert(key.clone(), TomlValue::from(value.render()));
                         output.push(format!(
                             "Set {} = {} for {}",
                             key,
@@ -208,7 +209,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name)
                         && let Some(cfg) = &mut shuriken.config
-                        && let Some(Value::Bool(value)) = cfg.fields.get_mut(&key)
+                        && let Some(TomlValue::Boolean(value)) = cfg.fields.get_mut(&key)
                     {
                         *value = !*value;
                         output.push(format!("Toggled {} to {}", key, value));

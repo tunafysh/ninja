@@ -3,10 +3,12 @@ resolver = "3"
 members = [
     "API",
     "CLI",
+    "core",
     "MCP",
-    "NSE",
     "xtask",
-    "GUI/src-tauri", "tests",]
+    "GUI/src-tauri",
+    "tests"
+    ]
 
 [profile.release]
 opt-level = 3

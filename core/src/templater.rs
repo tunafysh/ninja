@@ -1,5 +1,5 @@
+use super::types::Value;
 use regex::{Captures, Regex};
-use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use tokio::fs;
 
@@ -29,56 +29,6 @@ impl Display for TemplateError {
 }
 
 impl Error for TemplateError {}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Value {
-    String(String),
-    Number(i64),
-    Bool(bool),
-    Map(HashMap<String, Value>),
-}
-
-impl Value {
-    /// Recursively lookup a dotted path: e.g. `config.ssl.port`
-    pub fn get_path(&self, path: &str) -> Option<&Value> {
-        let mut current = self;
-        for part in path.split('.') {
-            match current {
-                Value::Map(map) => {
-                    current = map.get(part)?;
-                }
-                _ => return None, // tried to go deeper but hit a scalar
-            }
-        }
-        Some(current)
-    }
-
-    /// Render value as string (for template substitution)
-    pub fn render(&self) -> String {
-        match self {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Map(_) => "[object map]".to_string(), // you usually don’t want maps inline
-        }
-    }
-}
-
-pub fn infer_value(value: &str) -> Value {
-    let val = value.trim();
-
-    if let Ok(n) = val.parse::<i64>() {
-        Value::Number(n)
-    } else if val.eq_ignore_ascii_case("true") {
-        Value::Bool(true)
-    } else if val.eq_ignore_ascii_case("false") {
-        Value::Bool(false)
-    } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
-        Value::String(val[1..val.len() - 1].to_string())
-    } else {
-        Value::String(val.to_string())
-    }
-}
 
 pub struct Templater {
     context: HashMap<String, Value>,

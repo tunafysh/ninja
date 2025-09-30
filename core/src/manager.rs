@@ -55,7 +55,8 @@ impl ShurikenManager {
                                 e
                             ))
                         })?;
-                    if let Some(path) = partial_path.parent()
+
+                        if let Some(path) = partial_path.parent()
                         && let Some(parent) = path.parent()
                     {
                         let name = parent
@@ -71,12 +72,13 @@ impl ShurikenManager {
 
                         let manifest: Shuriken =
                             toml::from_str(&manifest_content).map_err(|e| {
+                                println!("{}",e);
                                 io::Error::new(
                                     io::ErrorKind::InvalidData,
-                                    format!("Failed to parse TOML: {}", e),
+                                    e
                                 )
                             })?;
-
+                        println!("{:#?}", manifest);
                         shurikens.insert(name, manifest);
                     }
                 }
@@ -111,7 +113,6 @@ impl ShurikenManager {
                 }
             }
         }
-
 
         Ok(Self {
             root_path: exe_dir,

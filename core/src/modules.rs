@@ -367,7 +367,9 @@ mod tests {
 
         // Write a file
         let write_fn: mlua::Function = fs_module.get("write").unwrap();
-        write_fn.call::<()>((path.to_string(), "hello world".to_string())).unwrap();
+        write_fn
+            .call::<()>((path.to_string(), "hello world".to_string()))
+            .unwrap();
 
         // Read it back
         let read_fn: mlua::Function = fs_module.get("read").unwrap();
@@ -384,11 +386,15 @@ mod tests {
 
         // Write initial
         let write_fn: mlua::Function = fs_module.get("write").unwrap();
-        write_fn.call::<()>((path.to_string(), "first".to_string())).unwrap();
+        write_fn
+            .call::<()>((path.to_string(), "first".to_string()))
+            .unwrap();
 
         // Append
         let append_fn: mlua::Function = fs_module.get("append").unwrap();
-        append_fn.call::<()>((path.to_string(), " second".to_string())).unwrap();
+        append_fn
+            .call::<()>((path.to_string(), " second".to_string()))
+            .unwrap();
 
         // Read back
         let read_fn: mlua::Function = fs_module.get("read").unwrap();
@@ -403,7 +409,9 @@ mod tests {
         let (_lua, (_, env_module, _, _, _, _, _)) = setup_lua();
 
         let set_fn: mlua::Function = env_module.get("set").unwrap();
-        set_fn.call::<()>(("TEST_ENV".to_string(), "value".to_string())).unwrap();
+        set_fn
+            .call::<()>(("TEST_ENV".to_string(), "value".to_string()))
+            .unwrap();
 
         let get_fn: mlua::Function = env_module.get("get").unwrap();
         let value: Option<String> = get_fn.call("TEST_ENV".to_string()).unwrap();

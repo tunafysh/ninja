@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use log::{error, info};
 use tokio::sync::Mutex;
 
 use ninja::{
     dsl::{execute_commands, DslContext},
     manager::ShurikenManager,
-    shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
+    shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata},
     types::ShurikenState,
 };
 use serde::{Deserialize, Serialize};
@@ -125,4 +127,10 @@ pub async fn execute_dsl(
         .await
         .map_err(|e| e.to_string())?;
     Ok(res.join("\n"))
+}
+
+#[tauri::command]
+pub async fn configure_shuriken(shuriken: Shuriken) -> Result<(), String> {
+    shuriken.configure().await?;
+    Ok(())
 }

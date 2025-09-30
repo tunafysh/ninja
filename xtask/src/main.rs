@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
-use std::{fs, path::PathBuf, process::Command};
 use owo_colors::OwoColorize;
+use std::{fs, path::PathBuf, process::Command};
 
 #[derive(Parser)]
 #[command(name = "xtask")]
@@ -39,7 +39,7 @@ fn main() {
             build_gui();
         }
         Commands::BuildAll => {
-        //  build_library(cli.debug); //for later when i finish the FFI
+            //  build_library(cli.debug); //for later when i finish the FFI
             build_commands();
             build_gui();
         }
@@ -70,7 +70,7 @@ fn build_library(debug: bool) {
             "build",
             if debug { "--debug" } else { "--release" },
             "--package",
-            "ninja-api",
+            "ninja-core",
         ])
         .status()
         .expect("building the library failed");
@@ -104,7 +104,12 @@ fn build_commands() {
         let _ = fs::remove_file(&renamed); // clean existing
         fs::rename(&orig, &renamed).expect("rename failed");
 
-        println!("{:>12} {} -> {}", "Renamed".green().bold(), orig.display(), renamed.display());
+        println!(
+            "{:>12} {} -> {}",
+            "Renamed".green().bold(),
+            orig.display(),
+            renamed.display()
+        );
     }
 }
 

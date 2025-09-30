@@ -27,9 +27,8 @@ tauri-plugin-log = { version = "2", features = ["colored"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 log = "0.4.27"
 tokio = { version = "1.45.0", features = ["sync"] }
-ninja-api = { path = "../../API" }
+ninja-core = { path = "../../core" }
 tauri-plugin-dialog = "2"
-ninja-engine = { path = "../../NSE" }
 tauri-plugin-shell = "2"
 tauri-plugin-deep-link = "2"
 

@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ninja-api = { path = "../API"}
-ninja-engine = { path = "../NSE"}
+ninja-core = { path = "../core"}
 serde_json = { version = "1.0.143", default-features = false }
 tokio = { version = "1.47.1", default-features = false }
 rmcp = { version = "0.6.0", features = ["server", "transport-io", "macros", "schemars",] } # too bespoke to customize features.

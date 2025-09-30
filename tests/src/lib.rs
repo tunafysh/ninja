@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod ninja_runtime_integration_tests {
-    use ninja_engine::NinjaEngine;
-    use tempfile::NamedTempFile;
+    use ninja::scripting::NinjaEngine;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_engine_init_globals() {
@@ -40,16 +40,14 @@ mod ninja_runtime_integration_tests {
         let engine = NinjaEngine::new().unwrap();
 
         let mut tmp = NamedTempFile::new().unwrap();
-        writeln!(
-            tmp,
-            "return {{ greet = function() print('hi') end }}"
-        )
-        .unwrap();
+        writeln!(tmp, "return {{ greet = function() print('hi') end }}").unwrap();
 
         let path = tmp.into_temp_path();
-        assert!(engine
-            .execute_function("greet", &path.to_path_buf())
-            .is_ok());
+        assert!(
+            engine
+                .execute_function("greet", &path.to_path_buf())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -60,9 +58,11 @@ mod ninja_runtime_integration_tests {
         writeln!(tmp, "function greet() print('hi') end").unwrap();
 
         let path = tmp.into_temp_path();
-        assert!(engine
-            .execute_function("greet", &path.to_path_buf())
-            .is_ok());
+        assert!(
+            engine
+                .execute_function("greet", &path.to_path_buf())
+                .is_ok()
+        );
     }
 }
 
@@ -111,5 +111,4 @@ mod ninja_api_integration_tests {
 
         // assert!(names.contains(&"shadow-strike".to_string()));
     }
-
 }

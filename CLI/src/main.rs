@@ -1,14 +1,14 @@
 use clap_verbosity_flag::Verbosity;
-// main.rs
 use ::log::info;
 use clap::{Args, Parser, Subcommand};
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
-    api::server,
     manager::ShurikenManager,
+    scripting::NinjaEngine,
     shuriken::{MaintenanceType, Shuriken, ShurikenMetadata},
     types::{PlatformPath, ShurikenState},
 };
+use ninja_api::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
 use std::{
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Run(script_args)) => {
             let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
-            let rt = ninja_engine::NinjaEngine::new().map_err(|e| {
+            let rt = NinjaEngine::new().map_err(|e| {
                 eprintln!("Failed to initialize Ninja engine: {}", e);
                 exit(1);
             })?;

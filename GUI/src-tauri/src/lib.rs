@@ -39,7 +39,8 @@ pub fn run() {
             stop_shuriken,
             get_all_shurikens,
             get_running_shurikens,
-            execute_dsl
+            execute_dsl,
+            configure_shuriken
         ])
         .setup(|app| {
             app.manage(Mutex::new(
@@ -47,11 +48,11 @@ pub fn run() {
                     .expect("Failed to spawn a shuriken manager"),
             ));
 
-            let partial_win = app.get_webview_window("main");
+            //let partial_win = app.get_webview_window("main");
 
-            if let Some(win) = partial_win {
-                win.set_size(LogicalSize::new(900, 560))?;
-            }
+            // if let Some(win) = partial_win {
+            //     win.set_size(LogicalSize::new(934, 531))?;
+            // }
 
             #[cfg(any(windows, target_os = "linux"))]
             {

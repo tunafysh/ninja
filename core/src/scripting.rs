@@ -1,9 +1,7 @@
+use super::modules::make_modules;
 use log::info;
 use mlua::{Error as LuaError, Function, Lua};
 use std::{fs, path::PathBuf};
-
-mod modules;
-use modules::make_modules;
 
 pub struct NinjaEngine {
     #[cfg(feature = "testing")]

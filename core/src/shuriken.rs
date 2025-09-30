@@ -1,11 +1,13 @@
+use serde_with::serde_as;
 use crate::{
-    templater::{Templater, Value},
-    types::PlatformPath,
+    scripting::NinjaEngine,
+    templater::Templater,
+    types::{PlatformPath, Value},
 };
 use log::info;
-use ninja_engine::NinjaEngine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
+use toml::Value as TomlValue;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -14,9 +16,12 @@ use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::{fs, process::Command};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde_as]
 pub struct ShurikenConfig {
+    #[serde(rename = "config-path")]
     pub config_path: PathBuf,
-    pub fields: HashMap<String, Value>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub fields: HashMap<String, TomlValue>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -52,7 +57,7 @@ pub enum MaintenanceType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LogsConfig {
     #[serde(rename = "log-path")]
-    pub log_path: PlatformPath,
+    pub log_path: PathBuf,
 }
 
 fn kill_process_by_name(name: &str) -> bool {
@@ -242,7 +247,12 @@ impl Shuriken {
 
     pub async fn configure(&self) -> Result<(), String> {
         if let Some(ctx) = &self.config {
-            let fields = ctx.fields.clone();
+            let partial_fields = ctx.fields.clone();
+            let mut fields = HashMap::new();
+            for (name, value) in partial_fields {
+                fields.insert(name, Value::from(value));
+            }
+
             let templater = Templater::new(fields);
 
             templater
