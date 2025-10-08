@@ -43,7 +43,7 @@ impl Manager {
             .manager
             .start(name.as_str())
             .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Shuriken started successfully",
         )]))
@@ -58,7 +58,7 @@ impl Manager {
             .manager
             .stop(name.as_str())
             .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Shuriken stopped successfully",
         )]))
@@ -73,30 +73,32 @@ impl Manager {
             .manager
             .stop(name.as_str())
             .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let _ = &self
             .manager
             .start(name.as_str())
             .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Shuriken restarted successfully",
         )]))
     }
 
-    #[tool(description = "Get the status of the corresponding shuriken")]
-    pub async fn shuriken_status(&self) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(
-            "Shuriken started successfully",
-        )]))
-    }
+    // #[tool(description = "Get the status of the corresponding shuriken")]
+    // pub async fn shuriken_status(&self) -> Result<CallToolResult, McpError> {
+    //     Ok(CallToolResult::success(vec![Content::text(
+    //         "Shuriken started successfully",
+    //     )]))
+    // }
 }
 
 #[tool_handler]
 impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: None,
+            instructions: Some(r#"This server provides resources and mostly tools
+             for managing shurikens(arbitrary units of other dev software e.g Apache)
+              which are: start_shuriken, stop_shuriken, restart_shuriken and shuriken_status"#.into()),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }

@@ -52,14 +52,14 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                   <Card key={service.shuriken.name} className="bg-card border-border py-0">
                     <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                       <div className="flex items-center gap-1">
-                        <div className={`p-1.5 rounded-md mr-4 ${service.status === "running" ? "bg-green-500" : "bg-muted"}`} />
-                        <CardTitle className="text-sm md:text-base">{service.shuriken.name}</CardTitle>
+                        <div className={`p-1.5 rounded-md mr-2 ${service.status === "running" ? "bg-green-500" : "bg-muted"}`} />
+                        <CardTitle className="text-sm md:text-base">{service.shuriken.name}<Badge>{service.shuriken.version}</Badge></CardTitle>
                       </div>
                     </CardHeader>
-                    <CardFooter className={`h-full p-3 pr-2 md:p-4 ${service.shuriken.type === "daemon" ? "pt-0" : "mt-4"} flex gap-2`}>
+                    <CardFooter className="pb-4 gap-3">
                       <Button
                         variant={service.shuriken.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
-                        className="text-xs md:text-sm h-8 px-0"
+                        className="text-xs md:text-sm h-8 px-0 w-full"
                         style={{ width: "90%" }}
                         onClick={() => toggleShuriken(service)}
                       >
@@ -67,7 +67,7 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="px-2 h-8">
+                          <Button variant="outline" size="sm" className="px-2 h-8 mr-4">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

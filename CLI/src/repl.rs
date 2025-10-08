@@ -37,14 +37,15 @@ pub async fn repl_mode() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let input = get_input(prompt.as_str())?;
+
+        if input == ".exit" {
+            return Ok(());
+        }
+
         let res = execute_commands(&rt, input.clone()).await?;
 
         for line in res {
             println!("{}", line);
-        }
-
-        if input == ".exit" {
-            return Ok(());
         }
     }
 }

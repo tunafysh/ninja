@@ -1,15 +1,11 @@
 use super::scripting::NinjaEngine;
-use crate::{
-    manager::ShurikenManager,
-    types::Value,
-};
+use crate::{manager::ShurikenManager, types::FieldValue};
 use anyhow::{Error, Result};
 use either::Either;
 use shlex::split;
 use std::sync::Arc;
 use std::{io, path::PathBuf};
 use tokio::sync::RwLock;
-use toml::Value as TomlValue;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -20,7 +16,7 @@ pub enum Command {
     Get(String),
     Exit,
     Configure,
-    Set { key: String, value: Value },
+    Set { key: String, value: FieldValue },
     List,
     ListState,
     Install(PathBuf),
@@ -86,7 +82,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
                 let (k, v) = (&token[1], &token[2]);
                 Command::Set {
                     key: k.clone(),
-                    value: Value::from(v.as_str()),
+                    value: FieldValue::from(v.as_str()),
                 }
             }
             "list" => match token[1].clone() {
@@ -182,7 +178,10 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                         && let Some(cfg) = &mut shuriken.config
                     {
                         let cloned_value = value.clone();
-                        cfg.fields.insert(key.clone(), TomlValue::from(value.render()));
+                        if let Some(partial_options) = &mut cfg.options {
+                            partial_options.insert(key.clone(), FieldValue::from(value.render()));
+                        }
+
                         output.push(format!(
                             "Set {} = {} for {}",
                             key,
@@ -198,8 +197,11 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let shurikens = ctx.manager.shurikens.read().await;
                     if let Some(shuriken) = shurikens.get(shuriken_name)
                         && let Some(cfg) = &shuriken.config
+                        && let Some(options) = &cfg.options
                     {
-                        output.push(format!("{:?} = {:?}", key, cfg.fields.get(&key)));
+                        {
+                            output.push(format!("{:?} = {:?}", key, options.get(&key)));
+                        }
                     }
                 }
             }
@@ -209,10 +211,13 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name)
                         && let Some(cfg) = &mut shuriken.config
-                        && let Some(TomlValue::Boolean(value)) = cfg.fields.get_mut(&key)
+                        && let Some(options) = &mut cfg.options
+                        && let Some(FieldValue::Bool(value)) = options.get_mut(&key)
                     {
-                        *value = !*value;
-                        output.push(format!("Toggled {} to {}", key, value));
+                        {
+                            *value = !*value;
+                            output.push(format!("Toggled {} to {}", key, value));
+                        }
                     }
                 }
             }
@@ -261,8 +266,16 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
 
             // Exit the shuriken
             Command::Exit => {
-                *ctx.selected.write().await = None;
-                output.push("Deselected current shuriken".into());
+                if ctx.selected.write().await.is_some() {
+                    *ctx.selected.write().await = None;
+                    output.push("Discarded current shuriken".into());
+                } else {
+                    output.push(
+                        "Cannot exit when there's no shuriken to discard
+                    ."
+                        .into(),
+                    );
+                }
             }
 
             // Unsupported

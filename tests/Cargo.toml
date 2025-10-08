@@ -10,3 +10,4 @@ tempfile = "3.23.0"
 serde_json = "1.0.145"
 tokio = { version = "1.47.1", features = ["macros"] }
 either = "1.15.0"
+async-trait = "0.1.89"

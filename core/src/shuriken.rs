@@ -1,33 +1,29 @@
-use serde_with::serde_as;
 use crate::{
     scripting::NinjaEngine,
     templater::Templater,
-    types::{PlatformPath, Value},
+    types::{FieldValue, PlatformPath},
 };
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
-use toml::Value as TomlValue;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+use anyhow::Result;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::{fs, process::Command};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde_as]
 pub struct ShurikenConfig {
     #[serde(rename = "config-path")]
     pub config_path: PathBuf,
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub fields: HashMap<String, TomlValue>,
+    pub options: Option<HashMap<String, FieldValue>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenMetadata {
     pub name: String,
-    #[serde(rename = "id")]
     pub id: String,
     pub maintenance: MaintenanceType,
     #[serde(rename = "type")]
@@ -36,15 +32,13 @@ pub struct ShurikenMetadata {
     pub add_path: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(tag = "type")] // tag field determines the variant
 pub enum MaintenanceType {
     #[serde(rename = "native")]
     Native {
         #[serde(rename = "bin-path")]
         bin_path: PlatformPath,
-        #[serde(rename = "config-path")]
-        config_path: Option<PathBuf>,
         args: Option<Vec<String>>,
     },
     #[serde(rename = "script")]
@@ -245,12 +239,14 @@ impl Shuriken {
         }
     }
 
-    pub async fn configure(&self) -> Result<(), String> {
+    pub async fn configure(&self) -> Result<()> {
         if let Some(ctx) = &self.config {
-            let partial_fields = ctx.fields.clone();
+            let shuriken_fields = ctx.options.clone();
             let mut fields = HashMap::new();
-            for (name, value) in partial_fields {
-                fields.insert(name, Value::from(value));
+            if let Some(partial_fields) = shuriken_fields {
+                for (name, value) in partial_fields {
+                    fields.insert(name, value);
+                }
             }
 
             let templater = Templater::new(fields);
@@ -258,7 +254,7 @@ impl Shuriken {
             templater
                 .generate_config(ctx.config_path.clone())
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
         }
         Ok(())
     }

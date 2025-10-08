@@ -51,6 +51,7 @@ export const useShuriken = () => {
     try {
       await invoke('start_shuriken', { name })
       console.log(`[Shuriken] Invoked start for "${name}"`)
+      refreshShurikens()
     } catch (err) {
       handleError(err, `startShuriken(${name})`)
       updateStatus(name, "stopped") // revert if immediate failure
@@ -64,6 +65,7 @@ export const useShuriken = () => {
     try {
       await invoke('stop_shuriken', { name })
       console.log(`[Shuriken] Invoked stop for "${name}"`)
+      refreshShurikens()
     } catch (err) {
       handleError(err, `stopShuriken(${name})`)
       updateStatus(name, "running") // revert if immediate failure

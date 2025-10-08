@@ -1,21 +1,19 @@
-use clap_verbosity_flag::Verbosity;
 use ::log::info;
 use clap::{Args, Parser, Subcommand};
+use clap_verbosity_flag::Verbosity;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
     manager::ShurikenManager,
     scripting::NinjaEngine,
-    shuriken::{MaintenanceType, Shuriken, ShurikenMetadata},
-    types::{PlatformPath, ShurikenState},
+    shuriken::{MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata},
+    types::{FieldValue, PlatformPath, ShurikenState},
 };
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
+use tokio::fs;
 use std::{
-    fs::{File, create_dir_all},
-    io::Write,
-    path::{Path, PathBuf},
-    process::exit,
+    collections::HashMap, env, fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit
 };
 
 mod log;
@@ -53,9 +51,11 @@ enum Commands {
     /// List shuriken services with their statuses
     List,
     /// Generate a new shuriken with specified manifest
-    Manifest,
+    New,
     /// Start up the HTTP API with a specified port (optional but recommended).
     Api(ApiArgs),
+    /// Remove a shuriken (uninstall it completely)
+    Remove(RemoveArgs),
 }
 
 #[derive(Args)]
@@ -88,6 +88,12 @@ pub struct ListArgs {
     /// Show all shurikens and their statuses
     #[arg(short = 'f', long)]
     pub full: bool,
+}
+
+#[derive(Args)]
+pub struct RemoveArgs {
+    /// The name of the shuriken to remove/uninstall, it's the same thing
+    pub shuriken: String,
 }
 
 #[tokio::main]
@@ -179,9 +185,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some(Commands::Manifest) => {
+        Some(Commands::New) => {
             let theme = ColorfulTheme::default();
             let maintenance_types = ["native", "script"];
+
+            println!("{}", "Manifest section".bold().blue());
 
             let name: String = Input::with_theme(&theme)
                 .with_prompt("Enter the name of the shuriken")
@@ -213,15 +221,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .interact_text()
                         .unwrap();
 
-                    let config_path = {
-                        let input: String = Input::with_theme(&theme)
-                            .with_prompt("Enter the config path (optional)")
-                            .allow_empty(true)
-                            .interact_text()
-                            .unwrap();
-                        (!input.trim().is_empty()).then_some(input)
-                    };
-
                     let args = {
                         let input: String = Input::with_theme(&theme)
                             .with_prompt("Enter arguments (optional, comma-separated)")
@@ -237,7 +236,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             windows: bin_path_windows,
                             unix: bin_path_unix,
                         },
-                        config_path: config_path.map(PathBuf::from),
                         args,
                     }
                 }
@@ -246,8 +244,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .with_prompt("Enter the script path")
                         .interact_text()
                         .unwrap();
+
+                    let script_path = PathBuf::from(script_path);
+
                     MaintenanceType::Script {
-                        script_path: PathBuf::from(script_path),
+                        script_path
                     }
                 }
                 _ => {
@@ -277,7 +278,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .interact()
                 .unwrap();
 
-            println!("Generating manifest for '{}'", name);
+            // ===== Config section =====
+
+            println!("{}", "Config section".bold().blue());
+            let config_enabled = dialoguer::Confirm::with_theme(&theme)
+                .with_prompt("Add config?")
+                .default(false)
+                .interact()
+                .unwrap();
+                    
+            let (conf_path, options) = if config_enabled {
+                let conf_input: String = Input::with_theme(&theme)
+                    .with_prompt("Enter config path for the templater to output (e.g. for Apache 'conf/httpd.conf')")
+                    .interact_text()
+                    .unwrap();
+            
+                let conf_path = PathBuf::from(conf_input);
+            
+                // Ask whether to add configuration options interactively
+                let add_options = dialoguer::Confirm::with_theme(&theme)
+                    .with_prompt("Add configuration options?")
+                    .default(false)
+                    .interact()
+                    .unwrap();
+
+                let mut options_map: Option<HashMap<String, FieldValue>> = None;
+            
+                if add_options {
+                    let mut map = HashMap::new();
+                
+                    loop {
+                        let key: String = Input::with_theme(&theme)
+                            .with_prompt("Enter option key (leave empty to finish)")
+                            .allow_empty(true)
+                            .interact_text()
+                            .unwrap();
+                    
+                        if key.trim().is_empty() {
+                            break;
+                        }
+                    
+                        let value: String = Input::with_theme(&theme)
+                            .with_prompt("Enter value for this key")
+                            .interact_text()
+                            .unwrap();
+
+                        let value: FieldValue = FieldValue::from(value);
+                    
+                        map.insert(key, value);
+                    }
+                
+                    options_map = Some(map);
+                }
+            
+                (Some(conf_path), options_map)
+            } else {
+                (None, None)
+            };
+
+            
+            println!("{}", format!("Generating manifest for '{}'", name).bold());
+            
             let manifest = Shuriken {
                 shuriken: ShurikenMetadata {
                     name: name.clone(),
@@ -286,20 +347,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     shuriken_type: shuriken_type.to_string(),
                     add_path,
                 },
-                config: None,
+                config: conf_path.map(|path| ShurikenConfig {
+                    config_path: path,
+                    options: None,
+                }),
                 logs: None,
             };
 
-            create_dir_all(format!("shurikens/{}", name)).unwrap_or_else(|_| {
+            create_dir_all(format!("shurikens/{}/.ninja", name)).unwrap_or_else(|_| {
                 eprintln!("Failed to create directory for shuriken '{}'", name);
                 exit(1);
             });
+            
+            env::set_current_dir(format!("shurikens/{}/.ninja", name))?;
 
-            let manifest_path = PathBuf::from(format!("shurikens/{}/manifest.toml", name));
+            if let Some(opts) = options {
+                let serialized_options = toml::ser::to_string_pretty(&opts)?;
+
+                fs::write("options.toml", serialized_options).await?;
+            }
+            
+            let manifest_path = PathBuf::from("manifest.toml");
             let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
                 eprintln!("Failed to create manifest file for shuriken '{}'", name);
                 exit(1);
             });
+
+            match &manifest.shuriken.maintenance {
+                MaintenanceType::Script { script_path } => {
+                    if let Some(parent) = script_path.parent() {
+                        fs::create_dir_all(parent).await?;
+                    }
+                    fs::write(script_path, "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend").await?;
+                }
+                _ => {}
+            }
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
                 eprintln!("Failed to serialize manifest for shuriken '{}'", name);
@@ -311,11 +393,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
+            env::set_current_dir(manager.root_path)?;
+
             println!("Manifest for '{}' generated successfully!", name);
         }
         Some(Commands::Api(args)) => {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;
+        }
+        Some(Commands::Remove(args)) => {
+            manager.remove(&args.shuriken).await?;
         }
         None => {}
     }

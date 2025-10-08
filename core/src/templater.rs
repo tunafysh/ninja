@@ -1,4 +1,4 @@
-use super::types::Value;
+use super::types::FieldValue;
 use regex::{Captures, Regex};
 use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use tokio::fs;
@@ -31,11 +31,11 @@ impl Display for TemplateError {
 impl Error for TemplateError {}
 
 pub struct Templater {
-    context: HashMap<String, Value>,
+    context: HashMap<String, FieldValue>,
 }
 
 impl Templater {
-    pub fn new(context: HashMap<String, Value>) -> Self {
+    pub fn new(context: HashMap<String, FieldValue>) -> Self {
         Self { context }
     }
 

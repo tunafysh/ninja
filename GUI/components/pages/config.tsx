@@ -1,6 +1,6 @@
 "use client"
 
-import { Dispatch, SetStateAction, useState } from "react"
+import { Dispatch, SetStateAction, useEffect, useState } from "react"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
@@ -9,10 +9,17 @@ import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { SaveIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
+import { Shuriken } from "@/lib/types"
+import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
 
 const tabs = ["Ninja"]
 
-export default function Configuration({configtmp, setConfigtmp}: {configtmp?: NinjaConfig, setConfigtmp?: Dispatch<SetStateAction<NinjaConfig>>}) {
+function capitalizeFirstLetter(str: string) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+
+export default function Configuration({configtmp, setConfigtmp, shurikens}: {configtmp?: NinjaConfig, setConfigtmp?: Dispatch<SetStateAction<NinjaConfig>>, shurikens: Shuriken[]}) {
   const [config, setConfig] = useState<NinjaConfig>({
     devMode: false,
     serverurl: "https://ninja-rs.vercel.app",
@@ -24,11 +31,17 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
       <Tabs defaultValue="ninja" className="w-full">
         <div className="flex justify-between">
 
-        <TabsList className={`grid grid-cols-${tabs.length} max-w-md mb-2`}>
-          {tabs.map((tab, index) => (
-            <TabsTrigger value={tab.toLowerCase()} key={index} className="text-sm font-medium">
-              {tab}
-            </TabsTrigger>))}
+        <TabsList className={`grid grid-cols-${tabs.length + shurikens.length} max-w-md mb-2 px-2`}>
+            <TabsTrigger value={"ninja"} key={"ninja"} className="text-sm font-medium">
+              Ninja
+            </TabsTrigger>
+
+            {shurikens.map((value, index) => (
+              value.config != null?(
+              <TabsTrigger value={value.shuriken.name} key={value.shuriken.name} className="text-sm font-medium">
+                  {value.shuriken.name}
+              </TabsTrigger>): null
+            ))}
         </TabsList>
             <Button>
               <SaveIcon className="mr-2 h-4 w-4" />
@@ -83,7 +96,32 @@ export default function Configuration({configtmp, setConfigtmp}: {configtmp?: Ni
               </div>
             </motion.div>
 
-        </TabsContent>
+        </TabsContent> 
+        {shurikens.map((value, index) => (
+          value.config?.options && Object.keys(value.config.options).length > 0 ? (
+            <TabsContent value={value.shuriken.name} key={index}>
+              {Object.entries(value.config.options).map(([key, option], i) => (
+                <Item variant={"outline"} className="mb-2">
+                  <ItemContent>
+                    <ItemTitle>{capitalizeFirstLetter(key)}</ItemTitle>
+                  </ItemContent>
+                  <ItemActions>
+                    {
+                      typeof option === "number"?
+                      <Input className="w-fit" type="number" defaultValue={option}/>:
+                      typeof option === "string"?
+                      <Input type="text" defaultValue={option}/>:
+                      null
+                    }
+                  </ItemActions>
+                </Item>
+              ))}
+            </TabsContent>
+          ) : (
+            <p key={index}>No options to configure.</p>
+          )
+        ))}
+
       </Tabs>
     </div>
   )

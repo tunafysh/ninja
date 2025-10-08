@@ -207,7 +207,8 @@ export default function Page() {
               gridView={gridView}
               onRefresh={refreshShurikens} />
           ) : activeIndex === 1 ? (
-            <Configuration />
+            <Configuration
+              shurikens={allShurikens} />
           ) : activeIndex === 2 ? (
             <Logs />
           ) : activeIndex === 3 ? (

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use toml::{Value, map::Map};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShurikenState {
@@ -12,7 +12,7 @@ pub enum ShurikenState {
 }
 
 // Unified platform-aware path type
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum PlatformPath {
     Simple(String),
@@ -35,20 +35,22 @@ impl PlatformPath {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Value {
+#[serde(untagged)]
+pub enum FieldValue {
     String(String),
     Number(i64),
     Bool(bool),
-    Map(HashMap<String, Value>),
+    Map(HashMap<String, FieldValue>),
+    Array(Vec<FieldValue>), // If you want later: Float(f64), List(Vec<FieldValue>), Datetime(String), etc.
 }
 
-impl Value {
+impl FieldValue {
     /// Recursively lookup a dotted path: e.g. `config.ssl.port`
-    pub fn get_path(&self, path: &str) -> Option<&Value> {
+    pub fn get_path(&self, path: &str) -> Option<&FieldValue> {
         let mut current = self;
         for part in path.split('.') {
             match current {
-                Value::Map(map) => {
+                FieldValue::Map(map) => {
                     current = map.get(part)?;
                 }
                 _ => return None, // tried to go deeper but hit a scalar
@@ -60,64 +62,119 @@ impl Value {
     /// Render value as string (for template substitution)
     pub fn render(&self) -> String {
         match self {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Map(_) => "[object map]".to_string(), // you usually don’t want maps inline
+            FieldValue::String(s) => s.clone(),
+            FieldValue::Number(n) => n.to_string(),
+            FieldValue::Bool(b) => b.to_string(),
+            FieldValue::Array(a) => format!("{:#?}", a).to_string(),
+            FieldValue::Map(_) => "[object map]".to_string(),
+        }
+    }
+
+    /// Convenience casts
+    pub fn as_str(&self) -> Option<&str> {
+        if let FieldValue::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_int(&self) -> Option<i64> {
+        if let FieldValue::Number(n) = self {
+            Some(*n)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        if let FieldValue::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
         }
     }
 }
 
-impl From<&str> for Value {
+// ---------------- From impls ----------------
+
+impl From<&str> for FieldValue {
     fn from(val: &str) -> Self {
         let val = val.trim();
 
         if let Ok(n) = val.parse::<i64>() {
-            Value::Number(n)
+            FieldValue::Number(n)
         } else if val.eq_ignore_ascii_case("true") {
-            Value::Bool(true)
+            FieldValue::Bool(true)
         } else if val.eq_ignore_ascii_case("false") {
-            Value::Bool(false)
+            FieldValue::Bool(false)
         } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
-            Value::String(val[1..val.len() - 1].to_string())
+            FieldValue::String(val[1..val.len() - 1].to_string())
         } else {
-            Value::String(val.to_string())
+            FieldValue::String(val.to_string())
         }
     }
 }
 
-impl From<String> for Value {
+impl From<String> for FieldValue {
     fn from(val: String) -> Self {
-        Value::from(val.as_str())
+        FieldValue::from(val.as_str())
     }
 }
 
-impl From<toml::Value> for Value {
+impl From<toml::Value> for FieldValue {
     fn from(val: toml::Value) -> Self {
         match val {
-            toml::Value::String(s) => Value::String(s),
-            toml::Value::Integer(i) => Value::Number(i),
-            toml::Value::Boolean(b) => Value::Bool(b),
+            toml::Value::String(s) => FieldValue::String(s),
+            toml::Value::Integer(i) => FieldValue::Number(i),
+            toml::Value::Boolean(b) => FieldValue::Bool(b),
             toml::Value::Table(table) => {
-                let mut map = HashMap::new();
-                for (k, v) in table {
-                    map.insert(k, Value::from(v));
+                let map = table
+                    .into_iter()
+                    .map(|(k, v)| (k, FieldValue::from(v)))
+                    .collect();
+                FieldValue::Map(map)
+            }
+            toml::Value::Array(a) => {
+                // For now, store arrays as indexed maps
+                let mut arr: Vec<FieldValue> = Vec::new();
+
+                for i in a {
+                    arr.push(FieldValue::from(i));
                 }
-                Value::Map(map)
+
+                FieldValue::Array(arr)
             }
-            toml::Value::Array(arr) => {
-                // could add a `List(Vec<Value>)` variant if needed
-                let mut map = HashMap::new();
-                for (i, v) in arr.into_iter().enumerate() {
-                    map.insert(i.to_string(), Value::from(v));
+            toml::Value::Float(f) => FieldValue::String(f.to_string()),
+            toml::Value::Datetime(dt) => FieldValue::String(dt.to_string()),
+        }
+    }
+}
+
+impl From<FieldValue> for toml::Value {
+    fn from(f: FieldValue) -> Self {
+        match f {
+            FieldValue::String(s) => Value::String(s.clone()),
+            FieldValue::Number(n) => Value::Integer(n),
+            FieldValue::Bool(b) => Value::Boolean(b),
+            FieldValue::Array(a) => {
+                let mut arr: Vec<Value> = Vec::new();
+
+                for i in a.clone() {
+                    arr.push(i.into());
                 }
-                Value::Map(map)
+
+                Value::Array(arr)
             }
-            toml::Value::Float(f) => {
-                // you only have i64 — up to you if you want to extend Value with Float
-                Value::String(f.to_string())
+            FieldValue::Map(m) => {
+                let mut map: Map<String, Value> = Map::new();
+
+                for (name, value) in m {
+                    map.insert(name.clone(), value.clone().into());
+                }
+
+                Value::Table(map)
             }
-            toml::Value::Datetime(dt) => Value::String(dt.to_string()),
         }
     }
 }

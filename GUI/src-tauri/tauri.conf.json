@@ -16,8 +16,8 @@
       {
         "title": "Ninja",
         "label": "main",
-        "minWidth": 1012,
-        "minHeight": 616.5,
+        "minWidth": 912,
+        "minHeight": 644,
         "decorations": false,
         "resizable": false,
         "fullscreen": false,

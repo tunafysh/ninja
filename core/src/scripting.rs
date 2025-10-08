@@ -16,8 +16,9 @@ impl NinjaEngine {
 
         let globals = lua.globals();
 
-        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
+        let (ninja, fs, env, shell, time, json, http, log) = make_modules(&lua)?;
 
+        globals.set("ninja", ninja)?;
         globals.set("fs", fs)?;
         globals.set("env", env)?;
         globals.set("shell", shell)?;

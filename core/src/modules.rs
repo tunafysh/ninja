@@ -2,6 +2,7 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
+//use crate::manager::ShurikenManager;
 use std::{
     env, fs,
     io::Write,
@@ -50,7 +51,8 @@ fn run_unix_command(command: &str) -> Result<std::process::Output> {
     }
 }
 
-pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table)> {
+pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table, Table)> {
+    let ninja_module = lua.create_table()?;
     let fs_module = lua.create_table()?;
     let env_module = lua.create_table()?;
     let shell_module = lua.create_table()?;
@@ -58,6 +60,19 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     let json_module = lua.create_table()?;
     let http_module = lua.create_table()?;
     let log_module = lua.create_table()?;
+
+    // =========== ninja module bootstrap ==========
+
+    // let manager = ShurikenManager::new().await?;
+
+    // ================= ninja module ==============
+
+    // ninja_module.set(
+    //     "start",
+    //     lua.create_async_function(|_, name: String| async move {
+    //         Ok(manager.start(name.as_str()).await.map_err(|e| LuaError::external(e))?)
+    //     })?,
+    // )?;
 
     // ================= fs module =================
 
@@ -121,7 +136,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     )?;
 
     fs_module.set(
-        "exists",
+        "is_file",
         lua.create_function(|_, path: String| Ok(Path::new(&path).is_file()))?,
     )?;
 
@@ -339,6 +354,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     )?;
 
     Ok((
+        ninja_module,
         fs_module,
         env_module,
         shell_module,
@@ -354,15 +370,15 @@ mod tests {
     use super::*;
     use mlua::Lua;
 
-    fn setup_lua() -> (Lua, (Table, Table, Table, Table, Table, Table, Table)) {
+    async fn setup_lua() -> (Lua, (Table, Table, Table, Table, Table, Table, Table, Table)) {
         let lua = Lua::new();
         let modules = make_modules(&lua).expect("failed to create modules");
         (lua, modules)
     }
 
-    #[test]
-    fn test_fs_write_and_read() {
-        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_fs_write_and_read() {
+        let (_lua, (_, fs_module, _, _, _, _, _, _)) = setup_lua().await;
         let path = "testfile.txt";
 
         // Write a file
@@ -379,9 +395,9 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
-    #[test]
-    fn test_fs_append() {
-        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_fs_append() {
+        let (_lua, (_, fs_module, _, _, _, _, _, _)) = setup_lua().await;
         let path = "appendfile.txt";
 
         // Write initial
@@ -404,9 +420,9 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
-    #[test]
-    fn test_env_get_set_remove() {
-        let (_lua, (_, env_module, _, _, _, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_env_get_set_remove() {
+        let (_lua, (_, _, env_module,  _, _, _, _, _)) = setup_lua().await;
 
         let set_fn: mlua::Function = env_module.get("set").unwrap();
         set_fn
@@ -424,9 +440,9 @@ mod tests {
         assert_eq!(value, None);
     }
 
-    #[test]
-    fn test_shell_exec() {
-        let (_lua, (_, _, shell_module, _, _, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_shell_exec() {
+        let (_lua, (_, _, _, shell_module, _, _, _, _)) = setup_lua().await;
         let exec_fn: mlua::Function = shell_module.get("exec").unwrap();
 
         #[cfg(unix)]
@@ -441,18 +457,18 @@ mod tests {
         assert!(stdout.contains("hello"));
     }
 
-    #[test]
-    fn test_time_now_and_sleep() {
-        let (_lua, (_, _, _, time_module, _, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_time_now_and_sleep() {
+        let (_lua, (_, _, _, _, time_module, _, _, _)) = setup_lua().await;
 
         let now_fn: mlua::Function = time_module.get("now").unwrap();
         let formatted: String = now_fn.call("%Y-%m-%d".to_string()).unwrap();
         assert!(formatted.contains('-'));
     }
 
-    #[test]
-    fn test_json_encode_decode() {
-        let (lua, (_, _, _, _, json_module, _, _)) = setup_lua();
+    #[tokio::test]
+    async fn test_json_encode_decode() {
+        let (lua, (_, _, _, _, _, json_module, _, _)) = setup_lua().await;
 
         let encode_fn: mlua::Function = json_module.get("encode").unwrap();
         let decode_fn: mlua::Function = json_module.get("decode").unwrap();

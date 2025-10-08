@@ -68,47 +68,145 @@ mod ninja_runtime_integration_tests {
 
 #[cfg(test)]
 mod ninja_api_integration_tests {
-    // use std::fs;
-    // use ninja::manager::ShurikenManager;
-    // use either;
-    // use tempfile::tempdir;
+    use ninja::{
+        manager::ShurikenManager,
+        shuriken::{
+            MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata, get_process_start_time,
+            kill_process_by_pid,
+        },
+        types::FieldValue,
+    };
+    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+    use tempfile::tempdir;
+    use tokio::sync::RwLock;
 
     #[tokio::test]
-    async fn test_load_shuriken_from_manifest() {
-        // let dir = tempdir().unwrap();
-        // let shuriken_dir = dir.path().join("shurikens/shadow-strike/.ninja");
-        // fs::create_dir_all(&shuriken_dir).unwrap();
+    async fn test_configure_generates_file() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("out.conf");
 
-        // // Write manifest.toml
-        // let manifest = r#"
-        //     [shuriken]
-        //     name = "Shadow Strike"
-        //     id = "shadow-strike"
-        //     type = "native"
-        //     add-path = false
+        let mut fields = HashMap::new();
+        fields.insert("key".into(), FieldValue::String("value".into()));
 
-        //     [shuriken.maintenance]
-        //     type = "native"
-        //     bin-path = "echo"
-        //     config-path = ""
-        //     args = ["Hello", "World"]
-        // "#;
-        // fs::write(shuriken_dir.join("manifest.toml"), manifest).unwrap();
+        let shuriken = Shuriken {
+            shuriken: ShurikenMetadata {
+                name: "test".into(),
+                id: "id1".into(),
+                maintenance: MaintenanceType::Script {
+                    script_path: PathBuf::from("dummy.lua"),
+                },
+                shuriken_type: "script".into(),
+                add_path: false,
+            },
+            config: Some(ShurikenConfig {
+                config_path: config_path.clone(),
+                options: Some(fields),
+            }),
+            logs: None,
+        };
 
-        // // Point ShurikenManager to our fake exe_dir
-        // std::env::set_current_dir(dir.path()).unwrap();
+        let result = shuriken.configure().await;
+        assert!(result.is_ok());
+        assert!(config_path.exists());
+    }
 
-        // let manager = ShurikenManager::new().await.unwrap();
+    #[tokio::test]
+    async fn test_lockfile_written_for_script() {
+        let dir = tempdir().unwrap();
+        let lockfile = dir.path().join("shuriken.lck");
 
-        // // Should detect "shadow-strike"
-        // let list = manager.list(false).await.unwrap();
-        // let names = match list {
-        //     either::Either::Right(names) => names,
-        //     _ => panic!("Expected names"),
-        // };
+        // fake script shuriken
+        let shuriken = Shuriken {
+            shuriken: ShurikenMetadata {
+                name: "test_script".into(),
+                id: "id2".into(),
+                maintenance: MaintenanceType::Script {
+                    script_path: PathBuf::from("dummy.lua"),
+                },
+                shuriken_type: "script".into(),
+                add_path: false,
+            },
+            config: None,
+            logs: None,
+        };
 
-        // println!("{:#?}-{:#?}", names, dir);
+        let result = shuriken.start().await;
+        assert!(result.is_ok());
+        assert!(lockfile.exists());
+    }
 
-        // assert!(names.contains(&"shadow-strike".to_string()));
+    #[tokio::test]
+    async fn test_manager_initializes_empty() {
+        let dir = tempdir().unwrap();
+        let exe_dir = dir.path().to_path_buf();
+        std::env::set_current_dir(&exe_dir).unwrap();
+
+        // place a fake binary for current_exe() resolution
+        let fake_exe = exe_dir.join("ninja_bin");
+        fs::write(&fake_exe, "").unwrap();
+
+        // Patch env::current_exe with fake_exe (hack by setting PATH etc. in real tests)
+
+        let manager = ShurikenManager::new().await.unwrap();
+        assert!(manager.shurikens.read().await.is_empty());
+        assert!(manager.states.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_manager_list_empty() {
+        let dir = tempdir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let manager = ShurikenManager {
+            root_path: dir.path().to_path_buf(),
+            shurikens: Arc::new(RwLock::new(HashMap::new())),
+            states: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        let list = manager.list(false).await.unwrap();
+        match list {
+            either::Either::Right(v) => assert!(v.is_empty()),
+            _ => panic!("Expected Right variant"),
+        }
+    }
+
+    #[test]
+    fn test_kill_process_by_pid_invalid() {
+        // 999999 should not exist
+        let success = kill_process_by_pid(999999);
+        assert!(!success);
+    }
+
+    #[test]
+    fn test_get_process_start_time_invalid() {
+        let result = get_process_start_time(999999);
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stop_without_lockfile() {
+        let shuriken = Shuriken {
+            shuriken: ShurikenMetadata {
+                name: "fake".into(),
+                id: "id3".into(),
+                maintenance: MaintenanceType::Script {
+                    script_path: PathBuf::from("fake.lua"),
+                },
+                shuriken_type: "script".into(),
+                add_path: false,
+            },
+            config: None,
+            logs: None,
+        };
+
+        // change dir to empty tempdir so lockfile isn't found
+        let dir = tempdir().unwrap();
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = shuriken.stop().await;
+        assert!(result.is_ok()); // script stop doesn't require pid
+
+        std::env::set_current_dir(orig).unwrap();
     }
 }

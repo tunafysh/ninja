@@ -3035,6 +3035,7 @@ dependencies = [
  "bstr",
  "either",
  "erased-serde",
+ "futures-util",
  "mlua-sys",
  "num-traits",
  "parking_lot",
@@ -5778,6 +5779,7 @@ name = "tests"
 version = "0.1.0"
 dependencies = [
  "assert_fs",
+ "async-trait",
  "either",
  "ninja-core",
  "serde_json",

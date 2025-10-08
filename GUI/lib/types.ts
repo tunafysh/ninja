@@ -1,15 +1,21 @@
 import { LucideIcon } from "lucide-react";
 
 export type Shuriken = {
-    shuriken: ShurikenConfig
-    config?: Record<string, Value>
+    shuriken: ShurikenMetadata
+    config?: ShurikenConfig
     logs?: LogsConfig
     status: "running" | "stopped"
 }
 
 export type ShurikenConfig = {
+    "config-path": String
+    options?: Map<string, Value>
+}
+
+export type ShurikenMetadata = {
     name: string
-    service_name: string
+    id: string
+    version: string
     maintenance: MaintenanceType
     type: "daemon" | "executable"
     add_path: boolean;
@@ -33,7 +39,8 @@ export type Value =
   | { type: "String"; value: string }
   | { type: "Number"; value: number }
   | { type: "Bool"; value: boolean }
-  | { type: "Map"; value: Record<string, Value> };
+  | { type: "Map"; value: Record<string, Value> }
+  | { type: "Array"; value: Array<Value> };
 
 // Rust: pub struct LogsConfig
 export interface LogsConfig {

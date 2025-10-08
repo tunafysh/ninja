@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use log::{error, info};
 use tokio::sync::Mutex;
 
@@ -131,6 +129,6 @@ pub async fn execute_dsl(
 
 #[tauri::command]
 pub async fn configure_shuriken(shuriken: Shuriken) -> Result<(), String> {
-    shuriken.configure().await?;
+    shuriken.configure().await.map_err(|e| e.to_string())?;
     Ok(())
 }
