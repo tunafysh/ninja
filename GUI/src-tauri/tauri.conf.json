@@ -37,7 +37,7 @@
       }
     },
     "externalBin": [
-      "../target/release/shurikenctl"
+      "../../target/release/shurikenctl"
     ],
     "macOS": {
       "dmg": {
