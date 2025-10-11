@@ -39,9 +39,9 @@ jobs:
           version: latest
 
       # --- Rust setup ---
-      - name: install Rust stable
+      - name: install Rust nightly
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
