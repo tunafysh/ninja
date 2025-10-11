@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
 import { resolve } from "@tauri-apps/api/path";
 import clsx from "clsx";
-import { Shuriken } from "@/lib/types";
+import { Shuriken } from "@/hooks/use-shuriken";
 
 type LogEntry = {
   timestamp: string;
@@ -31,7 +31,7 @@ export const LogsDisplay = ({shuriken}: {shuriken: Shuriken} ) => {
 
   useEffect(() => {
     const startWatching = async () => {
-      const logFilePath = await resolve(`shurikens/${shuriken.shuriken.name}/${shuriken.logs?.log_path}`); // adjust to your path
+      const logFilePath = await resolve(`shurikens/${shuriken.metadata.name}/${shuriken.logs?.log_path}`); // adjust to your path
 
       // Initial read
       const content = await readTextFile(logFilePath);

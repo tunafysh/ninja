@@ -1,12 +1,3 @@
-import { LucideIcon } from "lucide-react";
-
-export type Shuriken = {
-    shuriken: ShurikenMetadata
-    config?: ShurikenConfig
-    logs?: LogsConfig
-    status: "running" | "stopped"
-}
-
 export type ShurikenConfig = {
     "config-path": String
     options?: Map<string, Value>

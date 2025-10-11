@@ -9,7 +9,7 @@ import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { SaveIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { Shuriken } from "@/lib/types"
+import { Shuriken } from "@/hooks/use-shuriken"
 import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
 
 const tabs = ["Ninja"]
@@ -38,8 +38,8 @@ export default function Configuration({configtmp, setConfigtmp, shurikens}: {con
 
             {shurikens.map((value, index) => (
               value.config != null?(
-              <TabsTrigger value={value.shuriken.name} key={value.shuriken.name} className="text-sm font-medium">
-                  {value.shuriken.name}
+              <TabsTrigger value={value.metadata.name} key={value.metadata.name} className="text-sm font-medium">
+                  {value.metadata.name}
               </TabsTrigger>): null
             ))}
         </TabsList>
@@ -99,7 +99,7 @@ export default function Configuration({configtmp, setConfigtmp, shurikens}: {con
         </TabsContent> 
         {shurikens.map((value, index) => (
           value.config?.options && Object.keys(value.config.options).length > 0 ? (
-            <TabsContent value={value.shuriken.name} key={index}>
+            <TabsContent value={value.metadata.name} key={index}>
               {Object.entries(value.config.options).map(([key, option], i) => (
                 <Item variant={"outline"} className="mb-2">
                   <ItemContent>

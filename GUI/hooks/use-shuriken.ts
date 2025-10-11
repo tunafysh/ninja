@@ -2,21 +2,19 @@
 import { useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
+import { ShurikenConfig, ShurikenMetadata, LogsConfig } from '@/lib/types'
 
 export type ShurikenRuntimeState = 'Stopped' | 'Starting' | 'Running' | 'Stopping'
 
-export interface ShurikenFull {
-  metadata: {
-    name: string
-    [key: string]: any
-  }
-  config?: Record<string, any>
-  logs?: Record<string, any>
+export interface Shuriken {
+  metadata: ShurikenMetadata
+  config?: ShurikenConfig
+  logs?: LogsConfig
   runtime: ShurikenRuntimeState
 }
 
 export const useShuriken = () => {
-  const [allShurikens, setAllShurikens] = useState<ShurikenFull[]>([])
+  const [allShurikens, setAllShurikens] = useState<Shuriken[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +29,7 @@ export const useShuriken = () => {
   const refreshShurikens = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await invoke<ShurikenFull[]>('refresh_shurikens')
+      const data = await invoke<Shuriken[]>('refresh_shurikens')
       setAllShurikens(data)
     } catch (err) {
       handleError(err, 'refreshShurikens')
@@ -44,7 +42,7 @@ export const useShuriken = () => {
   /** Start a shuriken */
   const startShuriken = useCallback(async (name: string) => {
     try {
-      const updated = await invoke<ShurikenFull>('start_shuriken', { name })
+      const updated = await invoke<Shuriken>('start_shuriken', { name })
       setAllShurikens(prev =>
         prev.map(s => (s.metadata.name === name ? updated : s))
       )
@@ -56,7 +54,7 @@ export const useShuriken = () => {
   /** Stop a shuriken */
   const stopShuriken = useCallback(async (name: string) => {
     try {
-      const updated = await invoke<ShurikenFull>('stop_shuriken', { name })
+      const updated = await invoke<Shuriken>('stop_shuriken', { name })
       setAllShurikens(prev =>
         prev.map(s => (s.metadata.name === name ? updated : s))
       )
@@ -69,7 +67,7 @@ export const useShuriken = () => {
   const configureShuriken = useCallback(
     async (name: string, fields: Record<string, any>) => {
       try {
-        const updated = await invoke<ShurikenFull>('configure_shuriken', {
+        const updated = await invoke<Shuriken>('configure_shuriken', {
           name,
           fields,
         })

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Server, Database, FileCode, RefreshCw, Download } from "lucide-react"
 import { LogsDisplay } from "../ui/logs-display"
-import { Shuriken } from "@/lib/types"
+import { Shuriken } from "@/hooks/use-shuriken"
 
 export default function Logs({shurikens}: {shurikens: Shuriken[]}) {
   
@@ -23,14 +23,14 @@ export default function Logs({shurikens}: {shurikens: Shuriken[]}) {
       <Tabs defaultValue="apache" className="w-full">
         <TabsList className="grid grid-cols-3 max-w-md mb-6">
           {shurikens.map((value, index) => value.logs!= null?(
-          <TabsTrigger value={value.shuriken.name} className="flex items-center gap-2">
-            {value.shuriken.name}
+          <TabsTrigger value={value.metadata.name} className="flex items-center gap-2">
+            {value.metadata.name}
           </TabsTrigger>
           ): null)}          
         </TabsList>
 
       {shurikens.map((value, index) => value.logs!= null?(
-        <TabsContent value={value.shuriken.name}>
+        <TabsContent value={value.metadata.name}>
           <LogsDisplay shuriken={value} />
         </TabsContent>
       ): null)}
