@@ -10,7 +10,7 @@ import { Globe, FileCode, MoreHorizontal, LucideIcon, RefreshCcw } from "lucide-
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Shuriken } from "@/hooks/use-shuriken"
+import { Shuriken } from "@/lib/types"
 import { useShuriken } from "@/hooks/use-shuriken"
 
 export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens: Shuriken[], gridView: "grid" | "list", onRefresh: () => void }) {
@@ -19,7 +19,7 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
   
   const toggleShuriken = async (shuriken: Shuriken) => {
     if (shuriken.metadata.type !== "daemon") return
-    if (shuriken.runtime === "Running") {
+    if (shuriken.status === "running") {
       await stopShuriken(shuriken.metadata.name)
     } else {
       await startShuriken(shuriken.metadata.name)
@@ -52,18 +52,18 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                   <Card key={service.metadata.name} className="bg-card border-border py-0">
                     <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                       <div className="flex items-center gap-1">
-                        <div className={`p-1.5 rounded-md mr-2 ${service.runtime === "Running" ? "bg-green-500" : "bg-muted"}`} />
+                        <div className={`p-1.5 rounded-md mr-2 ${service.status === "running" ? "bg-green-500" : "bg-muted"}`} />
                         <CardTitle className="text-sm md:text-base">{service.metadata.name}<Badge>{service.metadata.version}</Badge></CardTitle>
                       </div>
                     </CardHeader>
                     <CardFooter className="pb-4 gap-3">
                       <Button
-                        variant={service.metadata.type === "daemon" ? (service.runtime === "Running" ? "destructive" : "default") : "outline"}
+                        variant={service.metadata.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                         className="text-xs md:text-sm h-8 px-0 w-full"
                         style={{ width: "90%" }}
                         onClick={() => toggleShuriken(service)}
                       >
-                        {service.metadata.type === "daemon" ? (service.runtime === "Running" ? "Stop" : "Start") : "Manage"}
+                        {service.metadata.type === "daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -95,15 +95,15 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
                   {shurikens.map((service) => (
                     <TableRow key={service.metadata.name}>
                       <TableCell className="text-center">{service.metadata.name}</TableCell>
-                      <TableCell className="text-center">{service.runtime}</TableCell>
+                      <TableCell className="text-center">{service.status}</TableCell>
                       <TableCell className="text-center">{service.metadata.type === "daemon"? "daemon": "executable"}</TableCell>
                       <TableCell className="flex justify-center">
                         <Button
-                          variant={service.metadata.type === "daemon" ? (service.runtime === "Running" ? "destructive" : "default") : "outline"}
+                          variant={service.metadata.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                           style={{ width: "40%" }}
                           onClick={() => toggleShuriken(service)}
                         >
-                          {service.metadata.type === "daemon" ? (service.runtime === "Running" ? "Stop" : "Start") : "Manage"}
+                          {service.metadata.type === "daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
                         </Button>
                       </TableCell>
                     </TableRow>

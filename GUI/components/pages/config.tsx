@@ -1,15 +1,13 @@
 "use client"
 
-import { Dispatch, SetStateAction, useEffect, useState } from "react"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+import { Dispatch, SetStateAction, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { SaveIcon } from "lucide-react"
-import { AnimatePresence, motion } from "motion/react"
-import { Shuriken } from "@/hooks/use-shuriken"
+import { motion } from "motion/react"
+import { Shuriken } from "@/lib/types"
 import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
 
 const tabs = ["Ninja"]

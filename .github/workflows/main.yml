@@ -56,25 +56,10 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          cargo xtask build-cli
+          cargo xtask build-all
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
           docker build -f Dockerfile -t ninja-build .
-
-      # --- Tauri build & release ---
-      - uses: tauri-apps/tauri-action@v0
-        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          projectPath: GUI/
-          tagName: ninja-v__VERSION__
-          releaseName: "Ninja v__VERSION__"
-          releaseBody: "See the assets to download this version and install."
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}

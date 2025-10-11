@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
 import { resolve } from "@tauri-apps/api/path";
 import clsx from "clsx";
-import { Shuriken } from "@/hooks/use-shuriken";
+import { Shuriken } from "@/lib/types";
 
 type LogEntry = {
   timestamp: string;

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Server, Database, FileCode, RefreshCw, Download } from "lucide-react"
 import { LogsDisplay } from "../ui/logs-display"
-import { Shuriken } from "@/hooks/use-shuriken"
+import { Shuriken } from "@/lib/types"
 
 export default function Logs({shurikens}: {shurikens: Shuriken[]}) {
   

@@ -1,3 +1,10 @@
+export type Shuriken = {
+    metadata: ShurikenMetadata
+    config?: ShurikenConfig
+    logs?: LogsConfig
+    status: "running" | "stopped"
+}
+
 export type ShurikenConfig = {
     "config-path": String
     options?: Map<string, Value>
