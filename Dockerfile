@@ -19,5 +19,5 @@ COPY . .
 RUN curl -o- https://fnm.vercel.app/install | bash
 RUN source /root/.bashrc && fnm install 22 && \
     corepack enable pnpm && \
-    pnpm i -w ./GUI && \
+    pnpm i -C ./GUI && \
     cargo xtask build-all
