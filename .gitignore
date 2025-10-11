@@ -11,3 +11,7 @@ target
 GUI/out
 GUI/src-tauri/target
 GUI/out
+.pnpm-store/*
+node_modules
+package.json
+pnpm-lock.yaml

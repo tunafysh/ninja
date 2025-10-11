@@ -114,8 +114,8 @@ fn build_commands() {
 }
 
 fn build_gui() {
-    let status = Command::new("cargo")
-        .args(["tauri", "build"])
+    let status = Command::new("pnpm")
+        .args(["dlx", "@tauri-apps/cli", "build"])
         .current_dir("GUI")
         .status()
         .expect("building the GUI failed");

@@ -1,87 +1,99 @@
+// use-shuriken.ts
 import { useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Shuriken } from '@/lib/types'
 import { toast } from 'sonner'
 
+export type ShurikenRuntimeState = 'Stopped' | 'Starting' | 'Running' | 'Stopping'
+
+export interface ShurikenFull {
+  metadata: {
+    name: string
+    [key: string]: any
+  }
+  config?: Record<string, any>
+  logs?: Record<string, any>
+  runtime: ShurikenRuntimeState
+}
+
 export const useShuriken = () => {
+  const [allShurikens, setAllShurikens] = useState<ShurikenFull[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [allShurikens, setAllShurikens] = useState<Shuriken[]>([])
 
   const handleError = useCallback((err: unknown, context?: string) => {
     const msg = err instanceof Error ? err.message : String(err)
     setError(msg)
     toast.error(msg)
-    console.error(`[Shuriken ERROR] ${context ?? "unknown"}:`, msg, err)
+    console.error(`[Shuriken ERROR] ${context ?? 'unknown'}:`, msg, err)
   }, [])
 
-  /** Queries all shurikens directly (no events here) */
+  /** Fetch the current full list of shurikens */
   const refreshShurikens = useCallback(async () => {
-    console.log("[Shuriken] Refreshing all shurikens...")
     setLoading(true)
     try {
-      const data = await invoke<Shuriken[]>('get_all_shurikens')
-      console.log("[Shuriken] Retrieved shurikens:", data)
+      const data = await invoke<ShurikenFull[]>('refresh_shurikens')
       setAllShurikens(data)
     } catch (err) {
-      handleError(err, "refreshShurikens")
+      handleError(err, 'refreshShurikens')
       setAllShurikens([])
     } finally {
       setLoading(false)
-      console.log("[Shuriken] Finished refresh")
     }
   }, [handleError])
 
-  /** Update local status optimistically */
-  const updateStatus = useCallback((name: string, status: "running" | "stopped") => {
-  console.log(`[Shuriken] Updating status of "${name}" → ${status}`)
-  setAllShurikens(prev =>
-    prev.map(s =>
-      s.shuriken.name === name
-        ? { ...s, shuriken: { ...s.shuriken, status } } // update inside shuriken
-        : s
-    )
-  )
-}, [])
-
-  /** Start shuriken (event listener will confirm success/failure) */
+  /** Start a shuriken */
   const startShuriken = useCallback(async (name: string) => {
-    console.log(`[Shuriken] Attempting to start "${name}" (optimistic update applied)`)
-    updateStatus(name, "running") // optimistic
     try {
-      await invoke('start_shuriken', { name })
-      console.log(`[Shuriken] Invoked start for "${name}"`)
-      refreshShurikens()
+      const updated = await invoke<ShurikenFull>('start_shuriken', { name })
+      setAllShurikens(prev =>
+        prev.map(s => (s.metadata.name === name ? updated : s))
+      )
     } catch (err) {
       handleError(err, `startShuriken(${name})`)
-      updateStatus(name, "stopped") // revert if immediate failure
     }
-  }, [handleError, updateStatus])
+  }, [handleError])
 
-  /** Stop shuriken (event listener will confirm success/failure) */
+  /** Stop a shuriken */
   const stopShuriken = useCallback(async (name: string) => {
-    console.log(`[Shuriken] Attempting to stop "${name}" (optimistic update applied)`)
-    updateStatus(name, "stopped") // optimistic
     try {
-      await invoke('stop_shuriken', { name })
-      console.log(`[Shuriken] Invoked stop for "${name}"`)
-      refreshShurikens()
+      const updated = await invoke<ShurikenFull>('stop_shuriken', { name })
+      setAllShurikens(prev =>
+        prev.map(s => (s.metadata.name === name ? updated : s))
+      )
     } catch (err) {
       handleError(err, `stopShuriken(${name})`)
-      updateStatus(name, "running") // revert if immediate failure
     }
-  }, [handleError, updateStatus])
+  }, [handleError])
+
+  /** Configure a shuriken */
+  const configureShuriken = useCallback(
+    async (name: string, fields: Record<string, any>) => {
+      try {
+        const updated = await invoke<ShurikenFull>('configure_shuriken', {
+          name,
+          fields,
+        })
+        setAllShurikens(prev =>
+          prev.map(s => (s.metadata.name === name ? updated : s))
+        )
+      } catch (err) {
+        handleError(err, `configureShuriken(${name})`)
+      }
+    },
+    [handleError]
+  )
+
+  /** Clear the last error */
+  const clearError = useCallback(() => setError(null), [])
 
   return {
+    allShurikens,
     loading,
     error,
-    allShurikens,
     refreshShurikens,
     startShuriken,
     stopShuriken,
-    clearError: () => {
-      console.log("[Shuriken] Clearing error")
-      setError(null)
-    },
+    configureShuriken,
+    clearError,
   }
 }

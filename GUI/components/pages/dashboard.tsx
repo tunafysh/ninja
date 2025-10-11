@@ -119,7 +119,7 @@ export default function Dashboard({shurikens, gridView, onRefresh }: { shurikens
         )}
 
         {/* Local Projects */}
-        <Card className="bg-card border-border py-0 mt-4">
+        <Card className="bg-background border-none py-0 mt-4">
           <CardHeader className="p-3 md:p-4 pb-0 md:pb-2">
             <div className="flex items-center justify-between">
               <div>

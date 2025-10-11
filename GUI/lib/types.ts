@@ -44,7 +44,7 @@ export type Value =
 
 // Rust: pub struct LogsConfig
 export interface LogsConfig {
-    error_log?: string; // PlatformPath as string
+    log_path?: string; // PlatformPath as string
 }
 
 export type ArmoryItem = {

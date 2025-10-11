@@ -210,7 +210,7 @@ export default function Page() {
             <Configuration
               shurikens={allShurikens} />
           ) : activeIndex === 2 ? (
-            <Logs />
+            <Logs shurikens={allShurikens}/>
           ) : activeIndex === 3 ? (
             <Tools />
           ) : activeIndex === 4 ? (
