@@ -21,7 +21,5 @@ RUN source /root/.bashrc && fnm install 22 && \
     node -v # Should print "v22.20.0". && \
     corepack enable pnpm && \
     pnpm -v && \
-    pnpm i -w ./GUI
-
-
-RUN cargo xtask build-all
+    pnpm i -w ./GUI && \
+    cargo xtask build-all
