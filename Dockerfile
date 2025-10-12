@@ -1,8 +1,10 @@
-FROM rust:1.82-bullseye
+FROM node:current-bookworm
 
-SHELL ["/bin/bash", "-c"]
+# Install Rust Nightly
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
 
-RUN rustup default nightly
+# Add Rust to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN mkdir /build
 
@@ -16,10 +18,9 @@ ENV CI=true
 # Install system dependencies for Tauri or other crates
 RUN apt-get -q update && \
     apt-get install -y -q \
-    build-essential curl wget pkg-config libssl-dev && \
-    libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev \
-    curl -o- https://fnm.vercel.app/install | bash && \
-    source /root/.bashrc && fnm install 22 && \
-    npm i -g pnpm@latest && \
+    libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf curl libgtk-3-dev libjavascriptcoregtk-4.1-dev xdg-utils
+
+
+RUN npm i -g pnpm@latest && \
     pnpm i -C ./GUI && \
     cargo xtask build-all
