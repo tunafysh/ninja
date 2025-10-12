@@ -22,10 +22,11 @@ jobs:
             args: ""
 
     runs-on: ${{ matrix.platform }}
+
     steps:
       - uses: actions/checkout@v4
 
-      # --- Install dependencies only for macOS and Windows ---
+      # --- Setup Node (macOS/Windows only) ---
       - name: setup node (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: actions/setup-node@v4 
@@ -57,9 +58,43 @@ jobs:
           pnpm install
           cd ..
           cargo xtask build-all
+          mkdir -p dist
+          cp target/release/ninja* dist/
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
           docker build -f Dockerfile -t ninja-build .
+          docker run --rm -v $(pwd)/dist:/dist ninja-build bash -c "cp /build/target/release/ninja* /dist/"
+
+      # --- Upload built artifacts ---
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          path: dist/
+
+  release:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "Ninja v${{ github.run_number }}"
+          body: |
+            🚀 Automatic release build.
+            Includes binaries for macOS (Intel + ARM), Windows, and Linux.
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
