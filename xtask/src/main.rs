@@ -104,12 +104,32 @@ fn build_commands() {
         let _ = fs::remove_file(&renamed); // clean existing
         fs::rename(&orig, &renamed).expect("rename failed");
 
+        let copy_dir = PathBuf::from("GUI/src-tauri/binaries");
+
+        if !copy_dir.exists() {
+            fs::create_dir_all(&copy_dir).expect("Failed to create dir");
+        }
+
+        let copy_dir = copy_dir.join(if cfg!(windows) {
+            format!("{bin}-{target}.exe")
+        } else {
+            format!("{bin}-{target}")
+        });
+
         println!(
             "{:>12} {} -> {}",
             "Renamed".green().bold(),
             orig.display(),
             renamed.display()
         );
+        println!(
+            "{:>12} {} -> {}",
+            "Copying".green().bold(),
+            orig.display(),
+            &copy_dir.display()
+        );
+         
+        fs::copy(renamed, copy_dir).expect("Failed to copy shurikenctl");
     }
 }
 

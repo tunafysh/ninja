@@ -57,6 +57,24 @@ pub async fn stop_shuriken(
 }
 
 #[tauri::command]
+pub async fn refresh_shurikens(
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<(), String> {
+    info!("Refresh shurikens");
+    let manager = manager.lock().await;
+    match manager.refresh().await {
+        Ok(_) => {
+            info!("Shurikens refreshed successfully.");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to refresh shurikens: {}",e);
+            Err(format!("Failed to refresh shuriken: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
 pub async fn get_all_shurikens(
     manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<Vec<ShurikenWithStatus>, String> {

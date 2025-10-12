@@ -1,2 +1,3 @@
 GUI/.node_modules
 target
+GUI/src-tauri/binaries

@@ -15,3 +15,4 @@ GUI/out
 node_modules
 package.json
 pnpm-lock.yaml
+GUI/src-tauri/binaries

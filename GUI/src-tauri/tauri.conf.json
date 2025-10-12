@@ -35,9 +35,8 @@
       "nsis": {
         "installMode": "both"
       }
-    },
-    "externalBin": [
-      "../../target/release/shurikenctl"
+    },    "externalBin": [
+     "binaries/shurikenctl"
     ],
     "macOS": {
       "dmg": {
