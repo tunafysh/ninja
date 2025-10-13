@@ -63,7 +63,7 @@ jobs:
           cargo xtask build-all
           mkdir -p dist
 
-          cp target/release/ninja* dist/
+          cp target/release/bundle*(^/) dist/
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
@@ -73,7 +73,7 @@ jobs:
           DOCKER_BUILDKIT=1 docker build \
           --secret id=tauri_key,src=tauri_signing_key.pem \
           -t ninja:latest .
-          docker run --rm -v $(pwd)/dist:/dist ninja-build bash -c "cp /build/target/release/ninja* /dist/"
+          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c "cp /build/target/release/bundle*(^/) /dist/"
 
       # --- Upload built artifacts ---
       - name: Upload build artifacts

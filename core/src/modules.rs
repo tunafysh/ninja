@@ -4,7 +4,7 @@ use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
 //use crate::manager::ShurikenManager;
 use std::{
-    env, fs,
+    env, fs, io,
     io::Write,
     path::Path,
     process::{Command, Output},
