@@ -6,6 +6,9 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
 # Add Rust to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+ARG SIGNING_KEY
+ENV TAURI_SIGNING_PRIVATE_KEY=${SIGNING_KEY}
+
 RUN mkdir /build
 
 WORKDIR /build
