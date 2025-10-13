@@ -67,7 +67,7 @@ jobs:
       - name: Build using Docker (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
-          docker build -f Dockerfile -t --build-arg SIGNING_KEY=${{ secrets.TAURI_SIGNING_PRIVATE_KEY }} ninja-build .
+          docker build -f Dockerfile -t ninja:latest --build-arg SIGNING_KEY=${{ secrets.TAURI_SIGNING_PRIVATE_KEY }} .
           docker run --rm -v $(pwd)/dist:/dist ninja-build bash -c "cp /build/target/release/ninja* /dist/"
 
       # --- Upload built artifacts ---
