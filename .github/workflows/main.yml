@@ -59,15 +59,20 @@ jobs:
           cd GUI
           pnpm install
           cd ..
+
           cargo xtask build-all
           mkdir -p dist
+
           cp target/release/ninja* dist/
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
-          docker build -f Dockerfile -t ninja:latest --build-arg SIGNING_KEY=${{ secrets.TAURI_SIGNING_PRIVATE_KEY }} .
+          echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
+          DOCKER_BUILDKIT=1 docker build \
+          --secret id=tauri_key,src=tauri_signing_key.pem \
+          -t ninja:latest .
           docker run --rm -v $(pwd)/dist:/dist ninja-build bash -c "cp /build/target/release/ninja* /dist/"
 
       # --- Upload built artifacts ---
