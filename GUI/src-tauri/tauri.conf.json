@@ -57,7 +57,7 @@
       "hardenedRuntime": true,
       "minimumSystemVersion": "10.13"
     },
-    "targets": "all",
+    "targets": ["msi", "dmg", "nsis", "deb", "rpm", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

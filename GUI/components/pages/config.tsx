@@ -48,41 +48,25 @@ export default function Configuration({configtmp, setConfigtmp, shurikens}: {con
         </div>
         <TabsContent value="ninja">
           
-          <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="w-full p-4 bg-muted rounded-md mt-4"
-            >
-              <div className="flex items-center justify-between w-full px-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Custom server</span>
-                </div>
+          <Item>
+              <ItemContent>
+                <span className="text-sm font-medium">Custom server</span>
+              </ItemContent>
 
-                <div className="flex items-center gap-2">
+              <ItemActions>
                   <Input onChange={(e) => setConfig({
                     serverurl: e.target.value,
                     checkUpdates: config.checkUpdates,
                     devMode: config.devMode
                   })} value={config.serverurl} type="url" />
-                </div>
-              </div>
-            </motion.div>
+              </ItemActions>
+            </Item>
 
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="w-full p-4 bg-muted rounded-md mt-4"
-            >
-              <div className="flex items-center justify-between w-full px-2">
-                <div className="flex items-center gap-2">
+            <Item>
+              <ItemContent>
                   <span className="text-sm font-medium">Check for updates</span>
-                </div>
-
-                <div className="flex items-center gap-2">
+              </ItemContent>      
+                <ItemActions>
                   <Switch onCheckedChange={(e) => {
                     setConfig({
                       serverurl: config.serverurl,
@@ -90,10 +74,8 @@ export default function Configuration({configtmp, setConfigtmp, shurikens}: {con
                       devMode: config.devMode
                     })
                   }} checked={config.checkUpdates} />
-                </div>
-              </div>
-            </motion.div>
-
+                </ItemActions>
+            </Item>
         </TabsContent> 
         {shurikens.map((value, index) => (
           value.config?.options && Object.keys(value.config.options).length > 0 ? (
