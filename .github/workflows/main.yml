@@ -59,11 +59,10 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-
           cargo xtask build-all
           mkdir -p dist
-
-          cp target/release/bundle*(^/) dist/
+          find target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} dist/ \;
+          
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
@@ -73,7 +72,7 @@ jobs:
           DOCKER_BUILDKIT=1 docker build \
           --secret id=tauri_key,src=tauri_signing_key.pem \
           -t ninja:latest .
-          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c "cp /build/target/release/bundle*(^/) /dist/"
+          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'
 
       # --- Upload built artifacts ---
       - name: Upload build artifacts
