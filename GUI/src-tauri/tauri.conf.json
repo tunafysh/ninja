@@ -69,7 +69,7 @@
   "plugins": {
     "deep-link":{
       "desktop" : {
-        "schemes": ["shurikenctl"]
+        "schemes": ["binaries/shurikenctl"]
       }
     },
     "updater": {

@@ -103,7 +103,7 @@ fn build_commands() {
 
         fs::rename(&orig, &renamed).expect("rename failed");
 
-        let copy_dir = PathBuf::from("GUI").join("src-tauri");
+        let copy_dir = PathBuf::from("GUI").join("src-tauri").join("binaries");
 
         if !copy_dir.exists() {
             fs::create_dir_all(&copy_dir).expect("Failed to create dir");
