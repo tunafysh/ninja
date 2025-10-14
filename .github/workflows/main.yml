@@ -59,7 +59,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          cargo xtask build-all
+          cargo xtask build-all -- ${{ matrix.args }} --release
           mkdir -p dist
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
           ! -name "bundle_dmg.sh" \
@@ -75,7 +75,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          cargo xtask build-all;
+          cargo xtask build-all -- --release;
           mkdir dist
           
           Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File |
