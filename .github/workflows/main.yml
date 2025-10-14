@@ -51,8 +51,8 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       # --- Frontend build only for macOS and Windows ---
-      - name: install frontend dependencies and build CLI
-        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
+      - name: install frontend dependencies and build the app (macos)
+        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm' && matrix.platform != 'windows-latest'
         env: 
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
@@ -61,7 +61,31 @@ jobs:
           cd ..
           cargo xtask build-all
           mkdir -p dist
-          find target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} dist/ \;
+
+          find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
+          ! -name "bundle_dmg.sh" \
+          ! -name "icon.icns" \
+          ! -name "Ninja.app.tar.gz*" \
+          -exec cp {} dist/ \;
+
+      - name: install deps and build the app (windows)
+        if: matrix.platform == 'windows-latest'
+        env: 
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          cd GUI
+          pnpm install
+          cd ..
+          cargo xtask build-all;
+          mkdir -p dist
+
+          find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
+          ! -name "bundle_dmg.sh" \
+          ! -name "icon.icns" \
+          -exec cp {} dist/ \;
+        shell: pwsh
+
+
           
 
       # --- Ubuntu builds using Dockerfile ---
