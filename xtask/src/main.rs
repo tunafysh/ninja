@@ -133,8 +133,23 @@ fn build_commands() {
 }
 
 fn build_gui() {
-    let status = Command::new("pnpx")
-        .args(["@tauri-apps/cli", "build"])
+
+    if cfg!(target_os="windows") {
+
+    Command::new("cargo")
+        .args(["install", "tauri-cli"])
+        .status()
+        .expect("Failed to install tauri cli");
+
+    Command::new("cargo")
+        .args(["dlx", "@tauri-apps/cli", "build"])
+        .status()
+        .expect("Failed to build app");     
+    }    
+    else {
+
+        let status = Command::new("pnpm")
+        .args(["dlx", "@tauri-apps/cli", "build"])
         .status();
 
     match status {
@@ -155,7 +170,8 @@ fn build_gui() {
                 }
             }
         }
-    }    
+    }
+    }
 }
 
 fn clean_binaries() {
