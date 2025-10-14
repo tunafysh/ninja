@@ -89,8 +89,8 @@ fn build_library(extra_args: &[String]) {
 
 fn build_commands(extra_args: &[String]) {
     let target = detect_target_triple();
-    let release_dir = PathBuf::from("target/release");
-
+    let debug: bool = if extra_args.contains(&"--release".to_string()) || extra_args.contains(&"-r".to_string()) {true} else {false};
+    let binary_dir = PathBuf::from(format!("target/{}", if debug {"debug"} else {"release"}));
     let binaries = vec![("shurikenctl", "ninja-cli")];
 
     for (bin, pkg) in binaries {
@@ -105,13 +105,13 @@ fn build_commands(extra_args: &[String]) {
             .expect("building the CLI failed");
         assert!(status.success(), "Build failed for {bin}");
 
-        let orig = release_dir.join(if cfg!(windows) {
+        let orig = binary_dir.join(if cfg!(windows) {
             format!("{bin}.exe")
         } else {
             bin.to_string()
         });
 
-        let renamed = release_dir.join(if cfg!(windows) {
+        let renamed = binary_dir.join(if cfg!(windows) {
             format!("{bin}-{target}.exe")
         } else {
             format!("{bin}-{target}")
