@@ -61,7 +61,6 @@ jobs:
           cd ..
           cargo xtask build-all
           mkdir -p dist
-
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
           ! -name "bundle_dmg.sh" \
           ! -name "icon.icns" \
@@ -84,9 +83,6 @@ jobs:
           ForEach-Object { Copy-Item $_.FullName -Destination "dist" }
 
         shell: pwsh
-
-
-          
 
       # --- Ubuntu builds using Dockerfile ---
       - name: Build using Docker (Ubuntu only)
@@ -113,14 +109,12 @@ jobs:
           name: ${{ matrix.platform }}-arm64-build
           path: dist/
 
-      - name: Upload build artifacts for macos ARM
+      - name: Upload build artifacts for macos x64
         if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin' 
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-x64-build
           path: dist/
-
-        
 
 
   release:
@@ -131,10 +125,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: mkdir artifacts
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:          
           path: ./artifacts
+
+      # --- Generate hashes (omit .sig files) ---
+      - name: Generate SHA256 hashes
+        id: hashes
+        run: |
+          echo "### File Hashes (SHA256)" > hashes.txt
+          echo "" >> hashes.txt
+          find artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) | while read file; do
+            hash=$(sha256sum "$file" | cut -d ' ' -f1)
+            echo "$(basename "$file"): \`$hash\`" >> hashes.txt
+          done
+          echo "" >> hashes.txt
+          cat hashes.txt
+
+      # --- Create GitHub Release (no .sig) ---
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -144,14 +154,13 @@ jobs:
           body: |
             Automatic release build.
             Includes binaries for macOS (Intel + ARM), Windows, and Linux.
+
+            $(cat hashes.txt)
           files: |
-            files: |
             artifacts/**/Ninja*.exe
             artifacts/**/Ninja*.msi
             artifacts/**/Ninja*.dmg
             artifacts/**/Ninja*.deb
             artifacts/**/Ninja*.rpm
-            artifacts/**/Ninja*.sig
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
