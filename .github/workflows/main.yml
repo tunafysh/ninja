@@ -77,7 +77,7 @@ jobs:
           pnpm install
           cd ..
           cargo xtask build-all;
-          mkdir -p dist
+          mkdir dist
           
           Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File |
           Where-Object { $_.Extension -in ".exe", ".msi" } |
@@ -125,6 +125,6 @@ jobs:
             🚀 Automatic release build.
             Includes binaries for macOS (Intel + ARM), Windows, and Linux.
           files: |
-            artifacts/**/*
+            artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
