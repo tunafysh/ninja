@@ -102,7 +102,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.args }}-build
+          name: ${{ runner.os }}-${{ runner.arch }}-build
           path: dist/
 
   release:
