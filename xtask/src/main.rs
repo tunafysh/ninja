@@ -142,7 +142,7 @@ fn build_gui() {
         .expect("Failed to install tauri cli");
 
     Command::new("cargo")
-        .args(["dlx", "@tauri-apps/cli", "build"])
+        .args(["tauri", "build"])
         .status()
         .expect("Failed to build app");     
     }    
