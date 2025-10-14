@@ -50,6 +50,8 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: swatinem/rust-cache@v2
 
+      - run: "echo OS: ${{ runner.os }}, Arch: ${{ runner.arch }}"
+
       # --- Frontend build only for macOS and Windows ---
       - name: install frontend dependencies and build the app (macos)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm' && matrix.platform != 'windows-latest'
