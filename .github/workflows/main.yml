@@ -78,11 +78,11 @@ jobs:
           cd ..
           cargo xtask build-all;
           mkdir -p dist
+          
+          Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File |
+          Where-Object { $_.Extension -in ".exe", ".msi" } |
+          ForEach-Object { Copy-Item $_.FullName -Destination "dist" }
 
-          find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
-          ! -name "bundle_dmg.sh" \
-          ! -name "icon.icns" \
-          -exec cp {} dist/ \;
         shell: pwsh
 
 
