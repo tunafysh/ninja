@@ -8,21 +8,31 @@ use std::{fs, path::PathBuf, process::Command};
 struct Cli {
     #[command(subcommand)]
     pub command: Commands,
-    /// Extra args passed after `--`, e.g. `--target aarch64-apple-darwin`
-    #[arg(trailing_var_arg = true)]
-    pub extra_args: Vec<String>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Build the static/dynamic libraries
-    BuildLibs,
+    BuildLibs {
+        /// Extra args passed after `--`, e.g. `--target aarch64-apple-darwin`
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        extra_args: Vec<String>,
+    },
     /// Build the command line
-    BuildCLI,
+    BuildCLI {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        extra_args: Vec<String>,
+    },
     /// Build only the ninja GUI
-    BuildNinja,
+    BuildNinja {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        extra_args: Vec<String>,
+    },
     /// Build the whole ninja application
-    BuildAll,
+    BuildAll {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        extra_args: Vec<String>,
+    },
     /// Clean renamed binaries
     Clean,
 }
@@ -31,16 +41,16 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::BuildLibs => build_library(&cli.extra_args),
-        Commands::BuildCLI => build_commands(&cli.extra_args),
-        Commands::BuildNinja => {
-            build_library(&cli.extra_args);
-            build_gui(&cli.extra_args);
+        Commands::BuildLibs { extra_args } => build_library(&extra_args),
+        Commands::BuildCLI { extra_args } => build_commands(&extra_args),
+        Commands::BuildNinja { extra_args } => {
+            build_library(&extra_args);
+            build_gui(&extra_args);
         }
-        Commands::BuildAll => {
-            build_library(&cli.extra_args);
-            build_commands(&cli.extra_args);
-            build_gui(&cli.extra_args);
+        Commands::BuildAll { extra_args } => {
+            build_library(&extra_args);
+            build_commands(&extra_args);
+            build_gui(&extra_args);
         }
         Commands::Clean => clean_binaries(),
     }
