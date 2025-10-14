@@ -50,8 +50,6 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: swatinem/rust-cache@v2
 
-      - run: "echo OS: ${{ runner.os }}, Arch: ${{ runner.arch }}"
-
       # --- Frontend build only for macOS and Windows ---
       - name: install frontend dependencies and build the app (macos)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm' && matrix.platform != 'windows-latest'
@@ -101,11 +99,29 @@ jobs:
           docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'
 
       # --- Upload built artifacts ---
-      - name: Upload build artifacts
+      - name: Upload build artifacts for windows and ubuntu
+        if: matrix.platform != 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-${{ runner.arch }}-build
+          name: ${{ matrix.platform }}-build
           path: dist/
+
+      - name: Upload build artifacts for macos ARM
+        if: matrix.platform == 'macos-latest' && matrix.args == '--target aarch64-apple-darwin' 
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-arm64-build
+          path: dist/
+
+      - name: Upload build artifacts for macos ARM
+        if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin' 
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-x64-build
+          path: dist/
+
+        
+
 
   release:
     needs: build
