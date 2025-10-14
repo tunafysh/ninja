@@ -3,7 +3,7 @@ name: "main"
 on: workflow_dispatch
 
 jobs:
-  publish-tauri:
+  build:
     permissions:
       contents: write
     strategy:
@@ -106,14 +106,17 @@ jobs:
           path: dist/
 
   release:
-    needs: publish-tauri
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - run: mkdir artifacts
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          name: build
           path: ./artifacts
       - name: Create GitHub Release
         id: create_release
@@ -122,7 +125,7 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: "Ninja v${{ github.run_number }}"
           body: |
-            🚀 Automatic release build.
+            Automatic release build.
             Includes binaries for macOS (Intel + ARM), Windows, and Linux.
           files: |
             artifacts/*
