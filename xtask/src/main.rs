@@ -19,10 +19,7 @@ enum Commands {
         extra_args: Vec<String>,
     },
     /// Build the command line
-    BuildCLI {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        extra_args: Vec<String>,
-    },
+    BuildCLI,
     /// Build only the ninja GUI
     BuildNinja {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -42,14 +39,14 @@ fn main() {
 
     match cli.command {
         Commands::BuildLibs { extra_args } => build_library(&extra_args),
-        Commands::BuildCLI { extra_args } => build_commands(&extra_args),
+        Commands::BuildCLI => build_commands(),
         Commands::BuildNinja { extra_args } => {
             build_library(&extra_args);
             build_gui(&extra_args);
         }
         Commands::BuildAll { extra_args } => {
             build_library(&extra_args);
-            build_commands(&extra_args);
+            build_commands();
             build_gui(&extra_args);
         }
         Commands::Clean => clean_binaries(),
@@ -87,20 +84,14 @@ fn build_library(extra_args: &[String]) {
     assert!(status.success(), "Library build failed");
 }
 
-fn build_commands(extra_args: &[String]) {
+fn build_commands() {
     let target = detect_target_triple();
-    let debug: bool = if extra_args.contains(&"--release".to_string()) || extra_args.contains(&"-r".to_string()) {true} else {false};
-    let binary_dir = PathBuf::from(format!("target/{}", if debug {"debug"} else {"release"}));
+    let binary_dir = PathBuf::from("target/release");
     let binaries = vec![("shurikenctl", "ninja-cli")];
 
     for (bin, pkg) in binaries {
-        let mut args = vec!["build", "--bin", bin, "--package", pkg];
-        for arg in extra_args {
-            args.push(arg);
-        }
-
         let status = Command::new("cargo")
-            .args(&args)
+            .args(["build", "--bin", bin, "--package", pkg])
             .status()
             .expect("building the CLI failed");
         assert!(status.success(), "Build failed for {bin}");
