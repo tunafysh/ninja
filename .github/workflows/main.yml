@@ -127,6 +127,6 @@ jobs:
             Automatic release build.
             Includes binaries for macOS (Intel + ARM), Windows, and Linux.
           files: |
-            artifacts/*
+            artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
