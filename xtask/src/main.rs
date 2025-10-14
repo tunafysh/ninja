@@ -133,9 +133,8 @@ fn build_commands() {
 }
 
 fn build_gui() {
-    let status = Command::new("pnpm")
-        .args(["dlx", "@tauri-apps/cli", "build"])
-        .current_dir("GUI")
+    let status = Command::new("pnpx")
+        .args(["@tauri-apps/cli", "build"])
         .status();
 
     match status {
@@ -144,7 +143,6 @@ fn build_gui() {
             println!("{:>12} {}", "Info". green().bold(),"pnpm didn't work. switching to cargo");
             let res = Command::new("cargo")
             .args(["tauri", "build"])
-            .current_dir("GUI")
             .status();
             match res {
                 Ok(_) => {}
@@ -152,7 +150,6 @@ fn build_gui() {
                     println!("{:>12} {}", "Info". green().bold(),"cargo didn't work. switching to npm");
                     Command::new("npx")
                         .args(["@tauri-apps/cli", "build"])
-                        .current_dir("GUI")
                         .status()
                         .expect("Building the GUI failed");
                 }
