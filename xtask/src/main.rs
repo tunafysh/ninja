@@ -101,10 +101,9 @@ fn build_commands() {
             format!("{bin}-{target}")
         });
 
-        let _ = fs::remove_file(&renamed); // clean existing
         fs::rename(&orig, &renamed).expect("rename failed");
 
-        let copy_dir = PathBuf::from("GUI/src-tauri/binaries");
+        let copy_dir = PathBuf::from("GUI").join("src-tauri");
 
         if !copy_dir.exists() {
             fs::create_dir_all(&copy_dir).expect("Failed to create dir");
@@ -137,10 +136,29 @@ fn build_gui() {
     let status = Command::new("pnpm")
         .args(["dlx", "@tauri-apps/cli", "build"])
         .current_dir("GUI")
-        .status()
-        .expect("building the GUI failed");
+        .status();
 
-    assert!(status.success());
+    match status {
+        Ok(_) => {},
+        Err(..) => {
+            println!("{:>12} {}", "Info". green().bold(),"pnpm didn't work. switching to cargo");
+            let res = Command::new("cargo")
+            .args(["tauri", "build"])
+            .current_dir("GUI")
+            .status();
+            match res {
+                Ok(_) => {}
+                Err(..) => {
+                    println!("{:>12} {}", "Info". green().bold(),"cargo didn't work. switching to npm");
+                    Command::new("npx")
+                        .args(["@tauri-apps/cli", "build"])
+                        .current_dir("GUI")
+                        .status()
+                        .expect("Building the GUI failed");
+                }
+            }
+        }
+    }    
 }
 
 fn clean_binaries() {
