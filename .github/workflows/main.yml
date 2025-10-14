@@ -127,6 +127,13 @@ jobs:
             Automatic release build.
             Includes binaries for macOS (Intel + ARM), Windows, and Linux.
           files: |
-            artifacts/**/Ninja*
+            files: |
+            artifacts/**/Ninja*.exe
+            artifacts/**/Ninja*.msi
+            artifacts/**/Ninja*.dmg
+            artifacts/**/Ninja*.deb
+            artifacts/**/Ninja*.rpm
+            artifacts/**/Ninja*.sig
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
