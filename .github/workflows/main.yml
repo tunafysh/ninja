@@ -116,7 +116,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build
+          name: ${{ matrix.platform }}-${{ matrix.args }}-build
           path: ./artifacts
       - name: Create GitHub Release
         id: create_release
