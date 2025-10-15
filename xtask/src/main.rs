@@ -19,7 +19,10 @@ enum Commands {
         extra_args: Option<Vec<String>>,
     },
     /// Build the command line
-    BuildCLI,
+    BuildCLI{
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        extra_args: Option<Vec<String>>,
+    },
     /// Build only the ninja GUI
     BuildNinja {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -39,14 +42,14 @@ fn main() {
 
     match cli.command {
         Commands::BuildLibs { extra_args } => build_library(extra_args),
-        Commands::BuildCLI => build_commands(),
+        Commands::BuildCLI { extra_args } => build_commands(extra_args),
         Commands::BuildNinja { extra_args } => {
             build_library(extra_args.clone());
             build_gui(extra_args);
         }
         Commands::BuildAll { extra_args } => {
             build_library(extra_args.clone());
-            build_commands();
+            build_commands(extra_args.clone());
             build_gui(extra_args);
         }
         Commands::Clean => clean_binaries(),
@@ -86,20 +89,35 @@ fn build_library(extra_args: Option<Vec<String>>) {
     assert!(status.success(), "Library build failed");
 }
 
-fn build_commands() {
+fn build_commands(extra_args: Option<Vec<String>>) {
     let target = detect_target_triple();
     let release_dir = PathBuf::from("target/release");
-
     let binaries = vec![("shurikenctl", "ninja-cli")];
 
     for (bin, pkg) in binaries {
+        // Base cargo args
+        let mut args: Vec<String> = vec![
+            "build".to_string(),
+            "--bin".to_string(),
+            bin.to_string(),
+            "--package".to_string(),
+            pkg.to_string(),
+            "--release".to_string(),
+        ];
 
+        // Append extra args, if any
+        if let Some(extra_args) = extra_args.clone() {
+            args.extend(extra_args);
+        }
+
+        // Run the build
         let status = Command::new("cargo")
-            .args(["build", "--bin", bin, "--package", pkg, "--release"])
+            .args(&args)
             .status()
             .expect("building the CLI failed");
         assert!(status.success(), "Build failed for {bin}");
 
+        // Rename
         let orig = release_dir.join(if cfg!(windows) {
             format!("{bin}.exe")
         } else {
@@ -114,8 +132,8 @@ fn build_commands() {
 
         fs::rename(&orig, &renamed).expect("rename failed");
 
+        // Copy into GUI binaries directory
         let copy_dir = PathBuf::from("GUI").join("src-tauri").join("binaries");
-
         if !copy_dir.exists() {
             fs::create_dir_all(&copy_dir).expect("Failed to create dir");
         }
@@ -142,7 +160,6 @@ fn build_commands() {
         fs::copy(renamed, copy_path).expect("Failed to copy shurikenctl");
     }
 }
-
 
 fn build_gui(extra_args: Option<Vec<String>>) {
     println!("{:>12} {}", "Info".green().bold(), "Building GUI...");
