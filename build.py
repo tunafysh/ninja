@@ -102,16 +102,12 @@ def build_commands(extra_args: list[str]):
         host_release_dir.mkdir(parents=True, exist_ok=True)
         dest_bin = host_release_dir / f"{bin_name}{ext}"
 
-        if dest_bin.exists():
-            dest_bin.unlink()
-            print_status("Removed", f"Existing {dest_bin}")
-
         shutil.move(str(built_bin), str(dest_bin))
         print_status("Info", f"Moved {built_bin} → {dest_bin}")
 
         # --- Rename for target signature ---
         renamed = host_release_dir / (f"{bin_name}-{target}{ext}")
-        shutil.copy2(dest_bin, renamed)
+        os.rename(dest_bin, renamed)
         print_status("Info", f"Copied {dest_bin.name} → {renamed.name}")
 
         # --- Copy to GUI binaries directory ---
