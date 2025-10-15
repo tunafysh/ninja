@@ -16,22 +16,19 @@ enum Commands {
     BuildLibs {
         /// Extra args passed after `--`, e.g. `--target aarch64-apple-darwin`
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        extra_args: Vec<String>,
+        extra_args: Option<Vec<String>>,
     },
     /// Build the command line
-    BuildCLI {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        extra_args: Vec<String>,
-    },
+    BuildCLI,
     /// Build only the ninja GUI
     BuildNinja {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        extra_args: Vec<String>,
+        extra_args: Option<Vec<String>>,
     },
     /// Build the whole ninja application
     BuildAll {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        extra_args: Vec<String>,
+        extra_args: Option<Vec<String>>,
     },
     /// Clean renamed binaries
     Clean,
@@ -41,16 +38,16 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::BuildLibs { extra_args } => build_library(&extra_args),
-        Commands::BuildCLI { extra_args } => build_commands(&extra_args),
+        Commands::BuildLibs { extra_args } => build_library(extra_args),
+        Commands::BuildCLI => build_commands(),
         Commands::BuildNinja { extra_args } => {
-            build_library(&extra_args);
-            build_gui(&extra_args);
+            build_library(extra_args.clone());
+            build_gui(extra_args);
         }
         Commands::BuildAll { extra_args } => {
-            build_library(&extra_args);
-            build_commands(&extra_args);
-            build_gui(&extra_args);
+            build_library(extra_args.clone());
+            build_commands();
+            build_gui(extra_args);
         }
         Commands::Clean => clean_binaries(),
     }
@@ -73,10 +70,12 @@ fn detect_target_triple() -> String {
         .to_string()
 }
 
-fn build_library(extra_args: &[String]) {
-    let mut args = vec!["build", "--package", "ninja-core"];
-    for arg in extra_args {
-        args.push(arg);
+fn build_library(extra_args: Option<Vec<String>>) {
+    let mut args: Vec<String> = vec!["build".to_string(), "--package".to_string(), "ninja-core".to_string()];
+    if let Some(extra_args) = extra_args{
+        for arg in extra_args {
+            args.push(arg);
+        }
     }
 
     let status = Command::new("cargo")
@@ -87,20 +86,16 @@ fn build_library(extra_args: &[String]) {
     assert!(status.success(), "Library build failed");
 }
 
-fn build_commands(extra_args: &[String]) {
+fn build_commands() {
     let target = detect_target_triple();
     let release_dir = PathBuf::from("target/release");
 
     let binaries = vec![("shurikenctl", "ninja-cli")];
 
     for (bin, pkg) in binaries {
-        let mut args = vec!["build", "--bin", bin, "--package", pkg];
-        for arg in extra_args {
-            args.push(arg);
-        }
 
         let status = Command::new("cargo")
-            .args(&args)
+            .args(["build", "--bin", bin, "--package", pkg, "--release"])
             .status()
             .expect("building the CLI failed");
         assert!(status.success(), "Build failed for {bin}");
@@ -149,7 +144,7 @@ fn build_commands(extra_args: &[String]) {
 }
 
 
-fn build_gui(extra_args: &[String]) {
+fn build_gui(extra_args: Option<Vec<String>>) {
     println!("{:>12} {}", "Info".green().bold(), "Building GUI...");
 
     if cfg!(target_os = "windows") {
@@ -158,32 +153,39 @@ fn build_gui(extra_args: &[String]) {
             .status()
             .expect("Failed to install tauri cli");
 
-        let mut args = vec!["tauri", "build"];
+        let mut args: Vec<String> = vec!["tauri".to_string(), "build".to_string()];
+        if let Some(extra_args) = extra_args{
         for arg in extra_args {
             args.push(arg);
         }
+    }
 
         Command::new("cargo")
             .args(&args)
             .status()
             .expect("Failed to build app");
     } else {
-        let mut args = vec!["@tauri-apps/cli", "build"];
-        for arg in extra_args {
-            args.push(arg);
+        let mut args: Vec<String> = vec!["@tauri-apps/cli".to_string(), "build".to_string()];
+        if let Some(extra_args) = extra_args.clone() {
+            for arg in extra_args {
+                args.push(arg);
+            }
         }
 
         let status = Command::new("pnpm")
-            .args(["dlx"].iter().chain(args.iter()).cloned().collect::<Vec<_>>())
+            .args(["dlx"].iter().map(|s| s.to_string()).chain(args.into_iter()))
             .status();
+
 
         match status {
             Ok(_) => {}
             Err(..) => {
                 println!("{:>12} {}", "Info".green().bold(), "pnpm didn't work. switching to cargo");
-                let mut cargo_args = vec!["tauri", "build"];
-                for arg in extra_args {
-                    cargo_args.push(arg);
+                let mut cargo_args: Vec<String> = vec!["tauri".to_string(), "build".to_string()];
+                if let Some(extra_args) = extra_args.clone() {
+                    for arg in extra_args {
+                        cargo_args.push(arg);
+                    }
                 }
 
                 let res = Command::new("cargo").args(&cargo_args).status();
@@ -195,9 +197,11 @@ fn build_gui(extra_args: &[String]) {
                             "Info".green().bold(),
                             "cargo didn't work. switching to npm"
                         );
-                        let mut npm_args = vec!["@tauri-apps/cli", "build"];
-                        for arg in extra_args {
-                            npm_args.push(arg);
+                        let mut npm_args: Vec<String>  = vec!["@tauri-apps/cli".to_string(), "build".to_string()];
+                        if let Some(extra_args) = extra_args{
+                            for arg in extra_args {
+                                npm_args.push(arg);
+                            }
                         }
                         Command::new("npx")
                             .args(&npm_args)
