@@ -7,10 +7,6 @@ from pathlib import Path
 
 # ===== Cargo-style Status Printer =====
 def print_status(status: str, message: str):
-    """
-    status: "Info", "Running", "Removed", "Warning", "Error", etc.
-    message: descriptive text
-    """
     colors = {
         "Info": "\033[1;32m",     # green bold
         "Running": "\033[1;34m",  # blue bold
@@ -40,7 +36,6 @@ def detect_target_triple() -> str:
     raise SystemExit("Error: Unable to determine host triple")
 
 def extract_target_from_args(extra_args: list[str]) -> str | None:
-    """If --target <triple> is present in extra_args, extract and return it."""
     if "--target" in extra_args:
         idx = extra_args.index("--target")
         if idx + 1 < len(extra_args):
@@ -48,7 +43,6 @@ def extract_target_from_args(extra_args: list[str]) -> str | None:
     return None
 
 def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
-    """Check if a tool exists in PATH, optionally install it if missing."""
     if shutil.which(tool):
         return True
     print_status("Warning", f"{tool} not found.")
@@ -62,7 +56,6 @@ def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
     return True
 
 def get_release_dir(target: str | None) -> Path:
-    """Return correct release directory path for the given target."""
     base = Path("target")
     if target:
         return base / target / "release"
@@ -83,6 +76,7 @@ def build_commands(extra_args: list[str]):
         print_status("Info", f"Detected host target: {target}")
 
     release_dir = get_release_dir(target)
+    host_release_dir = get_release_dir(None)
     binaries = [("shurikenctl", "ninja-cli")]
 
     for bin_name, pkg in binaries:
@@ -90,21 +84,41 @@ def build_commands(extra_args: list[str]):
         cmd = ["cargo", "build", "--bin", bin_name, "--package", pkg, "--release"] + extra_args
         run_command(cmd, f"Build {bin_name}")
 
-        orig = release_dir / (bin_name + (".exe" if os.name == "nt" else ""))
-        if not orig.exists():
-            raise SystemExit(f"Error: {orig} not found (build may have failed).")
+        ext = ".exe" if os.name == "nt" else ""
+        built_bin = release_dir / f"{bin_name}{ext}"
+        if not built_bin.exists():
+            raise SystemExit(f"Error: {built_bin} not found (build may have failed).")
 
-        renamed = release_dir / (f"{bin_name}-{target}" + (".exe" if os.name == "nt" else ""))
-        shutil.move(orig, renamed)
+        # --- Move binary to target/release ---
+        host_release_dir.mkdir(parents=True, exist_ok=True)
+        dest_bin = host_release_dir / f"{bin_name}{ext}"
 
+        if dest_bin.exists():
+            dest_bin.unlink()
+            print_status("Removed", f"Existing {dest_bin}")
+
+        shutil.move(str(built_bin), str(dest_bin))
+        print_status("Info", f"Moved {built_bin} → {dest_bin}")
+
+        # --- Rename for target signature ---
+        renamed = host_release_dir / (f"{bin_name}-{target}{ext}")
+        shutil.copy2(dest_bin, renamed)
+        print_status("Info", f"Copied {dest_bin.name} → {renamed.name}")
+
+        # --- Copy to GUI binaries directory ---
         copy_dir = Path("GUI") / "src-tauri" / "binaries"
         copy_dir.mkdir(parents=True, exist_ok=True)
         copy_path = copy_dir / renamed.name
-
-        print_status("Removed", str(orig))
-        print_status("Info", f"Renamed {renamed.name}")
-        print_status("Info", f"Copying to {copy_path}")
         shutil.copy2(renamed, copy_path)
+        print_status("Info", f"Copied to {copy_path}")
+
+    # --- Cleanup: remove crosscompiled release directory ---
+    try:
+        if release_dir.exists() and release_dir != host_release_dir:
+            shutil.rmtree(release_dir)
+            print_status("Removed", f"Cleaned {release_dir}")
+    except Exception as e:
+        print_status("Warning", f"Failed to clean {release_dir}: {e}")
 
 def build_gui(extra_args: list[str]):
     print_status("Info", "Building GUI...")
@@ -129,15 +143,28 @@ def build_gui(extra_args: list[str]):
                 run_command(cmd, "GUI build (npx)")
 
 def clean_binaries():
-    target = detect_target_triple()
-    release_dir = get_release_dir(target)
-    binaries = ["ninja_cli"]
+    host_target = detect_target_triple()
+    host_release_dir = get_release_dir(None)
+    binaries = ["shurikenctl", "ninja-cli"]
 
     for bin_name in binaries:
-        renamed = release_dir / (f"{bin_name}-{target}" + (".exe" if os.name == "nt" else ""))
-        if renamed.exists():
-            renamed.unlink()
-            print_status("Removed", str(renamed))
+        ext = ".exe" if os.name == "nt" else ""
+        paths = [
+            host_release_dir / f"{bin_name}{ext}",
+            host_release_dir / f"{bin_name}-{host_target}{ext}",
+        ]
+        for p in paths:
+            if p.exists():
+                p.unlink()
+                print_status("Removed", str(p))
+
+    # Optionally clean GUI binaries directory
+    gui_bin_dir = Path("GUI") / "src-tauri" / "binaries"
+    if gui_bin_dir.exists():
+        for p in gui_bin_dir.glob("*"):
+            if p.is_file():
+                p.unlink()
+                print_status("Removed", f"GUI binary {p}")
 
 # ===== CLI =====
 def main():
