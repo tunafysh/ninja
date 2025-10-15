@@ -3,6 +3,7 @@ import subprocess
 import shutil
 import os
 import sys
+import glob
 from pathlib import Path
 
 # ===== Pretty printing =====
@@ -22,7 +23,7 @@ def print_status(status: str, msg: str):
     arrow = "->" if os.name == "nt" else "→"
     msg = msg.replace("→", arrow)
 
-    print(f"{color}{status:>8}{reset} {msg}")
+    print(f"{color}{status:>12}{reset} {msg}")
 
 def run(cmd: list[str], desc: str):
     print_status("Run", " ".join(cmd))
@@ -52,6 +53,32 @@ def extract_target(args: list[str]) -> str | None:
         return args[i + 1] if i + 1 < len(args) else None
     return None
 
+# ===== Helper: Find and relocate binary =====
+def find_and_place_binary():
+    """Find any shurikenctl[.exe] in target/**/release and copy it to GUI/src-tauri/binaries"""
+    root = Path(__file__).parent.resolve()
+    binaries_dir = (root / "GUI" / "src-tauri" / "binaries").resolve()
+    binaries_dir.mkdir(parents=True, exist_ok=True)
+
+    patterns = [
+        "target/**/release/shurikenctl",
+        "target/**/release/shurikenctl.exe",
+    ]
+    found_files = []
+    for pattern in patterns:
+        found_files.extend(glob.glob(str(root / pattern), recursive=True))
+
+    if not found_files:
+        print_status("Err", "No shurikenctl binary found in any release folder.")
+        return
+
+    found_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    latest = Path(found_files[0])
+    dest = binaries_dir / latest.name
+
+    shutil.copy2(latest, dest)
+    print_status("Info", f"Found and copied {latest.relative_to(root)} → {dest.relative_to(root)}")
+
 # ===== Build steps =====
 def build_lib(args):
     print_status("Info", "Building ninja-core")
@@ -72,7 +99,9 @@ def build_cli(args):
 
         built = release / f"{bin_name}{ext}"
         if not built.exists():
-            sys.exit(f"{built} not found")
+            print_status("Warn", f"{built} not found, scanning target/**/release...")
+            find_and_place_binary()
+            return
 
         host_release.mkdir(parents=True, exist_ok=True)
         dest = host_release / f"{bin_name}{ext}"
