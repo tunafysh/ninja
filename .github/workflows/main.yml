@@ -85,10 +85,7 @@ jobs:
           cd ..
           uv run build.py buildall -- ${{ matrix.args }}
           mkdir dist
-          Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File |
-          Where-Object { $_.Extension -in ".exe", ".msi" } |
-          ForEach-Object { Copy-Item $_.FullName -Destination "dist" }
-        shell: pwsh
+          powershell -c "Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File | Where-Object { $_.Extension -in ".exe", ".msi" } | ForEach-Object { Copy-Item $_.FullName -Destination "dist" }"
 
       # --- Ubuntu builds using Docker ---
       - name: Build using Docker (Ubuntu)
