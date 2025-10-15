@@ -61,6 +61,13 @@ def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
         raise SystemExit(f"Missing required tool {tool}")
     return True
 
+def get_release_dir(target: str | None) -> Path:
+    """Return correct release directory path for the given target."""
+    base = Path("target")
+    if target:
+        return base / target / "release"
+    return base / "release"
+
 # ===== Tasks =====
 def build_library(extra_args: list[str]):
     print_status("Info", "Building ninja-core")
@@ -68,8 +75,14 @@ def build_library(extra_args: list[str]):
     run_command(cmd, "Library build")
 
 def build_commands(extra_args: list[str]):
-    target = extract_target_from_args(extra_args) or detect_target_triple()
-    release_dir = Path("target/release")
+    target = extract_target_from_args(extra_args)
+    if target:
+        print_status("Info", f"Using provided target: {target}")
+    else:
+        target = detect_target_triple()
+        print_status("Info", f"Detected host target: {target}")
+
+    release_dir = get_release_dir(target)
     binaries = [("shurikenctl", "ninja-cli")]
 
     for bin_name, pkg in binaries:
@@ -78,8 +91,10 @@ def build_commands(extra_args: list[str]):
         run_command(cmd, f"Build {bin_name}")
 
         orig = release_dir / (bin_name + (".exe" if os.name == "nt" else ""))
-        renamed = release_dir / (f"{bin_name}-{target}" + (".exe" if os.name == "nt" else ""))
+        if not orig.exists():
+            raise SystemExit(f"Error: {orig} not found (build may have failed).")
 
+        renamed = release_dir / (f"{bin_name}-{target}" + (".exe" if os.name == "nt" else ""))
         shutil.move(orig, renamed)
 
         copy_dir = Path("GUI") / "src-tauri" / "binaries"
@@ -115,7 +130,7 @@ def build_gui(extra_args: list[str]):
 
 def clean_binaries():
     target = detect_target_triple()
-    release_dir = Path("target/release")
+    release_dir = get_release_dir(target)
     binaries = ["ninja_cli"]
 
     for bin_name in binaries:
@@ -127,7 +142,7 @@ def clean_binaries():
 # ===== CLI =====
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python xtask.py [buildlibs|buildcli|buildninja|buildall|clean] [-- extra args]")
+        print("Usage: python build.py [buildlibs|buildcli|buildninja|buildall|clean] [-- extra args]")
         raise SystemExit(1)
 
     command = sys.argv[1].lower()
