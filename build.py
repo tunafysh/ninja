@@ -5,202 +5,148 @@ import os
 import sys
 from pathlib import Path
 
-# ===== Cargo-style Status Printer =====
-def print_status(status: str, message: str):
+# ===== Pretty printing =====
+def print_status(status: str, msg: str):
     colors = {
-        "Info": "\033[1;32m",     # green bold
-        "Running": "\033[1;34m",  # blue bold
-        "Removed": "\033[1;33m",  # yellow bold
-        "Warning": "\033[1;33m",  # yellow bold
-        "Error": "\033[1;31m",    # red bold
+        "Info": "\033[1;32m",
+        "Run": "\033[1;34m",
+        "Warn": "\033[1;33m",
+        "Err": "\033[1;31m",
+        "Rm": "\033[1;33m",
     }
     reset = "\033[0m"
-    color = colors.get(status, "\033[1;37m")  # default white
-    print(f"{color}{status:>12}{reset} {message}")
+    color = colors.get(status, "\033[1;37m")
 
-# ===== Helpers =====
-def run_command(cmd: list[str], desc: str):
-    print_status("Running", " ".join(cmd))
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
-        raise SystemExit(f"{desc} failed with code {result.returncode}")
+    # Windows-safe arrow and UTF-8
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    arrow = "->" if os.name == "nt" else "→"
+    msg = msg.replace("→", arrow)
 
-def detect_target_triple() -> str:
+    print(f"{color}{status:>8}{reset} {msg}")
+
+def run(cmd: list[str], desc: str):
+    print_status("Run", " ".join(cmd))
+    if subprocess.call(cmd) != 0:
+        sys.exit(f"{desc} failed")
+
+# ===== Build logic =====
+def target_dir(target: str | None) -> Path:
+    """Finds release dir for target (fallbacks automatically)."""
+    base = Path("target")
+    tdir = base / target / "release" if target else base / "release"
+    if not tdir.exists():
+        print_status("Warn", f"{tdir} not found, using target/release")
+        return base / "release"
+    return tdir
+
+def detect_target() -> str:
     try:
         out = subprocess.check_output(["rustc", "-vV"], text=True)
-        for line in out.splitlines():
-            if line.startswith("host:"):
-                return line.split(":")[1].strip()
+        return next(l.split(":")[1].strip() for l in out.splitlines() if l.startswith("host:"))
     except Exception:
-        raise SystemExit("Error: Failed to detect target triple")
-    raise SystemExit("Error: Unable to determine host triple")
+        sys.exit("Failed to detect target triple")
 
-def extract_target_from_args(extra_args: list[str]) -> str | None:
-    if "--target" in extra_args:
-        idx = extra_args.index("--target")
-        if idx + 1 < len(extra_args):
-            return extra_args[idx + 1]
+def extract_target(args: list[str]) -> str | None:
+    if "--target" in args:
+        i = args.index("--target")
+        return args[i + 1] if i + 1 < len(args) else None
     return None
 
-def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
-    if shutil.which(tool):
-        return True
-    print_status("Warning", f"{tool} not found.")
-    if install_cmd:
-        print_status("Info", f"Installing {tool}...")
-        result = subprocess.run(install_cmd)
-        if result.returncode != 0:
-            raise SystemExit(f"Failed to install {tool}")
-    else:
-        raise SystemExit(f"Missing required tool {tool}")
-    return True
-
-def get_release_dir(target: str | None) -> Path:
-    """
-    Returns the release directory for the given target.  
-    Falls back to target/release if the cross-compiled path doesn't exist.
-    """
-    base = Path("target")
-    if target:
-        triple_dir = base / target / "release"
-        if triple_dir.exists():
-            return triple_dir
-        else:
-            print_status("Warning", f"{triple_dir} not found, falling back to target/release")
-    return base / "release"
-
-
-# ===== Tasks =====
-def build_library(extra_args: list[str]):
+# ===== Build steps =====
+def build_lib(args):
     print_status("Info", "Building ninja-core")
-    cmd = ["cargo", "build", "--package", "ninja-core"] + extra_args
-    run_command(cmd, "Library build")
+    run(["cargo", "build", "--package", "ninja-core"] + args, "Core build")
 
-def build_commands(extra_args: list[str]):
-    target = extract_target_from_args(extra_args)
-    if target:
-        print_status("Info", f"Using provided target: {target}")
-    else:
-        target = detect_target_triple()
-        print_status("Info", f"Detected host target: {target}")
+def build_cli(args):
+    target = extract_target(args) or detect_target()
+    print_status("Info", f"Target: {target}")
 
-    release_dir = get_release_dir(target)
-    host_release_dir = get_release_dir(None)
-    binaries = [("shurikenctl", "ninja-cli")]
+    release = target_dir(target)
+    host_release = target_dir(None)
+    bins = [("shurikenctl", "ninja-cli")]
+    ext = ".exe" if os.name == "nt" else ""
 
-    for bin_name, pkg in binaries:
-        print_status("Info", f"Building {pkg} ({bin_name})")
-        cmd = ["cargo", "build", "--bin", bin_name, "--package", pkg, "--release"] + extra_args
-        run_command(cmd, f"Build {bin_name}")
+    for bin_name, pkg in bins:
+        print_status("Info", f"Building {pkg}")
+        run(["cargo", "build", "--bin", bin_name, "--package", pkg, "--release"] + args, "Build")
 
-        ext = ".exe" if os.name == "nt" else ""
-        built_bin = release_dir / f"{bin_name}{ext}"
-        if not built_bin.exists():
-            raise SystemExit(f"Error: {built_bin} not found (build may have failed).")
+        built = release / f"{bin_name}{ext}"
+        if not built.exists():
+            sys.exit(f"{built} not found")
 
-        # --- Move binary to target/release ---
-        host_release_dir.mkdir(parents=True, exist_ok=True)
-        dest_bin = host_release_dir / f"{bin_name}{ext}"
+        host_release.mkdir(parents=True, exist_ok=True)
+        dest = host_release / f"{bin_name}{ext}"
+        shutil.move(built, dest)
+        print_status("Info", f"Moved {built.name} → {dest.name}")
 
-        shutil.move(str(built_bin), str(dest_bin))
-        print_status("Info", f"Moved {built_bin} → {dest_bin}")
+        renamed = host_release / f"{bin_name}-{target}{ext}"
+        dest.rename(renamed)
+        print_status("Info", f"Renamed to {renamed.name}")
 
-        # --- Rename for target signature ---
-        renamed = host_release_dir / (f"{bin_name}-{target}{ext}")
-        os.rename(dest_bin, renamed)
-        print_status("Info", f"Copied {dest_bin.name} → {renamed.name}")
-
-        # --- Copy to GUI binaries directory ---
-        copy_dir = Path("GUI") / "src-tauri" / "binaries"
+        copy_dir = Path("GUI/src-tauri/binaries")
         copy_dir.mkdir(parents=True, exist_ok=True)
-        copy_path = copy_dir / renamed.name
-        shutil.copy2(renamed, copy_path)
-        print_status("Info", f"Copied to {copy_path}")
+        shutil.copy2(renamed, copy_dir / renamed.name)
+        print_status("Info", f"Copied to GUI/binaries")
 
-    # --- Cleanup: remove crosscompiled release directory ---
-    try:
-        if release_dir.exists() and release_dir != host_release_dir:
-            shutil.rmtree(release_dir)
-            print_status("Removed", f"Cleaned {release_dir}")
-    except Exception as e:
-        print_status("Warning", f"Failed to clean {release_dir}: {e}")
+    if release.exists() and release != host_release:
+        shutil.rmtree(release, ignore_errors=True)
+        print_status("Rm", f"Cleaned {release}")
 
-def build_gui(extra_args: list[str]):
-    print_status("Info", "Building GUI...")
-    if os.name == "nt":
-        ensure_tool_installed("cargo")
-        ensure_tool_installed("tauri", ["cargo", "install", "tauri-cli"])
-        cmd = ["cargo", "tauri", "build", "--"] + extra_args
-        run_command(cmd, "GUI build (cargo tauri)")
+def build_gui(args):
+    print_status("Info", "Building GUI")
+    ensure_tool("pnpm", ["npm", "install", "-g", "pnpm"])
+    cmd = ["pnpm", "dlx", "@tauri-apps/cli", "build", "--"] + args
+    if subprocess.call(cmd) != 0:
+        print_status("Warn", "pnpm failed, trying cargo tauri")
+        ensure_tool("cargo")
+        run(["cargo", "tauri", "build", "--"] + args, "GUI build")
+
+def ensure_tool(name, install_cmd=None):
+    if shutil.which(name):
+        return
+    print_status("Warn", f"{name} not found")
+    if install_cmd:
+        run(install_cmd, f"Install {name}")
     else:
-        ensure_tool_installed("pnpm", ["npm", "install", "-g", "pnpm"])
-        cmd = ["pnpm", "dlx", "@tauri-apps/cli", "build", "--"] + extra_args
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            print_status("Warning", "pnpm failed, trying cargo...")
-            ensure_tool_installed("cargo")
-            cmd = ["cargo", "tauri", "build", "--"] + extra_args
-            result = subprocess.run(cmd)
-            if result.returncode != 0:
-                print_status("Warning", "cargo failed, trying npx...")
-                ensure_tool_installed("npx", ["npm", "install", "-g", "npm"])
-                cmd = ["npx", "@tauri-apps/cli", "build", "--"] + extra_args
-                run_command(cmd, "GUI build (npx)")
+        sys.exit(f"{name} is required")
 
-def clean_binaries():
-    host_target = detect_target_triple()
-    host_release_dir = get_release_dir(None)
-    binaries = ["shurikenctl", "ninja-cli"]
+def clean():
+    host_target = detect_target()
+    host_release = target_dir(None)
+    ext = ".exe" if os.name == "nt" else ""
+    bins = ["shurikenctl", "ninja-cli"]
 
-    for bin_name in binaries:
-        ext = ".exe" if os.name == "nt" else ""
-        paths = [
-            host_release_dir / f"{bin_name}{ext}",
-            host_release_dir / f"{bin_name}-{host_target}{ext}",
-        ]
-        for p in paths:
+    for b in bins:
+        for p in [host_release / f"{b}{ext}", host_release / f"{b}-{host_target}{ext}"]:
             if p.exists():
                 p.unlink()
-                print_status("Removed", str(p))
+                print_status("Rm", str(p))
 
-    # Optionally clean GUI binaries directory
-    gui_bin_dir = Path("GUI") / "src-tauri" / "binaries"
-    if gui_bin_dir.exists():
-        for p in gui_bin_dir.glob("*"):
-            if p.is_file():
-                p.unlink()
-                print_status("Removed", f"GUI binary {p}")
+    gui_dir = Path("GUI/src-tauri/binaries")
+    for p in gui_dir.glob("*"):
+        if p.is_file():
+            p.unlink()
+            print_status("Rm", f"GUI binary {p}")
 
-# ===== CLI =====
+# ===== CLI Entrypoint =====
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python build.py [buildlibs|buildcli|buildninja|buildall|clean] [-- extra args]")
-        raise SystemExit(1)
+        sys.exit("Usage: build.py [buildlibs|buildcli|buildninja|buildall|clean] [-- extra args]")
 
-    command = sys.argv[1].lower()
-    if "--" in sys.argv:
-        idx = sys.argv.index("--")
-        extra_args = sys.argv[idx + 1 :]
-    else:
-        extra_args = []
+    cmd = sys.argv[1].lower()
+    extra = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 
-    match command:
-        case "buildlibs":
-            build_library(extra_args)
-        case "buildcli":
-            build_commands(extra_args)
-        case "buildninja":
-            build_library(extra_args)
-            build_gui(extra_args)
-        case "buildall":
-            build_library(extra_args)
-            build_commands(extra_args)
-            build_gui(extra_args)
-        case "clean":
-            clean_binaries()
-        case _:
-            print_status("Error", f"Unknown command '{command}'")
-            raise SystemExit(1)
+    actions = {
+        "buildlibs": lambda: build_lib(extra),
+        "buildcli": lambda: build_cli(extra),
+        "buildninja": lambda: (build_lib(extra), build_gui(extra)),
+        "buildall": lambda: (build_lib(extra), build_cli(extra), build_gui(extra)),
+        "clean": clean,
+    }
+
+    if cmd not in actions:
+        sys.exit(f"Unknown command: {cmd}")
+    actions[cmd]()
 
 if __name__ == "__main__":
     main()
