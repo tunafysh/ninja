@@ -153,7 +153,7 @@ fn build_gui(extra_args: Option<Vec<String>>) {
             .status()
             .expect("Failed to install tauri cli");
 
-        let mut args: Vec<String> = vec!["tauri".to_string(), "build".to_string()];
+        let mut args: Vec<String> = vec!["tauri".to_string(), "build".to_string(),"--".to_string()];
         if let Some(extra_args) = extra_args{
         for arg in extra_args {
             args.push(arg);
@@ -165,7 +165,7 @@ fn build_gui(extra_args: Option<Vec<String>>) {
             .status()
             .expect("Failed to build app");
     } else {
-        let mut args: Vec<String> = vec!["@tauri-apps/cli".to_string(), "build".to_string()];
+        let mut args: Vec<String> = vec!["@tauri-apps/cli".to_string(), "build".to_string(), "--".to_string()];
         if let Some(extra_args) = extra_args.clone() {
             for arg in extra_args {
                 args.push(arg);
@@ -181,7 +181,7 @@ fn build_gui(extra_args: Option<Vec<String>>) {
             Ok(_) => {}
             Err(..) => {
                 println!("{:>12} {}", "Info".green().bold(), "pnpm didn't work. switching to cargo");
-                let mut cargo_args: Vec<String> = vec!["tauri".to_string(), "build".to_string()];
+                let mut cargo_args: Vec<String> = vec!["tauri".to_string(), "build".to_string(), "--".to_string()];
                 if let Some(extra_args) = extra_args.clone() {
                     for arg in extra_args {
                         cargo_args.push(arg);
@@ -197,7 +197,7 @@ fn build_gui(extra_args: Option<Vec<String>>) {
                             "Info".green().bold(),
                             "cargo didn't work. switching to npm"
                         );
-                        let mut npm_args: Vec<String>  = vec!["@tauri-apps/cli".to_string(), "build".to_string()];
+                        let mut npm_args: Vec<String>  = vec!["@tauri-apps/cli".to_string(), "build".to_string(), "--".to_string()];
                         if let Some(extra_args) = extra_args{
                             for arg in extra_args {
                                 npm_args.push(arg);
