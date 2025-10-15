@@ -10,9 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # for Arm based macs (M1 and above)
+          - platform: "macos-latest" # ARM
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # for Intel based macs
+          - platform: "macos-latest" # Intel
             args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-22.04"
             args: ""
@@ -26,20 +26,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: setup uv (macOS/Windows only)
+        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
+        uses: astral-sh/setup-uv
+
+      - name: Install python (macOS/Windows only)
+        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
+        run: uv python install
+
       # --- Setup Node (macOS/Windows only) ---
       - name: setup node (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
-        uses: actions/setup-node@v4 
-        with: 
+        uses: actions/setup-node@v4
+        with:
           node-version: lts/*
 
-      - name: install pnpm (macOS/Windows only)
+      - name: install pnpm
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: pnpm/action-setup@v4.1.0
         with:
           version: latest
 
-      # --- Rust setup ---
+      # --- Rust setup (still needed for library build) ---
       - name: install Rust nightly
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: dtolnay/rust-toolchain@nightly
@@ -50,16 +58,16 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: swatinem/rust-cache@v2
 
-      # --- Frontend build only for macOS and Windows ---
-      - name: install frontend dependencies and build the app (macos)
+      # --- Frontend build (macOS/Windows) ---
+      - name: install frontend deps and build the app (macOS)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm' && matrix.platform != 'windows-latest'
-        env: 
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           cd GUI
           pnpm install
           cd ..
-          cargo xtask build-all -- ${{ matrix.args }}
+          uv run xtask.py buildall -- ${{ matrix.args }}
           mkdir -p dist
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
           ! -name "bundle_dmg.sh" \
@@ -67,55 +75,52 @@ jobs:
           ! -name "Ninja.app.tar.gz*" \
           -exec cp {} dist/ \;
 
-      - name: install deps and build the app (windows)
+      - name: install deps and build the app (Windows)
         if: matrix.platform == 'windows-latest'
-        env: 
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           cd GUI
           pnpm install
           cd ..
-          cargo xtask build-all -- ${{ matrix.args }};
+          uv run xtask.py buildall -- ${{ matrix.args }}
           mkdir dist
-          
           Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File |
           Where-Object { $_.Extension -in ".exe", ".msi" } |
           ForEach-Object { Copy-Item $_.FullName -Destination "dist" }
-
         shell: pwsh
 
-      # --- Ubuntu builds using Dockerfile ---
-      - name: Build using Docker (Ubuntu only)
+      # --- Ubuntu builds using Docker ---
+      - name: Build using Docker (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
           echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
           DOCKER_BUILDKIT=1 docker build \
-          --secret id=tauri_key,src=tauri_signing_key.pem \
-          -t ninja:latest .
+            --secret id=tauri_key,src=tauri_signing_key.pem \
+            -t ninja:latest .
           docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'
 
-      # --- Upload built artifacts ---
-      - name: Upload build artifacts for windows and ubuntu
+      # --- Upload artifacts ---
+      - name: Upload build artifacts for Windows and Ubuntu
         if: matrix.platform != 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-build
           path: dist/
 
-      - name: Upload build artifacts for macos ARM
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target aarch64-apple-darwin' 
+      - name: Upload build artifacts for macOS ARM
+        if: matrix.platform == 'macos-latest' && matrix.args == '--target aarch64-apple-darwin'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-arm64-build
           path: dist/
 
-      - name: Upload build artifacts for macos x64
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin' 
+      - name: Upload build artifacts for macOS x64
+        if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-x64-build
           path: dist/
-
 
   release:
     needs: build
@@ -128,7 +133,7 @@ jobs:
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        with:          
+        with:
           path: ./artifacts
 
       # --- Generate release description with signatures ---
@@ -150,7 +155,6 @@ jobs:
           echo "" >> release_body.txt
           echo "All signatures are verified and generated automatically during CI." >> release_body.txt
           echo "" >> release_body.txt
-
           cat release_body.txt
 
       # --- Create GitHub Release ---
