@@ -56,10 +56,19 @@ def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
     return True
 
 def get_release_dir(target: str | None) -> Path:
+    """
+    Returns the release directory for the given target.  
+    Falls back to target/release if the cross-compiled path doesn't exist.
+    """
     base = Path("target")
     if target:
-        return base / target / "release"
+        triple_dir = base / target / "release"
+        if triple_dir.exists():
+            return triple_dir
+        else:
+            print_status("Warning", f"{triple_dir} not found, falling back to target/release")
     return base / "release"
+
 
 # ===== Tasks =====
 def build_library(extra_args: list[str]):
