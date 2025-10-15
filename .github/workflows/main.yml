@@ -28,7 +28,7 @@ jobs:
 
       - name: setup uv (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
-        uses: astral-sh/setup-uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Install python (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
