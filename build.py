@@ -13,8 +13,8 @@ def print_status(status: str, message: str):
     """
     colors = {
         "Info": "\033[1;32m",     # green bold
-        "Running": "\033[1;32m",  # blue bold
-        "Removed": "\033[1;33rm",  # yellow bold
+        "Running": "\033[1;34m",  # blue bold
+        "Removed": "\033[1;33m",  # yellow bold
         "Warning": "\033[1;33m",  # yellow bold
         "Error": "\033[1;31m",    # red bold
     }
@@ -36,8 +36,16 @@ def detect_target_triple() -> str:
             if line.startswith("host:"):
                 return line.split(":")[1].strip()
     except Exception:
-        raise SystemExit(f"{red_bold('Error')}: Failed to detect target triple")
-    raise SystemExit(f"{red_bold('Error')}: Unable to determine host triple")
+        raise SystemExit("Error: Failed to detect target triple")
+    raise SystemExit("Error: Unable to determine host triple")
+
+def extract_target_from_args(extra_args: list[str]) -> str | None:
+    """If --target <triple> is present in extra_args, extract and return it."""
+    if "--target" in extra_args:
+        idx = extra_args.index("--target")
+        if idx + 1 < len(extra_args):
+            return extra_args[idx + 1]
+    return None
 
 def ensure_tool_installed(tool: str, install_cmd: list[str] | None = None):
     """Check if a tool exists in PATH, optionally install it if missing."""
@@ -60,7 +68,7 @@ def build_library(extra_args: list[str]):
     run_command(cmd, "Library build")
 
 def build_commands(extra_args: list[str]):
-    target = detect_target_triple()
+    target = extract_target_from_args(extra_args) or detect_target_triple()
     release_dir = Path("target/release")
     binaries = [("shurikenctl", "ninja-cli")]
 
