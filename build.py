@@ -14,7 +14,7 @@ def print_status(status: str, message: str):
     colors = {
         "Info": "\033[1;32m",     # green bold
         "Running": "\033[1;32m",  # blue bold
-        "Removed": "\033[1;33m",  # yellow bold
+        "Removed": "\033[1;33rm",  # yellow bold
         "Warning": "\033[1;33m",  # yellow bold
         "Error": "\033[1;31m",    # red bold
     }
