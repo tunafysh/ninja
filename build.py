@@ -151,7 +151,7 @@ def build_cli(args):
         built = release / f"{bin_name}{ext}"
         if not built.exists():
             print_status("Warn", f"{built} not found, scanning target/**/release...")
-            find_and_place_binary()
+            find_and_place_binary(args)
             return
 
         host_release.mkdir(parents=True, exist_ok=True)
