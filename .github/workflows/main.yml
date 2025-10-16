@@ -81,7 +81,7 @@ jobs:
           uv run build.py
 
           mkdir dist
-          powershell -c "Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }"
+          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
 
 
       # --- Ubuntu builds using Docker ---
@@ -124,7 +124,7 @@ jobs:
 
       # --- Collect signatures for release body ---
       - name: Collect signatures for release body
-        id: sigs
+        id: signatures
         run: |
           echo "### Digital Signatures" > release_body.txt
           echo "" >> release_body.txt
@@ -134,8 +134,10 @@ jobs:
             echo "#### $base" >> release_body.txt
             echo '```' >> release_body.txt
             cat "$sigfile" >> release_body.txt
-            echo '\n```' >> release_body.txt
+            echo -e "\n" >> release_body.txt
+            echo '```' >> release_body.txt
             echo "" >> release_body.txt
+            echo -e "\n" >> release_body.txt
           done
 
           echo "" >> release_body.txt
