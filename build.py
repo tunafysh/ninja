@@ -80,10 +80,17 @@ def find_and_place_binary():
 
     found_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
     latest = Path(found_files[0])
-    dest = binaries_dir / latest.name
+
+    # Detect target triple for renaming
+    triple=detect_target()
+
+    # Rename binary with target triple
+    dest_name = f"{latest.stem}-{triple}{latest.suffix}"
+    dest = binaries_dir / dest_name
 
     shutil.copy2(latest, dest)
     print_status("Info", f"Found and copied {latest.relative_to(root)} → {dest.relative_to(root)}")
+
 
 # ===== Build steps =====
 def build_lib(args):
