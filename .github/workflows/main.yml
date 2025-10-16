@@ -59,7 +59,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          uv run build.py buildall
+          uv run build.py
           mkdir -p dist
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
           ! -name "bundle_dmg.sh" \
@@ -78,7 +78,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          uv run build.py buildall -- ${{ matrix.args }}
+          uv run build.py
 
           mkdir dist
           powershell -c "Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }"
