@@ -18,12 +18,19 @@ def print_status(status: str, msg: str):
     reset = "\033[0m"
     color = colors.get(status, "\033[1;37m")
 
-    # Windows-safe arrow and UTF-8
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     arrow = "->" if os.name == "nt" else "→"
     msg = msg.replace("→", arrow)
 
     print(f"{color}{status:>12}{reset} {msg}")
+
+# ===== Utilities =====
+def find_cargo() -> str:
+    """Find absolute path to cargo executable."""
+    cargo_path = shutil.which("cargo")
+    if not cargo_path:
+        sys.exit("Error: Cargo not found. Make sure Rust is installed and in PATH.")
+    return os.path.abspath(cargo_path)
 
 def run(cmd: list[str], desc: str):
     print_status("Run", " ".join(cmd))
@@ -32,7 +39,6 @@ def run(cmd: list[str], desc: str):
 
 # ===== Build logic =====
 def target_dir(target: str | None) -> Path:
-    """Finds release dir for target (fallbacks automatically)."""
     base = Path("target")
     tdir = base / target / "release" if target else base / "release"
     if not tdir.exists():
@@ -81,10 +87,12 @@ def find_and_place_binary():
 
 # ===== Build steps =====
 def build_lib(args):
+    cargo = find_cargo()
     print_status("Info", "Building ninja-core")
-    run(["cargo", "build", "--package", "ninja-core"] + args, "Core build")
+    run([cargo, "build", "--package", "ninja-core"] + args, "Core build")
 
 def build_cli(args):
+    cargo = find_cargo()
     target = extract_target(args) or detect_target()
     print_status("Info", f"Target: {target}")
 
@@ -95,7 +103,7 @@ def build_cli(args):
 
     for bin_name, pkg in bins:
         print_status("Info", f"Building {pkg}")
-        run(["cargo", "build", "--bin", bin_name, "--package", pkg, "--release"] + args, "Build")
+        run([cargo, "build", "--bin", bin_name, "--package", pkg, "--release"] + args, "Build")
 
         built = release / f"{bin_name}{ext}"
         if not built.exists():
@@ -128,7 +136,8 @@ def build_gui(args):
     if subprocess.call(cmd) != 0:
         print_status("Warn", "pnpm failed, trying cargo tauri")
         ensure_tool("cargo")
-        run(["cargo", "tauri", "build", "--"] + args, "GUI build")
+        cargo = find_cargo()
+        run([cargo, "tauri", "build", "--"] + args, "GUI build")
 
 def ensure_tool(name, install_cmd=None):
     if shutil.which(name):
