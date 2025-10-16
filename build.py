@@ -174,14 +174,32 @@ def build_cli(args):
 
 
 def build_gui(args):
+    import platform
+
     print_status("Info", "Building GUI")
-    ensure_tool("pnpm", ["npm", "install", "-g", "pnpm"])
-    cmd = ["pnpm", "dlx", "@tauri-apps/cli", "build", "--"] + args
-    if subprocess.call(cmd) != 0:
-        print_status("Warn", "pnpm failed, trying cargo tauri")
+
+    if platform.system() == "Windows":
+        # Use cargo-installed Tauri CLI
         ensure_tool("cargo")
         cargo = find_cargo()
+        # Install tauri-cli if not already installed
+        try:
+            subprocess.check_call([cargo, "tauri", "--version"])
+        except subprocess.CalledProcessError:
+            print_status("Info", "Installing tauri-cli via cargo")
+            run([cargo, "install", "tauri-cli"], "Install tauri-cli")
+
         run([cargo, "tauri", "build", "--"] + args, "GUI build")
+    else:
+        # On Linux/macOS, use pnpm for speed
+        ensure_tool("pnpm", ["npm", "install", "-g", "pnpm"])
+        cmd = ["pnpm", "dlx", "@tauri-apps/cli", "build"] + args
+        if subprocess.call(cmd) != 0:
+            print_status("Warn", "pnpm failed, trying cargo tauri as fallback")
+            ensure_tool("cargo")
+            cargo = find_cargo()
+            run([cargo, "tauri", "build", "--"] + args, "GUI build")
+
 
 
 def ensure_tool(name, install_cmd=None):
