@@ -128,7 +128,7 @@ jobs:
         run: |
           echo "### Digital Signatures" > release_body.txt
           echo "" >> release_body.txt
-            
+
           # Find all .sig files under linux, macos, and windows
           find artifacts/linux artifacts/macos artifacts/windows -type f -name "*.sig" | sort | while read sigfile; do
             base=$(basename "$sigfile" .sig)
@@ -138,10 +138,10 @@ jobs:
             echo '```' >> release_body.txt
             echo "" >> release_body.txt
           done
-            
+
           echo "" >> release_body.txt
           echo "All signatures are verified and generated automatically during CI." >> release_body.txt
-            
+
           # Save the content to an output so it can be used in env
           echo "description<<EOF" >> $GITHUB_ENV
           cat release_body.txt >> $GITHUB_ENV
@@ -162,6 +162,7 @@ jobs:
             artifacts/**/Ninja*.dmg
             artifacts/**/Ninja*.deb
             artifacts/**/Ninja*.rpm
+            artifacts/**/*.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
