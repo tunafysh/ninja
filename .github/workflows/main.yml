@@ -81,14 +81,14 @@ jobs:
           uv run build.py
 
           mkdir dist
-          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
+          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi', '.sig' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
 
 
       # --- Ubuntu builds using Docker ---
       - name: Build using Docker (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
-          echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
+          echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem\space
           DOCKER_BUILDKIT=1 docker build \
             --secret id=tauri_key,src=tauri_signing_key.pem \
             -t ninja:latest .
@@ -128,25 +128,25 @@ jobs:
         run: |
           echo "### Digital Signatures" > release_body.txt
           echo "" >> release_body.txt
-
-          find artifacts -type f -name "*.sig" | sort | while read sigfile; do
+            
+          # Find all .sig files under linux, macos, and windows
+          find artifacts/linux artifacts/macos artifacts/windows -type f -name "*.sig" | sort | while read sigfile; do
             base=$(basename "$sigfile" .sig)
             echo "#### $base" >> release_body.txt
             echo '```' >> release_body.txt
             cat "$sigfile" >> release_body.txt
-            echo -e "\n" >> release_body.txt
             echo '```' >> release_body.txt
             echo "" >> release_body.txt
-            echo -e "\n" >> release_body.txt
           done
-
+            
           echo "" >> release_body.txt
           echo "All signatures are verified and generated automatically during CI." >> release_body.txt
-
+            
           # Save the content to an output so it can be used in env
           echo "description<<EOF" >> $GITHUB_ENV
           cat release_body.txt >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+
 
       # --- Create GitHub Release ---
       - name: Create GitHub Release
