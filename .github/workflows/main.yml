@@ -10,16 +10,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # ARM
-            args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # Intel
-            args: "--target x86_64-apple-darwin"
+          - platform: "macos-latest"
           - platform: "ubuntu-22.04"
-            args: ""
           - platform: "ubuntu-22.04-arm"
-            args: ""
           - platform: "windows-latest"
-            args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -51,8 +45,6 @@ jobs:
       - name: install Rust nightly
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
@@ -67,7 +59,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          uv run build.py buildall -- ${{ matrix.args }}
+          uv run build.py buildall
           mkdir -p dist
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
           ! -name "bundle_dmg.sh" \
@@ -80,12 +72,17 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          # Add cargo bin to PATH
+          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+        
           cd GUI
           pnpm install
           cd ..
           uv run build.py buildall -- ${{ matrix.args }}
+
           mkdir dist
-          powershell -c "Get-ChildItem -Path "target/release/bundle" -Recurse -Depth 2 -File | Where-Object { $_.Extension -in ".exe", ".msi" } | ForEach-Object { Copy-Item $_.FullName -Destination "dist" }"
+          powershell -c "Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }"
+
 
       # --- Ubuntu builds using Docker ---
       - name: Build using Docker (Ubuntu)
@@ -105,20 +102,12 @@ jobs:
           name: ${{ matrix.platform }}-build
           path: dist/
 
-      - name: Upload build artifacts for macOS ARM
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target aarch64-apple-darwin'
+      - name: Upload build artifacts for macOS
+        if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-arm64-build
+          name: ${{ matrix.platform }}-build
           path: dist/
-
-      - name: Upload build artifacts for macOS x64
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform }}-x64-build
-          path: dist/
-
   release:
     needs: build
     runs-on: ubuntu-latest

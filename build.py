@@ -215,25 +215,48 @@ def clean():
 
 # ===== CLI Entrypoint =====
 def main():
-    if len(sys.argv) < 2:
-        sys.exit(
-            "Usage: build.py [buildlibs|buildcli|buildninja|buildall|clean] [-- extra args]"
-        )
+    import argparse
 
-    cmd = sys.argv[1].lower()
-    extra = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
+    parser = argparse.ArgumentParser(
+        description="Ninja build script: builds libs, CLI, GUI, or cleans binaries."
+    )
 
-    actions = {
-        "buildlibs": lambda: build_lib(extra),
-        "buildcli": lambda: build_cli(extra),
-        "buildninja": lambda: (build_lib(extra), build_gui(extra)),
-        "buildall": lambda: (build_lib(extra), build_cli(extra), build_gui(extra)),
-        "clean": clean,
-    }
+    parser.add_argument(
+        "--clean", action="store_true", help="Clean all build artifacts and binaries."
+    )
+    parser.add_argument(
+        "--libs-only", action="store_true", help="Build only the ninja-core library."
+    )
+    parser.add_argument(
+        "--cli-only", action="store_true", help="Build only the CLI binaries."
+    )
+    parser.add_argument(
+        "--gui-only", action="store_true", help="Build only the GUI."
+    )
 
-    if cmd not in actions:
-        sys.exit(f"Unknown command: {cmd}")
-    actions[cmd]()
+    args = parser.parse_args()
+
+    if args.clean:
+        clean()
+        return
+
+    if args.libs_only:
+        build_lib(args=[])
+        return
+
+    if args.cli_only:
+        build_cli(args=[])
+        return
+
+    if args.gui_only:
+        build_gui(args=[])
+        return
+
+    # Default: build everything
+    build_lib(args=[])
+    build_cli(args=[])
+    build_gui(args=[])
+
 
 
 if __name__ == "__main__":
