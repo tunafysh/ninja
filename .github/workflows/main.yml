@@ -122,13 +122,13 @@ jobs:
         with:
           path: ./artifacts
 
-      # --- Generate release description with signatures ---
+      # --- Collect signatures for release body ---
       - name: Collect signatures for release body
         id: sigs
         run: |
           echo "### Digital Signatures" > release_body.txt
           echo "" >> release_body.txt
-
+            
           find artifacts -type f -name "*.sig" | sort | while read sigfile; do
             base=$(basename "$sigfile" .sig)
             echo "#### $base" >> release_body.txt
@@ -137,12 +137,15 @@ jobs:
             echo '```' >> release_body.txt
             echo "" >> release_body.txt
           done
-
+            
           echo "" >> release_body.txt
           echo "All signatures are verified and generated automatically during CI." >> release_body.txt
-          echo "" >> release_body.txt
-          cat release_body.txt
-
+            
+          # Save the content to an output so it can be used in env
+          echo "description<<EOF" >> $GITHUB_ENV
+          cat release_body.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+            
       # --- Create GitHub Release ---
       - name: Create GitHub Release
         id: create_release
@@ -150,11 +153,7 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: "Ninja v${{ github.run_number }}"
-          body: |
-            Automatic release build.
-            Includes binaries for macOS (Intel + ARM), Windows, and Linux.
-
-            $(cat release_body.txt)
+          body: ${{ env.description }}
           files: |
             artifacts/**/Ninja*.exe
             artifacts/**/Ninja*.msi
@@ -163,3 +162,4 @@ jobs:
             artifacts/**/Ninja*.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
