@@ -88,7 +88,7 @@ jobs:
       - name: Build using Docker (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
-          echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem\space
+          echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
           DOCKER_BUILDKIT=1 docker build \
             --secret id=tauri_key,src=tauri_signing_key.pem \
             -t ninja:latest .
