@@ -128,24 +128,24 @@ jobs:
         run: |
           echo "### Digital Signatures" > release_body.txt
           echo "" >> release_body.txt
-            
+
           find artifacts -type f -name "*.sig" | sort | while read sigfile; do
             base=$(basename "$sigfile" .sig)
             echo "#### $base" >> release_body.txt
             echo '```' >> release_body.txt
             cat "$sigfile" >> release_body.txt
-            echo '```' >> release_body.txt
+            echo '\n```' >> release_body.txt
             echo "" >> release_body.txt
           done
-            
+
           echo "" >> release_body.txt
           echo "All signatures are verified and generated automatically during CI." >> release_body.txt
-            
+
           # Save the content to an output so it can be used in env
           echo "description<<EOF" >> $GITHUB_ENV
           cat release_body.txt >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-            
+
       # --- Create GitHub Release ---
       - name: Create GitHub Release
         id: create_release
