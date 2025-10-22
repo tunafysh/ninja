@@ -35,7 +35,7 @@ toml = { version = "0.8.23", default-features = false, features = ["parse"]}
 sysinfo = { version = "0.37.0", default-features = false, features = ["system"]}
 tokio = { version = "1.47.1", default-features = false, features = ["process"]}
 serde_with = "3.14.1"
-cap-std = { version = "3.4.4", features = ["fs_utf8"] }
+serde_cbor = "0.11.2"
 
 [features]
 default = []

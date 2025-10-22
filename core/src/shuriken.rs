@@ -3,6 +3,7 @@ use crate::{
     templater::Templater,
     types::{FieldValue, PlatformPath},
 };
+use anyhow::Result;
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
@@ -10,7 +11,6 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use anyhow::Result;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::{fs, process::Command};
 

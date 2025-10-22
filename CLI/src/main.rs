@@ -3,18 +3,23 @@ use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
-    manager::ShurikenManager,
-    scripting::NinjaEngine,
+    manager::{ArmoryMetadata, ShurikenManager},
     shuriken::{MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata},
     types::{FieldValue, PlatformPath, ShurikenState},
 };
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
-use tokio::fs;
 use std::{
-    collections::HashMap, env, fs::{create_dir_all, File}, io::Write, path::{Path, PathBuf}, process::exit
+    collections::HashMap,
+    env,
+    fs::{File, create_dir_all},
+    io::Write,
+    ops::Not,
+    path::{Path, PathBuf},
+    process::exit,
 };
+use tokio::fs;
 
 mod log;
 use log::setup_logger;
@@ -54,6 +59,8 @@ enum Commands {
     New,
     /// Start up the HTTP API with a specified port (optional but recommended).
     Api(ApiArgs),
+    /// Forge a new shuriken (.shuriken file) from a local one
+    Forge(ForgeArgs),
     /// Remove a shuriken (uninstall it completely)
     Remove(RemoveArgs),
 }
@@ -88,6 +95,12 @@ pub struct ListArgs {
     /// Show all shurikens and their statuses
     #[arg(short = 'f', long)]
     pub full: bool,
+}
+
+#[derive(Args)]
+pub struct ForgeArgs {
+    /// The path of the files to forge a shuriken (with the .ninja folder and everything)
+    pub path: PathBuf,
 }
 
 #[derive(Args)]
@@ -168,18 +181,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Run(script_args)) => {
             let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
-            let rt = NinjaEngine::new().map_err(|e| {
-                eprintln!("Failed to initialize Ninja engine: {}", e);
-                exit(1);
-            })?;
 
             if Path::new(content).exists() {
-                match rt.execute_file(content) {
+                match manager.engine.execute_file(content) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
             } else {
-                match rt.execute(content) {
+                match manager.engine.execute(content) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -247,9 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let script_path = PathBuf::from(script_path);
 
-                    MaintenanceType::Script {
-                        script_path
-                    }
+                    MaintenanceType::Script { script_path }
                 }
                 _ => {
                     eprintln!("Invalid maintenance type selected.");
@@ -286,15 +293,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .default(false)
                 .interact()
                 .unwrap();
-                    
+
             let (conf_path, options) = if config_enabled {
                 let conf_input: String = Input::with_theme(&theme)
                     .with_prompt("Enter config path for the templater to output (e.g. for Apache 'conf/httpd.conf')")
                     .interact_text()
                     .unwrap();
-            
+
                 let conf_path = PathBuf::from(conf_input);
-            
+
                 // Ask whether to add configuration options interactively
                 let add_options = dialoguer::Confirm::with_theme(&theme)
                     .with_prompt("Add configuration options?")
@@ -303,42 +310,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap();
 
                 let mut options_map: Option<HashMap<String, FieldValue>> = None;
-            
+
                 if add_options {
                     let mut map = HashMap::new();
-                
+
                     loop {
                         let key: String = Input::with_theme(&theme)
                             .with_prompt("Enter option key (leave empty to finish)")
                             .allow_empty(true)
                             .interact_text()
                             .unwrap();
-                    
+
                         if key.trim().is_empty() {
                             break;
                         }
-                    
+
                         let value: String = Input::with_theme(&theme)
                             .with_prompt("Enter value for this key")
                             .interact_text()
                             .unwrap();
 
                         let value: FieldValue = FieldValue::from(value);
-                    
+
                         map.insert(key, value);
                     }
-                
+
                     options_map = Some(map);
                 }
-            
+
                 (Some(conf_path), options_map)
             } else {
                 (None, None)
             };
 
-            
             println!("{}", format!("Generating manifest for '{}'", name).bold());
-            
+
             let manifest = Shuriken {
                 shuriken: ShurikenMetadata {
                     name: name.clone(),
@@ -358,7 +364,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Failed to create directory for shuriken '{}'", name);
                 exit(1);
             });
-            
+
             env::set_current_dir(format!("shurikens/{}/.ninja", name))?;
 
             if let Some(opts) = options {
@@ -366,21 +372,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 fs::write("options.toml", serialized_options).await?;
             }
-            
+
             let manifest_path = PathBuf::from("manifest.toml");
             let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
                 eprintln!("Failed to create manifest file for shuriken '{}'", name);
                 exit(1);
             });
 
-            match &manifest.shuriken.maintenance {
-                MaintenanceType::Script { script_path } => {
-                    if let Some(parent) = script_path.parent() {
-                        fs::create_dir_all(parent).await?;
-                    }
-                    fs::write(script_path, "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend").await?;
+            if let MaintenanceType::Script { script_path } = &manifest.shuriken.maintenance {
+                if let Some(parent) = script_path.parent() {
+                    fs::create_dir_all(parent).await?;
                 }
-                _ => {}
+                fs::write(script_path, "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend").await?;
             }
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
@@ -400,6 +403,91 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Api(args)) => {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;
+        }
+        Some(Commands::Forge(args)) => {
+            let theme = ColorfulTheme::default();
+            let name: String = Input::with_theme(&theme)
+                .with_prompt("Enter the name of the shuriken")
+                .interact_text()
+                .unwrap();
+
+            let id: String = Input::with_theme(&theme)
+                .with_prompt("Enter the id for this shuriken (Apache -> httpd)")
+                .interact_text()
+                .unwrap();
+
+            let platform: String = Input::with_theme(&theme)
+                .with_prompt("Enter the platform this shuriken was designed for (target triple is preferred but something like windows-x86_64 is allowed)")
+                .interact_text()
+                .unwrap();
+
+            let version: String = Input::with_theme(&theme)
+                .with_prompt("Enter the version for this shuriken (semver is preferred but anything with numbers will suffice)")
+                .interact_text()
+                .unwrap();
+
+            let mut dependencies: Vec<String> = Vec::new();
+
+            loop {
+                let value: String = Input::with_theme(&theme)
+                    .with_prompt("Enter option key (leave empty to finish)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .unwrap();
+
+                if value.trim().is_empty() {
+                    break;
+                }
+
+                dependencies.push(value);
+            }
+
+            let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
+                .interact()
+                .map(|s: String| s.is_empty().not().then_some(PathBuf::from(s)))
+                .unwrap();
+
+            let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
+                .interact()
+                .map(|s: String| s.is_empty().not().then_some(s))
+                .unwrap();
+
+            let author: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Author of this shuriken (whoever made it, optional)")
+                .interact()
+                .map(|s: String| s.is_empty().not().then_some(s))
+                .unwrap();
+
+            let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
+                .interact()
+                .map(|s: String| s.is_empty().not().then_some(s))
+                .unwrap();
+
+            println!("{}", format!("Generating metadata for '{}'", &name).bold());
+
+            let metadata = ArmoryMetadata {
+                name,
+                id,
+                platform,
+                version,
+                dependencies,
+                postinstall,
+                description,
+                author,
+                license,
+            };
+
+            println!("{}", "Creating shuriken...".bold());
+            if !PathBuf::from("blacksmith/").exists() {
+                fs::create_dir("blacksmith").await?;
+            }
+
+            manager
+                .forge(metadata, args.path, PathBuf::from("blacksmith/"))
+                .await?;
         }
         Some(Commands::Remove(args)) => {
             manager.remove(&args.shuriken).await?;

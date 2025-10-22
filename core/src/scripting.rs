@@ -3,6 +3,7 @@ use log::info;
 use mlua::{Error as LuaError, Function, Lua};
 use std::{fs, path::PathBuf};
 
+#[derive(Clone, Debug)]
 pub struct NinjaEngine {
     #[cfg(feature = "testing")]
     pub lua: Lua,
@@ -16,9 +17,8 @@ impl NinjaEngine {
 
         let globals = lua.globals();
 
-        let (ninja, fs, env, shell, time, json, http, log) = make_modules(&lua)?;
+        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
 
-        globals.set("ninja", ninja)?;
         globals.set("fs", fs)?;
         globals.set("env", env)?;
         globals.set("shell", shell)?;

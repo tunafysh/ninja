@@ -1,14 +1,77 @@
-use crate::{shuriken::Shuriken, types::{FieldValue, ShurikenState}};
-use anyhow::Result;
+use crate::{
+    scripting::NinjaEngine,
+    shuriken::Shuriken,
+    types::{FieldValue, ShurikenState},
+};
+use anyhow::{Error, Result};
 use either::Either::{self, Left, Right};
-use globwalk::glob;
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use globwalk::{GlobWalkerBuilder, glob};
 use log::{debug, info, warn};
-use std::{collections::HashMap, env, io, path::PathBuf, sync::Arc};
-use tokio::{fs, sync::RwLock};
+use serde::{Deserialize, Serialize};
+use serde_cbor::{de::from_mut_slice, to_vec};
+use std::{
+    collections::HashMap,
+    env,
+    io::{self, Read, Seek},
+    path::PathBuf,
+    str,
+    sync::Arc,
+};
+use tar::{Archive, Builder as TarBuilder};
+use tokio::{
+    fs::{self, File},
+    io::AsyncWriteExt,
+    sync::RwLock,
+};
+
+const MAGIC: &[u8; 2] = b"HS";
+
+fn create_tar_gz_bytes(src_dir: &PathBuf) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let enc = GzEncoder::new(&mut buf, Compression::default());
+    let mut tar = TarBuilder::new(enc);
+
+    // Iterate files using globwalk
+    let walker = GlobWalkerBuilder::from_patterns(src_dir, &["**/*"])
+        .build()
+        .map_err(|e| Error::msg(e.to_string()))?;
+
+    for entry in walker.filter_map(Result::ok) {
+        let path = entry.path();
+        let rel_path = path.strip_prefix(src_dir).unwrap();
+
+        if path.is_dir() {
+            tar.append_dir(rel_path, path)?;
+        } else if path.is_file() {
+            tar.append_path_with_name(path, rel_path)?;
+        }
+    }
+
+    // Finish tar and gzip streams
+    tar.finish()?;
+    tar.into_inner()?.finish()?;
+
+    Ok(buf)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArmoryMetadata {
+    pub name: String,
+    pub id: String,
+    pub platform: String,
+    pub version: String,
+    pub dependencies: Vec<String>,
+    pub postinstall: Option<PathBuf>,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub license: Option<String>,
+}
 
 #[derive(Clone, Debug)]
 pub struct ShurikenManager {
     pub root_path: PathBuf,
+    pub engine: NinjaEngine,
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
     pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
 }
@@ -121,22 +184,23 @@ impl ShurikenManager {
             io::Error::new(io::ErrorKind::InvalidInput, "Path is not valid UTF-8")
         })?;
 
-        for entry in glob(options_pattern)
-            .map_err(|e| io::Error::other(format!("Glob failed: {}", e)))?
+        for entry in
+            glob(options_pattern).map_err(|e| io::Error::other(format!("Glob failed: {}", e)))?
         {
             match entry {
                 Ok(path) => {
                     let partial_path = path.into_path();
                     let options_path = partial_path.clone();
-                    let options_content = fs::read_to_string(options_path.clone())
-                        .await
-                        .map_err(|e| {
-                            io::Error::other(format!(
-                                "Failed to read options {}: {}",
-                                options_path.display(),
-                                e
-                            ))
-                        })?;
+                    let options_content =
+                        fs::read_to_string(options_path.clone())
+                            .await
+                            .map_err(|e| {
+                                io::Error::other(format!(
+                                    "Failed to read options {}: {}",
+                                    options_path.display(),
+                                    e
+                                ))
+                            })?;
 
                     if let Some(path) = partial_path.parent()
                         && let Some(parent) = path.parent()
@@ -152,18 +216,18 @@ impl ShurikenManager {
                                 )
                             })?;
 
-                        let options: HashMap<String, FieldValue> =
-                            toml::from_str(&options_content).map_err(|e| {
+                        let options: HashMap<String, FieldValue> = toml::from_str(&options_content)
+                            .map_err(|e| {
                                 println!("{}", e);
                                 io::Error::new(io::ErrorKind::InvalidData, e)
                             })?;
 
                         let shuriken = shurikens.get_mut(&name);
                         if let Some(shuriken) = shuriken
-                        && let Some(config) = &mut shuriken.config {
+                            && let Some(config) = &mut shuriken.config
+                        {
                             config.options = Some(options);
                         }
-
                     }
                 }
                 Err(e) => {
@@ -172,10 +236,14 @@ impl ShurikenManager {
             }
         }
 
+        #[cfg(debug_assertions)]
         debug!("{:#?}", shurikens);
+
+        let engine = NinjaEngine::new();
 
         Ok(Self {
             root_path: exe_dir,
+            engine: engine.map_err(|e| Error::msg(e.to_string()))?,
             shurikens: Arc::new(RwLock::new(shurikens)),
             states: Arc::new(RwLock::new(states)),
         })
@@ -209,7 +277,10 @@ impl ShurikenManager {
         // Run async start
         if let Err(e) = shuriken.start().await {
             env::set_current_dir(original_dir).ok();
-            return Err(anyhow::Error::msg(format!("Failed to start shuriken '{}': {}", name, e)));
+            return Err(anyhow::Error::msg(format!(
+                "Failed to start shuriken '{}': {}",
+                name, e
+            )));
         }
 
         env::set_current_dir(original_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
@@ -218,7 +289,7 @@ impl ShurikenManager {
         Ok(())
     }
 
-        pub async fn refresh(&self) -> Result<()> {
+    pub async fn refresh(&self) -> Result<()> {
         let exe_dir = self.root_path.clone();
         let shurikens_dir = exe_dir.join("shurikens");
 
@@ -316,22 +387,23 @@ impl ShurikenManager {
             io::Error::new(io::ErrorKind::InvalidInput, "Path is not valid UTF-8")
         })?;
 
-        for entry in glob(options_pattern)
-            .map_err(|e| io::Error::other(format!("Glob failed: {}", e)))?
+        for entry in
+            glob(options_pattern).map_err(|e| io::Error::other(format!("Glob failed: {}", e)))?
         {
             match entry {
                 Ok(path) => {
                     let partial_path = path.into_path();
                     let options_path = partial_path.clone();
-                    let options_content = fs::read_to_string(options_path.clone())
-                        .await
-                        .map_err(|e| {
-                            io::Error::other(format!(
-                                "Failed to read options {}: {}",
-                                options_path.display(),
-                                e
-                            ))
-                        })?;
+                    let options_content =
+                        fs::read_to_string(options_path.clone())
+                            .await
+                            .map_err(|e| {
+                                io::Error::other(format!(
+                                    "Failed to read options {}: {}",
+                                    options_path.display(),
+                                    e
+                                ))
+                            })?;
 
                     if let Some(path) = partial_path.parent()
                         && let Some(parent) = path.parent()
@@ -347,15 +419,16 @@ impl ShurikenManager {
                                 )
                             })?;
 
-                        let options: HashMap<String, FieldValue> =
-                            toml::from_str(&options_content).map_err(|e| {
+                        let options: HashMap<String, FieldValue> = toml::from_str(&options_content)
+                            .map_err(|e| {
                                 println!("{}", e);
                                 io::Error::new(io::ErrorKind::InvalidData, e)
                             })?;
 
                         let shuriken = new_shurikens.get_mut(&name);
                         if let Some(shuriken) = shuriken
-                        && let Some(config) = &mut shuriken.config {
+                            && let Some(config) = &mut shuriken.config
+                        {
                             config.options = Some(options);
                         }
                     }
@@ -381,7 +454,10 @@ impl ShurikenManager {
     }
 
     pub async fn configure(&self, name: &str) -> Result<()> {
-        let temp_path = &self.root_path.clone().join(PathBuf::from(format!("shurikens/{}", name)));
+        let temp_path = &self
+            .root_path
+            .clone()
+            .join(PathBuf::from(format!("shurikens/{}", name)));
         env::set_current_dir(temp_path)?;
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(name);
@@ -414,7 +490,10 @@ impl ShurikenManager {
 
         if let Err(e) = shuriken.stop().await {
             env::set_current_dir(original_dir).ok();
-            return Err(anyhow::Error::msg(format!("Failed to stop shuriken '{}': {}", name, e)));
+            return Err(anyhow::Error::msg(format!(
+                "Failed to stop shuriken '{}': {}",
+                name, e
+            )));
         }
 
         env::set_current_dir(original_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
@@ -475,8 +554,63 @@ impl ShurikenManager {
             ));
         }
 
-        let _std_file = std::fs::File::open(&path)
+        let mut file = std::fs::File::open(&path)
             .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {}", e)))?;
+
+        let mut header = [0u8; 8];
+        file.read_exact(&mut header)?;
+
+        if &header[0..2] != MAGIC {
+            return Err(anyhow::Error::msg("Invalid shuriken file."));
+        }
+
+        let metadata_length = u16::from_le_bytes([header[3], header[4]]);
+
+        let mut metadata = vec![0u8; metadata_length.into()];
+        file.read_exact(&mut metadata)?;
+
+        let metadata: ArmoryMetadata = from_mut_slice(&mut metadata)?;
+
+        if !metadata.platform.contains(env::consts::OS)
+            && !metadata.platform.contains(env::consts::ARCH)
+        {
+            return Err(Error::msg(
+                "Unsupported platform. Current platform is not the same with the shuriken's destined platform.",
+            ));
+        }
+
+        file.seek(io::SeekFrom::Current(metadata_length as i64))?;
+
+        let gz_decoder = GzDecoder::new(file);
+        let mut archive = Archive::new(gz_decoder);
+
+        archive.unpack(metadata.name.clone())?;
+
+        #[cfg(debug_assertions)]
+        {
+            dbg!("{:#?}", header);
+            dbg!("{:#?}", metadata_length);
+            dbg!("{:#?}", metadata);
+        }
+
+        Ok(())
+    }
+
+    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf, output: PathBuf) -> Result<()> {
+        if !path.exists() {
+            return Err(anyhow::Error::msg("Source folder does not exist"));
+        }
+
+        let mut file = File::create(output.join(format!("{}-{}", meta.id, meta.platform))).await?;
+        let serialized_metadata = to_vec(&meta)?;
+
+        let archive = create_tar_gz_bytes(&path)?;
+
+        file.write_all(MAGIC).await?;
+        file.write_all(&(serialized_metadata.len() as u16).to_le_bytes())
+            .await?;
+        file.write_all(&serialized_metadata).await?;
+        file.write_all(&archive).await?;
 
         Ok(())
     }

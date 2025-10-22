@@ -96,9 +96,12 @@ impl Manager {
 impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some(r#"This server provides resources and mostly tools
+            instructions: Some(
+                r#"This server provides resources and mostly tools
              for managing shurikens(arbitrary units of other dev software e.g Apache)
-              which are: start_shuriken, stop_shuriken, restart_shuriken and shuriken_status"#.into()),
+              which are: start_shuriken, stop_shuriken, restart_shuriken and shuriken_status"#
+                    .into(),
+            ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }

@@ -25,7 +25,7 @@ pub enum Command {
     None,
 }
 
-// ---- Preprocessor ----
+// ---- Parser ----
 fn parser(script: &str) -> Vec<Vec<String>> {
     let lines: Vec<&str> = script.split('\n').collect();
 

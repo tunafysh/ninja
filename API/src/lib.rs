@@ -3,6 +3,8 @@ use ninja::{manager::ShurikenManager, types::ShurikenState};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 
+pub mod graphql;
+
 #[derive(Serialize)]
 struct ApiResponse<T>
 where
@@ -57,7 +59,11 @@ async fn stop_shuriken(
 
 #[get("/api/shurikens/list/states")]
 async fn list_shuriken_states(manager: web::Data<ShurikenManager>) -> Result<HttpResponse> {
-    let result = manager.list(true).await.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?.left();
+    let result = manager
+        .list(true)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+        .left();
 
     match result {
         Some(e) => {
@@ -87,7 +93,11 @@ async fn list_shuriken_states(manager: web::Data<ShurikenManager>) -> Result<Htt
 
 #[get("/api/shurikens/list")]
 async fn list_shurikens(manager: web::Data<ShurikenManager>) -> Result<HttpResponse> {
-    let result = manager.list(false).await.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?.right();
+    let result = manager
+        .list(false)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+        .right();
     match result {
         Some(value) => Ok(HttpResponse::Ok().json(ApiResponse::<Vec<String>> {
             success: true,

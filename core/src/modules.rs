@@ -2,9 +2,8 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
-//use crate::manager::ShurikenManager;
 use std::{
-    env, fs, io,
+    env, fs,
     io::Write,
     path::Path,
     process::{Command, Output},
@@ -51,8 +50,7 @@ fn run_unix_command(command: &str) -> Result<std::process::Output> {
     }
 }
 
-pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table, Table)> {
-    let ninja_module = lua.create_table()?;
+pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table)> {
     let fs_module = lua.create_table()?;
     let env_module = lua.create_table()?;
     let shell_module = lua.create_table()?;
@@ -60,10 +58,6 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     let json_module = lua.create_table()?;
     let http_module = lua.create_table()?;
     let log_module = lua.create_table()?;
-
-    // =========== ninja module bootstrap ==========
-
-    // let manager = ShurikenManager::new().await?;
 
     // ================= ninja module ==============
 
@@ -314,7 +308,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     // ================= http module =================
 
-    //TODO find a reqwest substitute bc bro this shi sucks (actually just make the function async.
+    //TODO find a reqwest substitute bc bro this shi sucks (actually just make the function async./0
     // http_module.set("fetch", lua.create_function(|_, (url, method, headers): (String, Option<String>, Option<Table>)| {
     //     make_request(url, method, headers)
     // })?)?;
@@ -354,7 +348,6 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     )?;
 
     Ok((
-        ninja_module,
         fs_module,
         env_module,
         shell_module,
@@ -370,7 +363,7 @@ mod tests {
     use super::*;
     use mlua::Lua;
 
-    async fn setup_lua() -> (Lua, (Table, Table, Table, Table, Table, Table, Table, Table)) {
+    async fn setup_lua() -> (Lua, (Table, Table, Table, Table, Table, Table, Table)) {
         let lua = Lua::new();
         let modules = make_modules(&lua).expect("failed to create modules");
         (lua, modules)
@@ -378,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fs_write_and_read() {
-        let (_lua, (_, fs_module, _, _, _, _, _, _)) = setup_lua().await;
+        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua().await;
         let path = "testfile.txt";
 
         // Write a file
@@ -397,7 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fs_append() {
-        let (_lua, (_, fs_module, _, _, _, _, _, _)) = setup_lua().await;
+        let (_lua, (fs_module, _, _, _, _, _, _)) = setup_lua().await;
         let path = "appendfile.txt";
 
         // Write initial
@@ -422,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_env_get_set_remove() {
-        let (_lua, (_, _, env_module,  _, _, _, _, _)) = setup_lua().await;
+        let (_lua, (_, env_module, _, _, _, _, _)) = setup_lua().await;
 
         let set_fn: mlua::Function = env_module.get("set").unwrap();
         set_fn
@@ -442,7 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_shell_exec() {
-        let (_lua, (_, _, _, shell_module, _, _, _, _)) = setup_lua().await;
+        let (_lua, (_, _, shell_module, _, _, _, _)) = setup_lua().await;
         let exec_fn: mlua::Function = shell_module.get("exec").unwrap();
 
         #[cfg(unix)]
@@ -459,7 +452,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_time_now_and_sleep() {
-        let (_lua, (_, _, _, _, time_module, _, _, _)) = setup_lua().await;
+        let (_lua, (_, _, _, time_module, _, _, _)) = setup_lua().await;
 
         let now_fn: mlua::Function = time_module.get("now").unwrap();
         let formatted: String = now_fn.call("%Y-%m-%d".to_string()).unwrap();
@@ -468,7 +461,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_json_encode_decode() {
-        let (lua, (_, _, _, _, _, json_module, _, _)) = setup_lua().await;
+        let (lua, (_, _, _, _, json_module, _, _)) = setup_lua().await;
 
         let encode_fn: mlua::Function = json_module.get("encode").unwrap();
         let decode_fn: mlua::Function = json_module.get("decode").unwrap();
