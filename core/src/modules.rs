@@ -2,8 +2,9 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::{
-    env, fs,
+    env, fs, io,
     io::Write,
     path::Path,
     process::{Command, Output},
