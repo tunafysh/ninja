@@ -27,6 +27,7 @@ fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
 
     #[cfg(target_os = "macos")]
     {
+        use shell_escape;
         // osascript will trigger the GUI "enter password" dialog
         let mut cmd = Command::new("osascript");
         cmd.arg("-e").arg(format!(
