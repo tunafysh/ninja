@@ -10,6 +10,7 @@ crate-type = ["staticlib", "rlib", "cdylib"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.175"
+shell-escape = {version = "0.1.5", default-features = false}
 
 [target.'cfg(windows)'.dependencies]
 windows = "0.61.3"
