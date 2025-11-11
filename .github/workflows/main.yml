@@ -42,9 +42,9 @@ jobs:
           version: latest
 
       # --- Rust setup (still needed for library build) ---
-      - name: install Rust nightly
+      - name: install Rust
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'

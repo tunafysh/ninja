@@ -175,7 +175,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
 
             Command::Help => {
                 output.push(
-                "Available commands:
+                    "Available commands:
                   http start <port>        - Start the HTTP server
                   select <name>            - Select a shuriken
                   configure                - Generate configuration for the selected shuriken
@@ -189,7 +189,8 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                   list state               - List shurikens with their states
                   execute <script>         - Run a Ninja script file
                   exit                     - Deselect current shuriken
-                  help                     - Show this message".to_string(),
+                  help                     - Show this message"
+                        .to_string(),
                 );
             }
             // Config commands

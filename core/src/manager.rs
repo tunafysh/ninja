@@ -576,9 +576,8 @@ impl ShurikenManager {
         archive.unpack(metadata.name.clone())?;
 
         if let Some(pi_script) = &metadata.postinstall {
-            
-            info!("Running postinstall script");   
-            
+            info!("Running postinstall script");
+
             let _ = &self.engine.execute_file(pi_script)?;
         }
 

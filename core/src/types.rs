@@ -53,7 +53,7 @@ pub enum FieldValue {
     Bool(bool),
     Map(HashMap<String, FieldValue>),
     Array(Vec<FieldValue>), // If you want later: Float(f64), List(Vec<FieldValue>), Datetime(String), etc.
-    Action(ActionField)
+    Action(ActionField),
 }
 
 pub trait Run {
@@ -83,7 +83,7 @@ impl FieldValue {
             FieldValue::Bool(b) => b.to_string(),
             FieldValue::Array(a) => format!("{:#?}", a).to_string(),
             FieldValue::Map(_) => "[object map]".to_string(),
-            FieldValue::Action { .. } => "".to_string()
+            FieldValue::Action { .. } => "".to_string(),
         }
     }
 
@@ -136,11 +136,26 @@ impl From<&str> for FieldValue {
         if val.starts_with('{') && val.ends_with('}') {
             let parsed: JsonResult<serde_json::Value> = serde_json::from_str(val);
             if let Ok(serde_json::Value::Object(map)) = parsed {
-                let name = map.get("name").and_then(|v| v.as_str()).unwrap_or("Unnamed").to_string();
-                let script = map.get("script").and_then(|v| v.as_str()).map(PathBuf::from).unwrap_or_default();
-                let function = map.get("function").and_then(|v| v.as_str()).map(String::from);
+                let name = map
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unnamed")
+                    .to_string();
+                let script = map
+                    .get("script")
+                    .and_then(|v| v.as_str())
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                let function = map
+                    .get("function")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
 
-                return FieldValue::Action(ActionField { name, script, function });
+                return FieldValue::Action(ActionField {
+                    name,
+                    script,
+                    function,
+                });
             }
         }
 
@@ -212,7 +227,7 @@ impl From<FieldValue> for toml::Value {
                 }
 
                 Value::Table(map)
-            },
+            }
             FieldValue::Action(fields) => {
                 let mut action = Table::new();
                 action["name"] = Value::String(fields.name);
@@ -242,12 +257,10 @@ impl Run for FieldValue {
         if let FieldValue::Action(action) = self {
             if let Some(function) = &action.function {
                 Ok(engine.execute_function(function, &action.script)?)
-            }
-            else {
+            } else {
                 Ok(engine.execute_file(&action.script)?)
             }
-        }
-        else {
+        } else {
             Err(Error::msg("... How did you do this?"))
         }
     }
