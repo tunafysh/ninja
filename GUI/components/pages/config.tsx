@@ -1,108 +1,77 @@
 "use client"
 
-import { Dispatch, SetStateAction, useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
+import { useState } from "react"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { SaveIcon } from "lucide-react"
-import { motion } from "motion/react"
-import { Shuriken } from "@/lib/types"
 import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
-
-const tabs = ["Ninja"]
+import { useShuriken } from "@/hooks/use-shuriken"
+import { invoke } from "@tauri-apps/api/core"
 
 function capitalizeFirstLetter(str: string) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+  return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
+export default function Configuration() {
+  const { allShurikens, refreshShurikens } = useShuriken()
+  const [saving, setSaving] = useState<string | null>(null)
 
-export default function Configuration({configtmp, setConfigtmp, shurikens}: {configtmp?: NinjaConfig, setConfigtmp?: Dispatch<SetStateAction<NinjaConfig>>, shurikens: Shuriken[]}) {
-  const [config, setConfig] = useState<NinjaConfig>({
-    devMode: false,
-    serverurl: "https://ninja-rs.vercel.app",
-    checkUpdates: true,
-  })
+  const handleSave = async (shurikenName: string) => {
+    try {
+      setSaving(shurikenName)
+      await invoke("configure_shuriken", { name: shurikenName })
+      await refreshShurikens()
+    } catch (err) {
+      console.error("Failed to configure shuriken:", err)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const configurableShurikens = allShurikens.filter(
+    s => s.config?.options && Object.keys(s.config.options).length > 0
+  )
+
+  if (configurableShurikens.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground mt-8">
+        No Shurikens have configurable fields.
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-2">
-      <Tabs defaultValue="ninja" className="w-full">
-        <div className="flex justify-between">
-
-        <TabsList className={`grid grid-cols-${tabs.length + shurikens.length} max-w-md mb-2 px-2`}>
-            <TabsTrigger value={"ninja"} key={"ninja"} className="text-sm font-medium">
-              Ninja
-            </TabsTrigger>
-
-            {shurikens.map((value, index) => (
-              value.config != null?(
-              <TabsTrigger value={value.metadata.name} key={value.metadata.name} className="text-sm font-medium">
-                  {value.metadata.name}
-              </TabsTrigger>): null
-            ))}
-        </TabsList>
-            <Button>
+    <div className="space-y-4">
+      {configurableShurikens.map(shuriken => (
+        <div key={shuriken.metadata.name} className="border rounded-md p-4 space-y-2">
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-semibold">{shuriken.metadata.name}</h3>
+            <Button
+              size="sm"
+              onClick={() => handleSave(shuriken.metadata.name)}
+              disabled={saving === shuriken.metadata.name}
+            >
               <SaveIcon className="mr-2 h-4 w-4" />
-              Save Configuration
+              {saving === shuriken.metadata.name ? "Saving..." : "Save"}
             </Button>
-        </div>
-        <TabsContent value="ninja">
-          
-          <Item>
-              <ItemContent>
-                <span className="text-sm font-medium">Custom server</span>
-              </ItemContent>
+          </div>
 
+          {Object.entries(shuriken.config!.options!).map(([key, option]) => (
+            <Item variant="outline" className="mb-2" key={key}>
+              <ItemContent>
+                <ItemTitle>{capitalizeFirstLetter(key)}</ItemTitle>
+              </ItemContent>
               <ItemActions>
-                  <Input onChange={(e) => setConfig({
-                    serverurl: e.target.value,
-                    checkUpdates: config.checkUpdates,
-                    devMode: config.devMode
-                  })} value={config.serverurl} type="url" />
+                {option.type === "Number" ? (
+                  <Input type="number" defaultValue={option.value} />
+                ) : option.type === "String" ? (
+                  <Input type="text" defaultValue={option.value} />
+                ) : null}
               </ItemActions>
             </Item>
-
-            <Item>
-              <ItemContent>
-                  <span className="text-sm font-medium">Check for updates</span>
-              </ItemContent>      
-                <ItemActions>
-                  <Switch onCheckedChange={(e) => {
-                    setConfig({
-                      serverurl: config.serverurl,
-                      checkUpdates: e,
-                      devMode: config.devMode
-                    })
-                  }} checked={config.checkUpdates} />
-                </ItemActions>
-            </Item>
-        </TabsContent> 
-        {shurikens.map((value, index) => (
-          value.config?.options && Object.keys(value.config.options).length > 0 ? (
-            <TabsContent value={value.metadata.name} key={index}>
-              {Object.entries(value.config.options).map(([key, option], i) => (
-                <Item variant={"outline"} className="mb-2">
-                  <ItemContent>
-                    <ItemTitle>{capitalizeFirstLetter(key)}</ItemTitle>
-                  </ItemContent>
-                  <ItemActions>
-                    {
-                      typeof option === "number"?
-                      <Input className="w-fit" type="number" defaultValue={option}/>:
-                      typeof option === "string"?
-                      <Input type="text" defaultValue={option}/>:
-                      null
-                    }
-                  </ItemActions>
-                </Item>
-              ))}
-            </TabsContent>
-          ) : (
-            <p key={index}>No options to configure.</p>
-          )
-        ))}
-
-      </Tabs>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

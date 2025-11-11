@@ -14,6 +14,53 @@ use std::{
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::{fs, process::Command};
 
+fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
+    #[cfg(target_os = "linux")]
+    {
+        let mut cmd = Command::new("pkexec");
+        cmd.arg(bin);
+        if let Some(a) = args {
+            cmd.args(a);
+        }
+        cmd
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // osascript will trigger the GUI "enter password" dialog
+        let mut cmd = Command::new("osascript");
+        cmd.arg("-e").arg(format!(
+            "do shell script \"{} {}\" with administrator privileges",
+            shell_escape::escape(bin.into()),
+            args.unwrap_or(&vec![]).join(" ")
+        ));
+        cmd
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // runas triggers UAC, -PassThru returns the Process object, we extract .Id
+        let mut cmd = Command::new("powershell");
+        cmd.arg("-NoProfile");
+        cmd.arg("-NonInteractive");
+        cmd.arg("-Command");
+
+        // build PowerShell one-liner
+        let mut script = format!("(Start-Process '{}' -Verb RunAs -PassThru", bin);
+
+        if let Some(a) = args {
+            // use array syntax for multiple args
+            let joined = a.join("','");
+            script.push_str(&format!(" -ArgumentList @('{}')", joined));
+        }
+
+        script.push_str(").Id"); // return PID
+
+        cmd.arg(script);
+        cmd
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenConfig {
     #[serde(rename = "config-path")]
@@ -25,11 +72,14 @@ pub struct ShurikenConfig {
 pub struct ShurikenMetadata {
     pub name: String,
     pub id: String,
+    pub version: String,
     pub maintenance: MaintenanceType,
     #[serde(rename = "type")]
     pub shuriken_type: String,
     #[serde(rename = "add-path")]
     pub add_path: bool,
+    #[serde(rename = "require-admin")]
+    pub require_admin: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -158,26 +208,31 @@ pub fn get_process_start_time(pid: u32) -> Option<u64> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shuriken {
-    pub shuriken: ShurikenMetadata,
+    #[serde(rename = "shuriken")]
+    pub metadata: ShurikenMetadata,
     pub config: Option<ShurikenConfig>,
     pub logs: Option<LogsConfig>,
 }
 
 impl Shuriken {
     pub async fn start(&self) -> Result<(), String> {
-        info!("Starting shuriken {}", self.shuriken.name);
+        info!("Starting shuriken {}", self.metadata.name);
 
-        let maintenance = &self.shuriken.maintenance; // borrow, not clone
+        let maintenance = &self.metadata.maintenance; // borrow, not clone
 
         match maintenance {
             MaintenanceType::Native { bin_path, args, .. } => {
                 let bin_str = bin_path.get_path();
 
-                let mut cmd = Command::new(bin_str);
-
-                if let Some(args) = args {
-                    cmd.args(args);
-                }
+                let mut cmd = if self.metadata.require_admin {
+                    make_admin_command(bin_str, args.as_deref())
+                } else {
+                    let mut c = Command::new(bin_str);
+                    if let Some(args) = args {
+                        c.args(args);
+                    }
+                    c
+                };
 
                 let mut process = cmd
                     .spawn()
@@ -191,7 +246,7 @@ impl Shuriken {
                     .ok_or_else(|| "Failed to get process start time".to_string())?;
 
                 let lockfile_data = json!({
-                    "name": self.shuriken.name,
+                    "name": self.metadata.name,
                     "type": "Native",
                     "pid": Pid::from(pid as usize).as_u32(),
                     "start_time": start_time
@@ -223,7 +278,7 @@ impl Shuriken {
                 })?;
 
                 let lockfile_data = json!({
-                    "name": self.shuriken.name,
+                    "name": self.metadata.name,
                     "type": "Script",
                 });
 
@@ -239,7 +294,7 @@ impl Shuriken {
         }
     }
 
-    pub async fn configure(&self) -> Result<()> {
+    pub async fn configure(&self, root_path: PathBuf) -> anyhow::Result<()> {
         if let Some(ctx) = &self.config {
             let shuriken_fields = ctx.options.clone();
             let mut fields = HashMap::new();
@@ -249,20 +304,36 @@ impl Shuriken {
                 }
             }
 
-            let templater = Templater::new(fields);
+            // Construct full path to the shuriken folder
+            let shuriken_path = root_path.join("shurikens").join(&self.metadata.name);
+
+            // Ensure the directory exists
+            fs::create_dir_all(&shuriken_path).await?;
+
+            // Initialize Templater with the fields and shuriken path
+            let templater = Templater::new(fields, shuriken_path.clone())?;
+
+            // Full path to write the generated config
+            let config_full_path = shuriken_path.join(&ctx.config_path);
+
+            // Ensure the parent directory of the config file exists
+            if let Some(parent) = config_full_path.parent() {
+                fs::create_dir_all(parent).await?;
+            }
 
             templater
-                .generate_config(ctx.config_path.clone())
+                .generate_config(config_full_path)
                 .await
                 .map_err(|e| anyhow::Error::msg(e.to_string()))?;
         }
+
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
-        info!("Stopping shuriken {}", self.shuriken.name);
+        info!("Stopping shuriken {}", self.metadata.name);
 
-        let maintenance = &self.shuriken.maintenance;
+        let maintenance = &self.metadata.maintenance;
 
         match maintenance {
             MaintenanceType::Native { .. } => {

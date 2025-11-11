@@ -36,8 +36,8 @@ impl NinjaEngine {
         self.lua.load(script).exec()
     }
 
-    pub fn execute_file(&self, path: &str) -> Result<(), LuaError> {
-        info!("Executing file: {}", path);
+    pub fn execute_file(&self, path: &PathBuf) -> Result<(), LuaError> {
+        info!("Executing file: {:#?}", path);
 
         let script = fs::read_to_string(path)?;
 

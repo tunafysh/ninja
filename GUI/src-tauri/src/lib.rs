@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
+
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_fs::init());
     #[cfg(desktop)]
     {
@@ -41,7 +42,8 @@ pub fn run() {
             get_running_shurikens,
             execute_dsl,
             configure_shuriken,
-            refresh_shurikens
+            refresh_shurikens,
+            developer_mode
         ])
         .setup(|app| {
             app.manage(Mutex::new(

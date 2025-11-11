@@ -22,6 +22,7 @@ pub enum Command {
     Install(PathBuf),
     Toggle(String),
     Execute(PathBuf),
+    Help,
     None,
 }
 
@@ -71,6 +72,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
                     Command::None
                 }
             }
+            "help" => Command::Help,
             "get" => {
                 if !token[1].is_empty() {
                     Command::Get(token[1].clone())
@@ -160,7 +162,8 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 if let Some(name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(name) {
-                        shuriken.configure().await.map_err(Error::msg)?;
+                        let path = &ctx.manager.root_path;
+                        shuriken.configure(path.clone()).await.map_err(Error::msg)?;
 
                         output.push(format!(
                             "Generated configuration for shuriken {} successfully.",
@@ -170,6 +173,25 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 }
             }
 
+            Command::Help => {
+                output.push(
+                "Available commands:
+                  http start <port>        - Start the HTTP server
+                  select <name>            - Select a shuriken
+                  configure                - Generate configuration for the selected shuriken
+                  set <key> <value>        - Set a config key for the selected shuriken
+                  get <key>                - Get a config key's value
+                  toggle <key>             - Toggle a boolean config key
+                  start                    - Start the selected shuriken
+                  stop                     - Stop the selected shuriken
+                  install <path>           - Install a new shuriken from a file
+                  list                     - List all shurikens
+                  list state               - List shurikens with their states
+                  execute <script>         - Run a Ninja script file
+                  exit                     - Deselect current shuriken
+                  help                     - Show this message".to_string(),
+                );
+            }
             // Config commands
             Command::Set { key, value } => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
@@ -256,7 +278,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
             Command::Execute(script_path) => {
                 let engine = NinjaEngine::new().map_err(|e| io::Error::other(e.to_string()))?;
                 engine
-                    .execute_file(script_path.display().to_string().as_str())
+                    .execute_file(&script_path)
                     .map_err(|e| io::Error::other(e.to_string()))?;
             }
             Command::Install(file_path) => match ctx.manager.install(file_path).await {

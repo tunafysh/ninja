@@ -16,10 +16,13 @@
       {
         "title": "Ninja",
         "label": "main",
-        "minWidth": 912,
-        "minHeight": 644,
+        "minWidth": 800,
+        "minHeight": 600,
+        "width": 800,
+        "height": 600,
         "decorations": false,
-        "resizable": false,
+        "resizable": true,
+        "maximizable": false,
         "fullscreen": false,
         "titleBarStyle": "Overlay"
       }

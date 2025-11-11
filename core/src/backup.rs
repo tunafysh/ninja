@@ -1,5 +1,5 @@
-use opendal::Operator;
-use opendal::services::{Fs, Gdrive};
+//use opendal::Operator;
+//use opendal::services::{Fs, Gdrive};
 use std::process::Command;
 use std::{env, io};
 use tokio::fs;
@@ -101,17 +101,12 @@ pub async fn create_backup() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
 
-    let path_str = path.clone();
+    // let path_str = path.clone();
 
-    let fs_builder = Fs::default().root(&path_str.display().to_string());
-    let _fs_op = Operator::new(fs_builder)
-        .map_err(|e| e.to_string())?
-        .finish();
-
-    let gdrive_builder = Gdrive::default();
-    let _gdrive_op = Operator::new(gdrive_builder)
-        .map_err(|e| e.to_string())?
-        .finish();
+    // let fs_builder = Fs::default().root(&path_str.display().to_string());
+    // let _fs_op = Operator::new(fs_builder)
+    //     .map_err(|e| e.to_string())?
+    //     .finish();
 
     Ok(())
 }

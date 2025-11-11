@@ -41,6 +41,7 @@
     "react": "^19.1.1",
     "react-day-picker": "^9.11.0",
     "react-dom": "^19.1.1",
+    "react-konami-code": "^2.3.0",
     "react-resizable-panels": "^2.1.9",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",

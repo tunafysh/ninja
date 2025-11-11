@@ -10,13 +10,14 @@ use ninja::{
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
+use serde_json::from_str;
 use std::{
     collections::HashMap,
     env,
     fs::{File, create_dir_all},
     io::Write,
     ops::Not,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::exit,
 };
 use tokio::fs;
@@ -59,6 +60,8 @@ enum Commands {
     New,
     /// Start up the HTTP API with a specified port (optional but recommended).
     Api(ApiArgs),
+    /// Install a shuriken
+    Install(InstallArgs),
     /// Forge a new shuriken (.shuriken file) from a local one
     Forge(ForgeArgs),
     /// Remove a shuriken (uninstall it completely)
@@ -98,9 +101,17 @@ pub struct ListArgs {
 }
 
 #[derive(Args)]
+pub struct InstallArgs {
+    /// The path of the .shuriken file to install
+    pub path: PathBuf,
+}
+
+#[derive(Args)]
 pub struct ForgeArgs {
     /// The path of the files to forge a shuriken (with the .ninja folder and everything)
     pub path: PathBuf,
+    /// optional path to something like forge-options.json to skip inputs (CI friendly)
+    pub options: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -181,9 +192,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Run(script_args)) => {
             let file_arg = script_args.file_script.ok_or("path argument is empty")?;
             let content = file_arg.as_str();
-
-            if Path::new(content).exists() {
-                match manager.engine.execute_file(content) {
+            let path = PathBuf::from(content);
+            if path.exists() {
+                match manager.engine.execute_file(&path) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -209,6 +220,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_prompt("Enter the service name")
                 .interact_text()
                 .unwrap();
+
+            let version: String = Input::with_theme(&theme)
+                            .with_prompt("Enter the version of the shuriken (this is required if you're planning to upload to Armory)")
+                            .allow_empty(true)
+                            .interact_text()
+                            .unwrap();
 
             // ===== Maintenance prompt =====
             let maintenance_choice = Select::with_theme(&theme)
@@ -285,6 +302,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .interact()
                 .unwrap();
 
+            let admin = dialoguer::Confirm::with_theme(&theme)
+                .with_prompt("Require administrator priviliges to launch?")
+                .default(false)
+                .interact()
+                .unwrap();
+
             // ===== Config section =====
 
             println!("{}", "Config section".bold().blue());
@@ -346,12 +369,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", format!("Generating manifest for '{}'", name).bold());
 
             let manifest = Shuriken {
-                shuriken: ShurikenMetadata {
+                metadata: ShurikenMetadata {
                     name: name.clone(),
                     id: id.clone(),
+                    version,
                     maintenance,
                     shuriken_type: shuriken_type.to_string(),
                     add_path,
+                    require_admin: admin,
                 },
                 config: conf_path.map(|path| ShurikenConfig {
                     config_path: path,
@@ -379,7 +404,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let MaintenanceType::Script { script_path } = &manifest.shuriken.maintenance {
+            if let MaintenanceType::Script { script_path } = &manifest.metadata.maintenance {
                 if let Some(parent) = script_path.parent() {
                     fs::create_dir_all(parent).await?;
                 }
@@ -404,90 +429,108 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;
         }
+        Some(Commands::Install(args)) => {
+            info!("Installing a shuriken");
+            manager.install(args.path).await?;
+        }
         Some(Commands::Forge(args)) => {
-            let theme = ColorfulTheme::default();
-            let name: String = Input::with_theme(&theme)
-                .with_prompt("Enter the name of the shuriken")
-                .interact_text()
-                .unwrap();
+            if let Some(config_path) = args.options {
+                let serialized_metadata = fs::read_to_string(config_path).await?;
+                let metadata: ArmoryMetadata = from_str(&serialized_metadata)?;
 
-            let id: String = Input::with_theme(&theme)
-                .with_prompt("Enter the id for this shuriken (Apache -> httpd)")
-                .interact_text()
-                .unwrap();
+                println!("{}", "Creating shuriken...".bold());
+                if !PathBuf::from("blacksmith/").exists() {
+                    fs::create_dir("blacksmith").await?;
+                }
 
-            let platform: String = Input::with_theme(&theme)
-                .with_prompt("Enter the platform this shuriken was designed for (target triple is preferred but something like windows-x86_64 is allowed)")
-                .interact_text()
-                .unwrap();
-
-            let version: String = Input::with_theme(&theme)
-                .with_prompt("Enter the version for this shuriken (semver is preferred but anything with numbers will suffice)")
-                .interact_text()
-                .unwrap();
-
-            let mut dependencies: Vec<String> = Vec::new();
-
-            loop {
-                let value: String = Input::with_theme(&theme)
-                    .with_prompt("Enter option key (leave empty to finish)")
-                    .allow_empty(true)
+                manager
+                    .forge(metadata, args.path, PathBuf::from("blacksmith/"))
+                    .await?;
+            } else {
+                let theme = ColorfulTheme::default();
+                let name: String = Input::with_theme(&theme)
+                    .with_prompt("Enter the name of the shuriken")
                     .interact_text()
                     .unwrap();
 
-                if value.trim().is_empty() {
-                    break;
+                let id: String = Input::with_theme(&theme)
+                    .with_prompt("Enter the id for this shuriken (Apache -> httpd)")
+                    .interact_text()
+                    .unwrap();
+
+                let platform: String = Input::with_theme(&theme)
+                    .with_prompt("Enter the platform this shuriken was designed for (target triple is preferred but something like windows-x86_64 is allowed)")
+                    .interact_text()
+                    .unwrap();
+
+                let version: String = Input::with_theme(&theme)
+                    .with_prompt("Enter the version for this shuriken (semver is preferred but anything with numbers will suffice)")
+                    .interact_text()
+                    .unwrap();
+
+                let mut dependencies: Vec<String> = Vec::new();
+
+                loop {
+                    let value: String = Input::with_theme(&theme)
+                        .with_prompt("Enter option key (leave empty to finish)")
+                        .allow_empty(true)
+                        .interact_text()
+                        .unwrap();
+
+                    if value.trim().is_empty() {
+                        break;
+                    }
+
+                    dependencies.push(value);
                 }
 
-                dependencies.push(value);
+                let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
+                    .interact()
+                    .map(|s: String| s.is_empty().not().then_some(PathBuf::from(s)))
+                    .unwrap();
+
+                let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
+                    .interact()
+                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .unwrap();
+
+                let author: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Author of this shuriken (whoever made it, optional)")
+                    .interact()
+                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .unwrap();
+
+                let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
+                    .interact()
+                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .unwrap();
+
+                println!("{}", format!("Generating metadata for '{}'", &name).bold());
+
+                let metadata = ArmoryMetadata {
+                    name,
+                    id,
+                    platform,
+                    version,
+                    dependencies,
+                    postinstall,
+                    description,
+                    author,
+                    license,
+                };
+
+                println!("{}", "Creating shuriken...".bold());
+                if !PathBuf::from("blacksmith/").exists() {
+                    fs::create_dir("blacksmith").await?;
+                }
+
+                manager
+                    .forge(metadata, args.path, PathBuf::from("blacksmith/"))
+                    .await?;
             }
-
-            let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
-                .interact()
-                .map(|s: String| s.is_empty().not().then_some(PathBuf::from(s)))
-                .unwrap();
-
-            let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
-                .interact()
-                .map(|s: String| s.is_empty().not().then_some(s))
-                .unwrap();
-
-            let author: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("Author of this shuriken (whoever made it, optional)")
-                .interact()
-                .map(|s: String| s.is_empty().not().then_some(s))
-                .unwrap();
-
-            let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
-                .interact()
-                .map(|s: String| s.is_empty().not().then_some(s))
-                .unwrap();
-
-            println!("{}", format!("Generating metadata for '{}'", &name).bold());
-
-            let metadata = ArmoryMetadata {
-                name,
-                id,
-                platform,
-                version,
-                dependencies,
-                postinstall,
-                description,
-                author,
-                license,
-            };
-
-            println!("{}", "Creating shuriken...".bold());
-            if !PathBuf::from("blacksmith/").exists() {
-                fs::create_dir("blacksmith").await?;
-            }
-
-            manager
-                .forge(metadata, args.path, PathBuf::from("blacksmith/"))
-                .await?;
         }
         Some(Commands::Remove(args)) => {
             manager.remove(&args.shuriken).await?;

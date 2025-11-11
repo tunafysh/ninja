@@ -10,7 +10,7 @@ name = "shurikenctl"
 [dependencies]
 clap = { version = "4.5.37", default-features = false, features = ["cargo", "derive", "help"] }
 owo-colors = { version = "4.2.0", default-features = false, features = ["supports-color"] }
-tokio = { version = "1.45.1", default-features = false }
+tokio = { version = "1.45.1", default-features = false, features = ["rt-multi-thread"] }
 log = { version = "0.4.27", default-features = false }
 fern = { version = "0.7.1", default-features = false, features = ["colored", "chrono"] }
 chrono = { version = "0.4.41", default-features = false }
@@ -22,3 +22,5 @@ serde = { version = "1.0.219", default-features = false }
 toml = { version = "0.9.4", default-features = false, features = ["display", "serde"] }
 dialoguer = { version = "0.11.0", default-features = false }
 ninja-api = { path = "../API"}
+serde_json = "1.0.145"
+anyhow = "1.0.100"

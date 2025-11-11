@@ -92,7 +92,7 @@ jobs:
           DOCKER_BUILDKIT=1 docker build \
             --secret id=tauri_key,src=tauri_signing_key.pem \
             -t ninja:latest .
-          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'
+          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \; && cp -v /build/target/release/shurikenctl-linux-x86 /dist/ 2>/dev/null && cp -v /build/target/release/shurikenctl-linux-arm /dist/ 2>/dev/null'
 
       # --- Upload artifacts ---
       - name: Upload build artifacts for Windows and Ubuntu

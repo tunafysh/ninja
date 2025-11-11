@@ -20,7 +20,8 @@ export default function Logs({shurikens}: {shurikens: Shuriken[]}) {
         </div>
       </div>
 
-      <Tabs defaultValue="apache" className="w-full">
+      {shurikens.some(s => s.logs != null) ? (
+        <Tabs className="w-full">
         <TabsList className="grid grid-cols-3 max-w-md mb-6">
           {shurikens.map((value, index) => value.logs!= null?(
           <TabsTrigger value={value.metadata.name} className="flex items-center gap-2">
@@ -35,6 +36,11 @@ export default function Logs({shurikens}: {shurikens: Shuriken[]}) {
         </TabsContent>
       ): null)}
       </Tabs>
+      ): (
+        <div className="flex w-full h-full items-center justify-center">
+          <p>No log entry was defined for shurikens</p>
+        </div>
+      )}
 
     </div>
   )

@@ -1,6 +1,17 @@
+use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use toml::{Value, map::Map};
+use serde_json::Result as JsonResult;
+use std::{collections::HashMap, path::PathBuf};
+use toml::{Table, Value, map::Map};
+
+use crate::scripting::NinjaEngine;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActionField {
+    pub name: String,
+    pub script: PathBuf,
+    pub function: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShurikenState {
@@ -42,6 +53,11 @@ pub enum FieldValue {
     Bool(bool),
     Map(HashMap<String, FieldValue>),
     Array(Vec<FieldValue>), // If you want later: Float(f64), List(Vec<FieldValue>), Datetime(String), etc.
+    Action(ActionField)
+}
+
+pub trait Run {
+    fn run_action(&self, engine: &NinjaEngine) -> Result<()>;
 }
 
 impl FieldValue {
@@ -67,6 +83,7 @@ impl FieldValue {
             FieldValue::Bool(b) => b.to_string(),
             FieldValue::Array(a) => format!("{:#?}", a).to_string(),
             FieldValue::Map(_) => "[object map]".to_string(),
+            FieldValue::Action { .. } => "".to_string()
         }
     }
 
@@ -102,17 +119,38 @@ impl From<&str> for FieldValue {
     fn from(val: &str) -> Self {
         let val = val.trim();
 
+        // Try number
         if let Ok(n) = val.parse::<i64>() {
-            FieldValue::Number(n)
-        } else if val.eq_ignore_ascii_case("true") {
-            FieldValue::Bool(true)
-        } else if val.eq_ignore_ascii_case("false") {
-            FieldValue::Bool(false)
-        } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
-            FieldValue::String(val[1..val.len() - 1].to_string())
-        } else {
-            FieldValue::String(val.to_string())
+            return FieldValue::Number(n);
         }
+
+        // Try bool
+        if val.eq_ignore_ascii_case("true") {
+            return FieldValue::Bool(true);
+        }
+        if val.eq_ignore_ascii_case("false") {
+            return FieldValue::Bool(false);
+        }
+
+        // Try ActionField via JSON
+        if val.starts_with('{') && val.ends_with('}') {
+            let parsed: JsonResult<serde_json::Value> = serde_json::from_str(val);
+            if let Ok(serde_json::Value::Object(map)) = parsed {
+                let name = map.get("name").and_then(|v| v.as_str()).unwrap_or("Unnamed").to_string();
+                let script = map.get("script").and_then(|v| v.as_str()).map(PathBuf::from).unwrap_or_default();
+                let function = map.get("function").and_then(|v| v.as_str()).map(String::from);
+
+                return FieldValue::Action(ActionField { name, script, function });
+            }
+        }
+
+        // Try string with quotes
+        if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
+            return FieldValue::String(val[1..val.len() - 1].to_string());
+        }
+
+        // Fallback
+        FieldValue::String(val.to_string())
     }
 }
 
@@ -174,7 +212,43 @@ impl From<FieldValue> for toml::Value {
                 }
 
                 Value::Table(map)
+            },
+            FieldValue::Action(fields) => {
+                let mut action = Table::new();
+                action["name"] = Value::String(fields.name);
+                action["script"] = Value::String(fields.script.display().to_string());
+                if let Some(function) = fields.function {
+                    action["function"] = Value::String(function);
+                }
+                Value::Table(action)
             }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SecuritySettings {
+    pub restricted: bool,
+}
+
+impl Default for SecuritySettings {
+    fn default() -> Self {
+        SecuritySettings { restricted: true }
+    }
+}
+
+impl Run for FieldValue {
+    fn run_action(&self, engine: &NinjaEngine) -> Result<()> {
+        if let FieldValue::Action(action) = self {
+            if let Some(function) = &action.function {
+                Ok(engine.execute_function(function, &action.script)?)
+            }
+            else {
+                Ok(engine.execute_file(&action.script)?)
+            }
+        }
+        else {
+            Err(Error::msg("... How did you do this?"))
         }
     }
 }

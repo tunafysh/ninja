@@ -4,6 +4,7 @@ use crate::{
     types::{FieldValue, ShurikenState},
 };
 use anyhow::{Error, Result};
+use dirs_next as dirs;
 use either::Either::{self, Left, Right};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use globwalk::{GlobWalkerBuilder, glob};
@@ -13,7 +14,7 @@ use serde_cbor::{de::from_mut_slice, to_vec};
 use std::{
     collections::HashMap,
     env,
-    io::{self, Read, Seek},
+    io::{self, Cursor, Read, Seek},
     path::PathBuf,
     str,
     sync::Arc,
@@ -78,19 +79,16 @@ pub struct ShurikenManager {
 
 impl ShurikenManager {
     pub async fn new() -> Result<Self> {
-        let exe_dir = env::current_exe()
-            .map_err(io::Error::other)?
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        let exe_dir = dirs::data_local_dir()
+            .expect("no appdata dir")
+            .join("com.tunafysh.ninja");
+        fs::create_dir_all(&exe_dir).await?;
 
         let shurikens_dir = exe_dir.join("shurikens");
 
         // Create shurikens directory if it doesn't exist
         if !shurikens_dir.exists() {
-            fs::create_dir(&shurikens_dir)
-                .await
-                .map_err(|e| io::Error::other(format!("Failed to create directory: {}", e)))?;
+            fs::create_dir(&shurikens_dir).await?;
         }
 
         let mut shurikens = HashMap::new();
@@ -235,9 +233,6 @@ impl ShurikenManager {
                 }
             }
         }
-
-        #[cfg(debug_assertions)]
-        debug!("{:#?}", shurikens);
 
         let engine = NinjaEngine::new();
 
@@ -454,18 +449,13 @@ impl ShurikenManager {
     }
 
     pub async fn configure(&self, name: &str) -> Result<()> {
-        let temp_path = &self
-            .root_path
-            .clone()
-            .join(PathBuf::from(format!("shurikens/{}", name)));
-        env::set_current_dir(temp_path)?;
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(name);
 
         if let Some(shuriken) = shuriken {
-            shuriken.configure().await?;
+            let path = &self.root_path;
+            shuriken.configure(path.clone()).await?;
         }
-        env::set_current_dir(&self.root_path)?;
         Ok(())
     }
 
@@ -548,12 +538,6 @@ impl ShurikenManager {
             return Err(anyhow::Error::msg("Path does not exist"));
         }
 
-        if !path.ends_with(".shuriken") {
-            return Err(anyhow::Error::msg(
-                "Invalid shuriken file type, expected .shuriken",
-            ));
-        }
-
         let mut file = std::fs::File::open(&path)
             .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {}", e)))?;
 
@@ -571,6 +555,8 @@ impl ShurikenManager {
 
         let metadata: ArmoryMetadata = from_mut_slice(&mut metadata)?;
 
+        info!("Metadata parsing complete");
+
         if !metadata.platform.contains(env::consts::OS)
             && !metadata.platform.contains(env::consts::ARCH)
         {
@@ -581,10 +567,20 @@ impl ShurikenManager {
 
         file.seek(io::SeekFrom::Current(metadata_length as i64))?;
 
-        let gz_decoder = GzDecoder::new(file);
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
+        let buf = Cursor::new(buf);
+        let gz_decoder = GzDecoder::new(buf);
         let mut archive = Archive::new(gz_decoder);
 
         archive.unpack(metadata.name.clone())?;
+
+        if let Some(pi_script) = &metadata.postinstall {
+            
+            info!("Running postinstall script");   
+            
+            let _ = &self.engine.execute_file(pi_script)?;
+        }
 
         #[cfg(debug_assertions)]
         {

@@ -12,7 +12,7 @@ use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenWithStatus {
-    pub shuriken: ShurikenMetadata,
+    pub metadata: ShurikenMetadata,
     pub config: Option<ShurikenConfig>,
     pub logs: Option<LogsConfig>,
     pub status: ShurikenState,
@@ -90,7 +90,7 @@ pub async fn get_all_shurikens(
             if let Some(partial_status) = manager.states.read().await.get(&name) {
                 let status = partial_status.clone();
                 output.push(ShurikenWithStatus {
-                    shuriken: shuriken.shuriken,
+                    metadata: shuriken.metadata,
                     config: shuriken.config,
                     logs: shuriken.logs,
                     status,
@@ -116,7 +116,7 @@ pub async fn get_running_shurikens(
             if status == ShurikenState::Running {
                 let shuriken = manager.get(name).await.map_err(|e| e.to_string())?;
                 output.push(ShurikenWithStatus {
-                    shuriken: shuriken.shuriken,
+                    metadata: shuriken.metadata,
                     config: shuriken.config,
                     logs: shuriken.logs,
                     status,
@@ -133,18 +133,30 @@ pub async fn get_running_shurikens(
 pub async fn execute_dsl(
     command: &str,
     manager: State<'_, Mutex<ShurikenManager>>,
-) -> Result<String, String> {
+) -> Result<Vec<String>, String> {
     info!("Executing command {}", command);
-    let manager = manager.blocking_lock();
+    let manager = manager.lock().await;
     let context = DslContext::new(manager.clone());
+
     let res = execute_commands(&context, command.to_string())
         .await
         .map_err(|e| e.to_string())?;
-    Ok(res.join("\n"))
+
+    Ok(res) // return Vec<String> directly
 }
 
 #[tauri::command]
-pub async fn configure_shuriken(shuriken: Shuriken) -> Result<(), String> {
-    shuriken.configure().await.map_err(|e| e.to_string())?;
+pub async fn configure_shuriken(
+    shuriken: Shuriken,
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<(), String> {
+    let path = manager.lock().await.root_path.clone();
+    shuriken.configure(path).await.map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn developer_mode() -> bool {
+    // true if running a debug build
+    cfg!(debug_assertions)
 }

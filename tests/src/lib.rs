@@ -32,7 +32,7 @@ mod ninja_runtime_integration_tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "x = 123").unwrap();
 
-        assert!(engine.execute_file(tmp.path().to_str().unwrap()).is_ok());
+        assert!(engine.execute_file(&tmp.path().to_path_buf()).is_ok());
     }
 
     #[test]
@@ -70,13 +70,14 @@ mod ninja_runtime_integration_tests {
 mod ninja_api_integration_tests {
     use ninja::{
         manager::ShurikenManager,
+        scripting::NinjaEngine,
         shuriken::{
             MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata, get_process_start_time,
             kill_process_by_pid,
         },
         types::FieldValue,
     };
-    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+    use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
     use tokio::sync::RwLock;
 
@@ -89,14 +90,16 @@ mod ninja_api_integration_tests {
         fields.insert("key".into(), FieldValue::String("value".into()));
 
         let shuriken = Shuriken {
-            shuriken: ShurikenMetadata {
+            metadata: ShurikenMetadata {
                 name: "test".into(),
                 id: "id1".into(),
+                version: "1.0.0".to_string(),
                 maintenance: MaintenanceType::Script {
                     script_path: PathBuf::from("dummy.lua"),
                 },
                 shuriken_type: "script".into(),
                 add_path: false,
+                require_admin: false,
             },
             config: Some(ShurikenConfig {
                 config_path: config_path.clone(),
@@ -105,7 +108,9 @@ mod ninja_api_integration_tests {
             logs: None,
         };
 
-        let result = shuriken.configure().await;
+        let path = env::current_exe().unwrap();
+
+        let result = shuriken.configure(path).await;
         assert!(result.is_ok());
         assert!(config_path.exists());
     }
@@ -117,14 +122,16 @@ mod ninja_api_integration_tests {
 
         // fake script shuriken
         let shuriken = Shuriken {
-            shuriken: ShurikenMetadata {
+            metadata: ShurikenMetadata {
                 name: "test_script".into(),
                 id: "id2".into(),
+                version: "1.0.0".to_string(),
                 maintenance: MaintenanceType::Script {
                     script_path: PathBuf::from("dummy.lua"),
                 },
                 shuriken_type: "script".into(),
                 add_path: false,
+                require_admin: false,
             },
             config: None,
             logs: None,
@@ -156,9 +163,10 @@ mod ninja_api_integration_tests {
     async fn test_manager_list_empty() {
         let dir = tempdir().unwrap();
         std::env::set_current_dir(&dir).unwrap();
-
+        let engine = NinjaEngine::new().unwrap();
         let manager = ShurikenManager {
             root_path: dir.path().to_path_buf(),
+            engine,
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
         };
@@ -186,14 +194,16 @@ mod ninja_api_integration_tests {
     #[tokio::test]
     async fn test_stop_without_lockfile() {
         let shuriken = Shuriken {
-            shuriken: ShurikenMetadata {
+            metadata: ShurikenMetadata {
                 name: "fake".into(),
                 id: "id3".into(),
+                version: "1.0.0".to_string(),
                 maintenance: MaintenanceType::Script {
                     script_path: PathBuf::from("fake.lua"),
                 },
                 shuriken_type: "script".into(),
                 add_path: false,
+                require_admin: false,
             },
             config: None,
             logs: None,
