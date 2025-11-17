@@ -4,11 +4,12 @@ import { useEffect } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Globe, FileCode, MoreHorizontal, RefreshCcw } from "lucide-react"
+import { Globe, FileCode, MoreHorizontal, RefreshCcw, FolderOpen } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useShuriken } from "@/hooks/use-shuriken"
+import { invoke } from "@tauri-apps/api/core"
 
 export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
   const { allShurikens, refreshShurikens, startShuriken, stopShuriken, loading } = useShuriken()
@@ -20,6 +21,10 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
     } else {
       await startShuriken(shuriken.metadata.name)
     }
+  }
+  
+  const openShurikensFolder = async () => {
+    await invoke("open_dir", { path: "shurikens"})
   }
 
   useEffect(() => {
@@ -36,9 +41,15 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
       <div>
         <div className="flex justify-between">
           <h2 className="text-xl font-semibold mb-3 px-1">Shurikens</h2>
+          <div className="flex gap-3">
+
           <Button size="icon" onClick={refreshShurikens}>
             <RefreshCcw />
           </Button>
+          <Button size="icon" variant={"outline"} onClick={openShurikensFolder}>
+            <FolderOpen />
+          </Button>
+          </div>
         </div>
 
         {allShurikens.length > 0 ? (
@@ -118,7 +129,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
       </div>
 
       {/* Local Projects (unchanged) */}
-      {/* <Card className="bg-background border-none py-0 mt-4">
+      <Card className="bg-background border-none py-0 mt-4">
         <CardHeader className="p-3 md:p-4 pb-0 md:pb-2">
           <div className="flex items-center justify-between">
             <div>
@@ -153,7 +164,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
             View All Projects
           </Button>
         </CardContent>
-      </Card> */}
+      </Card>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 use crate::{
     scripting::NinjaEngine,
-    shuriken::Shuriken,
+    shuriken::{Shuriken, ShurikenConfig},
     types::{FieldValue, ShurikenState},
 };
 use anyhow::{Error, Result};
@@ -79,16 +79,32 @@ pub struct ShurikenManager {
 
 impl ShurikenManager {
     pub async fn new() -> Result<Self> {
-        let exe_dir = dirs::data_local_dir()
-            .expect("no appdata dir")
-            .join("com.tunafysh.ninja");
+        let exe_dir = if cfg!(target_os = "linux") {
+            // Linux: ~/.ninja
+            dirs::home_dir()
+                .ok_or_else(|| Error::msg("Could not find home directory"))?
+                .join(".ninja")
+        } else {
+            // Windows/macOS: use local app data dir
+            dirs::data_local_dir()
+                .ok_or_else(|| Error::msg("No local data dir found"))?
+                .join("com.tunafysh.ninja")
+        };
+
         fs::create_dir_all(&exe_dir).await?;
 
+        env::set_current_dir(&exe_dir)?;
+
         let shurikens_dir = exe_dir.join("shurikens");
+        let projects_dir = exe_dir.join("projects");
 
         // Create shurikens directory if it doesn't exist
         if !shurikens_dir.exists() {
             fs::create_dir(&shurikens_dir).await?;
+        }
+
+        if !projects_dir.exists() {
+            fs::create_dir(&projects_dir).await?;
         }
 
         let mut shurikens = HashMap::new();
@@ -459,6 +475,48 @@ impl ShurikenManager {
         Ok(())
     }
 
+    pub async fn save_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
+        println!("{:#?}", data);
+
+        // Update in-memory config
+        {
+            let mut shurikens = self.shurikens.write().await;
+            if let Some(shuriken) = shurikens.get_mut(name) {
+                if let Some(config) = &mut shuriken.config {
+                    config.options = Some(data.clone());
+                } else {
+                    shuriken.config = Some(ShurikenConfig {
+                        config_path: PathBuf::from("options.toml"),
+                        options: Some(data.clone()),
+                    });
+                }
+            }
+        }
+
+        // Write to disk
+        let serialized_data = toml::ser::to_string_pretty(&data)?;
+        let options_path = self
+            .root_path
+            .join("shurikens")
+            .join(name)
+            .join(".ninja")
+            .join("options.toml");
+
+        // Ensure the parent directory exists
+        if let Some(parent) = options_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+
+        // Remove old file if it exists
+        if options_path.exists() {
+            fs::remove_file(&options_path).await?;
+        }
+
+        fs::write(&options_path, serialized_data).await?;
+
+        Ok(())
+    }
+
     pub async fn stop(&self, name: &str) -> Result<()> {
         let shurikens = self.shurikens.read().await;
         let shuriken = shurikens
@@ -516,8 +574,6 @@ impl ShurikenManager {
             for (k, v) in partial_states.iter() {
                 values.push((k.clone(), v.clone()));
             }
-
-            println!("{:#?}", values);
             Ok(Left(values))
         } else {
             let mut values: Vec<String> = Vec::new();
@@ -526,8 +582,6 @@ impl ShurikenManager {
             for key in map.keys() {
                 values.push(key.clone())
             }
-
-            println!("{:#?}", values);
 
             Ok(Right(values))
         }
@@ -618,5 +672,24 @@ impl ShurikenManager {
         #[cfg(debug_assertions)]
         dbg!("{:#?}", &self.shurikens);
         Ok(())
+    }
+
+    pub async fn get_projects(&self) -> Result<Vec<String>> {
+        let path = &self.root_path.join("projects");
+        let mut entries: Vec<String> = Vec::new();
+        let mut fs_entries = fs::read_dir(path).await?;
+        while let Some(entry) = fs_entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name == "pma" || name == "fancy-index" {
+                    continue;
+                }
+
+                entries.push(name.to_string());
+            }
+        }
+        Ok(entries)
     }
 }

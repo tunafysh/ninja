@@ -32,6 +32,7 @@ export const useShuriken = () => {
     setLoadingDebounced(true)
     try {
       const data = await invoke<Shuriken[]>("get_all_shurikens")
+      console.log(data)
       setAllShurikens(data)
     } catch (err) {
       handleError(err, "refreshShurikens")

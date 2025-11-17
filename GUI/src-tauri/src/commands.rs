@@ -1,11 +1,15 @@
+use std::collections::HashMap;
+
 use log::{error, info};
+use tauri::AppHandle;
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
 use ninja::{
     dsl::{execute_commands, DslContext},
     manager::ShurikenManager,
-    shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata},
-    types::ShurikenState,
+    shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
+    types::{FieldValue, ShurikenState},
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -147,11 +151,11 @@ pub async fn execute_dsl(
 
 #[tauri::command]
 pub async fn configure_shuriken(
-    shuriken: Shuriken,
+    name: &str,
     manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
-    let path = manager.lock().await.root_path.clone();
-    shuriken.configure(path).await.map_err(|e| e.to_string())?;
+    let manager = manager.lock().await;
+    manager.configure(name).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -159,4 +163,40 @@ pub async fn configure_shuriken(
 pub fn developer_mode() -> bool {
     // true if running a debug build
     cfg!(debug_assertions)
+}
+
+#[tauri::command]
+pub async fn open_dir(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    app: AppHandle,
+    path: &str,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    let path = manager.root_path.join(path);
+    app
+        .opener()
+        .open_path(path.display().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_config(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    name: &str,
+    data: HashMap<String, FieldValue>,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    manager
+        .save_config(name, data)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_projects(
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<Vec<String>, String> {
+    let manager = manager.lock().await;
+    manager.get_projects().await.map_err(|e| e.to_string())
 }

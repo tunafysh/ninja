@@ -1,7 +1,10 @@
-use actix_web::{App, HttpResponse, HttpServer, Result, get, web};
+use anyhow::Result;
 use ninja::{manager::ShurikenManager, types::ShurikenState};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
+use tide::http::mime;
+use tide::prelude::*; // For JSON serialization
+use tide::{Request, Response, StatusCode};
 
 pub mod graphql;
 
@@ -15,131 +18,164 @@ where
     error: Option<String>,
 }
 
-#[get("/api/shurikens/start/{shuriken}")]
-async fn start_shuriken(
-    path: web::Path<String>,
-    manager: web::Data<ShurikenManager>,
-) -> Result<HttpResponse> {
-    let name = path.into_inner();
-    let result = manager.start(&name).await;
-    match result {
-        Ok(()) => Ok(HttpResponse::Ok().json(ApiResponse::<()> {
-            success: true,
-            data: None,
-            error: None,
-        })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            error: Some(e.to_string()),
-        })),
+// Shared state for Tide
+#[derive(Clone)]
+struct AppState {
+    manager: Arc<ShurikenManager>,
+}
+
+// Handler to start a shuriken
+async fn start_shuriken(req: Request<AppState>) -> tide::Result {
+    let name: String = req.param("shuriken")?.to_string();
+    let state = req.state();
+
+    match state.manager.start(&name).await {
+        Ok(()) => Ok(Response::builder(StatusCode::Ok)
+            .body(json!(&ApiResponse::<()> {
+                success: true,
+                data: None,
+                error: None
+            }))
+            .content_type(mime::JSON)
+            .build()),
+        Err(e) => Ok(Response::builder(StatusCode::InternalServerError)
+            .body(json!(&ApiResponse::<()> {
+                success: false,
+                data: None,
+                error: Some(e.to_string())
+            }))
+            .content_type(mime::JSON)
+            .build()),
     }
 }
 
-#[get("/api/shurikens/stop/{shuriken}")]
-async fn stop_shuriken(
-    path: web::Path<String>,
-    manager: web::Data<ShurikenManager>,
-) -> Result<HttpResponse> {
-    let name = path.into_inner();
-    let result = manager.stop(&name).await;
-    match result {
-        Ok(()) => Ok(HttpResponse::Ok().json(ApiResponse::<()> {
-            success: true,
-            data: None,
-            error: None,
-        })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            error: Some(e.to_string()),
-        })),
+// Handler to stop a shuriken
+async fn stop_shuriken(req: Request<AppState>) -> tide::Result {
+    let name: String = req.param("shuriken")?.to_string();
+    let state = req.state();
+
+    match state.manager.stop(&name).await {
+        Ok(()) => Ok(Response::builder(StatusCode::Ok)
+            .body(json!(&ApiResponse::<()> {
+                success: true,
+                data: None,
+                error: None
+            }))
+            .content_type(mime::JSON)
+            .build()),
+        Err(e) => Ok(Response::builder(StatusCode::InternalServerError)
+            .body(json!(&ApiResponse::<()> {
+                success: false,
+                data: None,
+                error: Some(e.to_string())
+            }))
+            .content_type(mime::JSON)
+            .build()),
     }
 }
 
-#[get("/api/shurikens/list/states")]
-async fn list_shuriken_states(manager: web::Data<ShurikenManager>) -> Result<HttpResponse> {
-    let result = manager
-        .list(true)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
-        .left();
+// List shuriken states
+async fn list_shuriken_states(req: Request<AppState>) -> tide::Result {
+    let state = req.state();
 
-    match result {
-        Some(e) => {
-            let mut formatted_data = HashMap::new();
+    match state.manager.list(true).await {
+        Ok(either) => {
+            if let Some(left) = either.left() {
+                let mut formatted = HashMap::new();
+                for (name, value) in left.iter().cloned() {
+                    formatted.insert(name, value);
+                }
 
-            for item in e.iter() {
-                let (name, value) = item.clone();
-
-                formatted_data.insert(name, value);
+                Ok(Response::builder(StatusCode::Ok)
+                    .body(json!(&ApiResponse::<HashMap<String, ShurikenState>> {
+                        success: true,
+                        data: Some(formatted),
+                        error: None
+                    }))
+                    .content_type(mime::JSON)
+                    .build())
+            } else {
+                Ok(Response::builder(StatusCode::InternalServerError)
+                    .body(json!(&ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        error: Some("No shurikens found.".to_string())
+                    }))
+                    .content_type(mime::JSON)
+                    .build())
             }
-
-            Ok(
-                HttpResponse::Ok().json(ApiResponse::<HashMap<String, ShurikenState>> {
-                    success: true,
-                    data: Some(formatted_data),
-                    error: None,
-                }),
-            )
         }
-        None => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            error: Some("No shurikens found.".to_string()),
-        })),
+        Err(e) => Ok(Response::builder(StatusCode::InternalServerError)
+            .body(json!(&ApiResponse::<()> {
+                success: false,
+                data: None,
+                error: Some(e.to_string())
+            }))
+            .content_type(mime::JSON)
+            .build()),
     }
 }
 
-#[get("/api/shurikens/list")]
-async fn list_shurikens(manager: web::Data<ShurikenManager>) -> Result<HttpResponse> {
-    let result = manager
-        .list(false)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
-        .right();
-    match result {
-        Some(value) => Ok(HttpResponse::Ok().json(ApiResponse::<Vec<String>> {
-            success: true,
-            data: Some(value),
-            error: None,
-        })),
-        None => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            error: Some("No shurikens found.".to_string()),
-        })),
+// List shuriken names
+async fn list_shurikens(req: Request<AppState>) -> tide::Result {
+    let state = req.state();
+
+    match state.manager.list(false).await {
+        Ok(either) => {
+            if let Some(right) = either.right() {
+                Ok(Response::builder(StatusCode::Ok)
+                    .body(json!(&ApiResponse {
+                        success: true,
+                        data: Some(right),
+                        error: None
+                    }))
+                    .content_type(mime::JSON)
+                    .build())
+            } else {
+                Ok(Response::builder(StatusCode::InternalServerError)
+                    .body(json!(&ApiResponse::<Vec<String>> {
+                        success: false,
+                        data: None,
+                        error: Some("No shurikens found.".to_string())
+                    }))
+                    .content_type(mime::JSON)
+                    .build())
+            }
+        }
+        Err(e) => Ok(Response::builder(StatusCode::InternalServerError)
+            .body(json!(&ApiResponse::<Vec<String>> {
+                success: false,
+                data: None,
+                error: Some(e.to_string())
+            }))
+            .content_type(mime::JSON)
+            .build()),
     }
 }
 
-#[get("/api/stop")]
-async fn stop_api() -> HttpResponse {
-    // Spawn a task so we can respond before exiting
-    // also if you say this is not graceful then i give you full permission to bang your head on your desk
-    // to come up with a solution for this. I hate handles.
+// Stop the API
+async fn stop_api(_req: Request<AppState>) -> tide::Result {
     tokio::spawn(async {
         std::process::exit(0);
     });
 
-    HttpResponse::Ok().body("Exiting immediately")
+    Ok(Response::builder(StatusCode::Ok)
+        .body("Exiting immediately".to_string())
+        .build())
 }
 
-pub async fn server(port: u16) -> std::io::Result<()> {
-    let manager = Arc::new(
-        ShurikenManager::new()
-            .await
-            .expect("Failed to create manager for web API"),
-    );
-    let manager_data = web::Data::new(manager);
-    HttpServer::new(move || {
-        App::new()
-            .app_data(manager_data.clone())
-            .service(start_shuriken)
-            .service(stop_shuriken)
-            .service(list_shurikens)
-            .service(list_shuriken_states)
-    })
-    .bind(("127.0.0.1", port))?
-    .run()
-    .await
+// Main server function
+pub async fn server(port: u16) -> Result<()> {
+    let manager = Arc::new(ShurikenManager::new().await?);
+
+    let mut app = tide::with_state(AppState { manager });
+
+    app.at("/api/shurikens/start/:shuriken").get(start_shuriken);
+    app.at("/api/shurikens/stop/:shuriken").get(stop_shuriken);
+    app.at("/api/shurikens/list").get(list_shurikens);
+    app.at("/api/shurikens/list/states")
+        .get(list_shuriken_states);
+    app.at("/api/stop").get(stop_api);
+    app.listen(format!("127.0.0.1:{}", port)).await?;
+    Ok(())
 }

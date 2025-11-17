@@ -72,7 +72,7 @@ mod ninja_api_integration_tests {
         manager::ShurikenManager,
         scripting::NinjaEngine,
         shuriken::{
-            MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata, get_process_start_time,
+            ManagementType, Shuriken, ShurikenConfig, ShurikenMetadata, get_process_start_time,
             kill_process_by_pid,
         },
         types::FieldValue,
@@ -94,11 +94,11 @@ mod ninja_api_integration_tests {
                 name: "test".into(),
                 id: "id1".into(),
                 version: "1.0.0".to_string(),
-                maintenance: MaintenanceType::Script {
+                management: ManagementType::Script {
                     script_path: PathBuf::from("dummy.lua"),
                 },
                 shuriken_type: "script".into(),
-                add_path: false,
+                add_path: None,
                 require_admin: false,
             },
             config: Some(ShurikenConfig {
@@ -126,11 +126,11 @@ mod ninja_api_integration_tests {
                 name: "test_script".into(),
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
-                maintenance: MaintenanceType::Script {
+                management: ManagementType::Script {
                     script_path: PathBuf::from("dummy.lua"),
                 },
                 shuriken_type: "script".into(),
-                add_path: false,
+                add_path: None,
                 require_admin: false,
             },
             config: None,
@@ -198,11 +198,11 @@ mod ninja_api_integration_tests {
                 name: "fake".into(),
                 id: "id3".into(),
                 version: "1.0.0".to_string(),
-                maintenance: MaintenanceType::Script {
+                management: ManagementType::Script {
                     script_path: PathBuf::from("fake.lua"),
                 },
                 shuriken_type: "script".into(),
-                add_path: false,
+                add_path: None,
                 require_admin: false,
             },
             config: None,

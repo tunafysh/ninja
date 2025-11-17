@@ -10,7 +10,9 @@ use tokio::sync::Mutex;
 pub fn run() {
     log::info!("Starting Tauri application...");
 
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_fs::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_fs::init());
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -43,7 +45,10 @@ pub fn run() {
             execute_dsl,
             configure_shuriken,
             refresh_shurikens,
-            developer_mode
+            developer_mode,
+            open_dir,
+            save_config,
+            get_projects
         ])
         .setup(|app| {
             app.manage(Mutex::new(

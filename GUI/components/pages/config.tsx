@@ -1,26 +1,81 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { SaveIcon } from "lucide-react"
 import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
 import { useShuriken } from "@/hooks/use-shuriken"
 import { invoke } from "@tauri-apps/api/core"
+import { Switch } from "../ui/switch"
 
 function capitalizeFirstLetter(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+// Render input based on plain JS type
+function renderInput(
+  shurikenName: string,
+  key: string,
+  value: any,
+  optionsState: Record<string, Record<string, any>>,
+  setOptionsState: React.Dispatch<React.SetStateAction<Record<string, Record<string, any>>>>
+) {
+  const current = optionsState[shurikenName]?.[key]
+
+  const handleChange = (v: any) => {
+    setOptionsState(prev => ({
+      ...prev,
+      [shurikenName]: {
+        ...prev[shurikenName],
+        [key]: v
+      }
+    }))
+  }
+
+  const type = typeof current
+
+  if (type === "string") {
+    return <Input type="text" value={current} onChange={e => handleChange(e.target.value)} />
+  } else if (type === "number") {
+    return <Input type="number" value={current} onChange={e => handleChange(Number(e.target.value))} />
+  } else if (type === "boolean") {
+    return <Switch checked={current} onCheckedChange={handleChange} />
+  } else if (Array.isArray(current) || type === "object") {
+    return <pre className="text-xs">{JSON.stringify(current, null, 2)}</pre>
+  } else {
+    return null
+  }
 }
 
 export default function Configuration() {
   const { allShurikens, refreshShurikens } = useShuriken()
   const [saving, setSaving] = useState<string | null>(null)
 
+  const [optionsState, setOptionsState] = useState<Record<string, Record<string, any>>>({})
+
+  useEffect(() => {
+    refreshShurikens()
+  }, [refreshShurikens])
+
+  // Initialize local state
+  useEffect(() => {
+    const newState: Record<string, Record<string, any>> = {}
+    allShurikens.forEach(s => {
+      if (s.config?.options) {
+        newState[s.metadata.name] = { ...s.config.options } // plain JS values
+      }
+    })
+    setOptionsState(newState)
+  }, [allShurikens])
+
   const handleSave = async (shurikenName: string) => {
     try {
       setSaving(shurikenName)
+      await invoke("save_config", { name: shurikenName, data: optionsState[shurikenName] })
       await invoke("configure_shuriken", { name: shurikenName })
       await refreshShurikens()
+      console.log(optionsState[shurikenName])
     } catch (err) {
       console.error("Failed to configure shuriken:", err)
     } finally {
@@ -56,17 +111,19 @@ export default function Configuration() {
             </Button>
           </div>
 
-          {Object.entries(shuriken.config!.options!).map(([key, option]) => (
+          {Object.entries(shuriken.config!.options!).map(([key, value]) => (
             <Item variant="outline" className="mb-2" key={key}>
               <ItemContent>
                 <ItemTitle>{capitalizeFirstLetter(key)}</ItemTitle>
               </ItemContent>
               <ItemActions>
-                {option.type === "Number" ? (
-                  <Input type="number" defaultValue={option.value} />
-                ) : option.type === "String" ? (
-                  <Input type="text" defaultValue={option.value} />
-                ) : null}
+                {renderInput(
+                  shuriken.metadata.name,
+                  key,
+                  value,
+                  optionsState,
+                  setOptionsState
+                )}
               </ItemActions>
             </Item>
           ))}

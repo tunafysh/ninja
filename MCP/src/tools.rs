@@ -1,4 +1,7 @@
-use ninja::manager::ShurikenManager;
+use ninja::{
+    dsl::{DslContext, execute_commands},
+    manager::ShurikenManager,
+};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -11,6 +14,22 @@ use serde::{Deserialize, Serialize};
 pub struct ShurikenRequest {
     #[schemars(description = "The name of the shuriken to start/stop.")]
     pub name: String,
+}
+
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ListRequest {
+    #[schemars(
+        description = "If true it also returns the states of the shurikens, else just the names"
+    )]
+    pub state: bool,
+}
+
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ScriptRequest {
+    #[schemars(description = "The script to execute.
+    If selected the dsl_execute tool, this script will be executed inside ninja's shellscript-like language. 
+    if selected the ninjascript tool, this script will be executed using a luau runtime with some custom APIs")]
+    pub script: String,
 }
 
 pub struct Manager {
@@ -84,12 +103,56 @@ impl Manager {
         )]))
     }
 
-    // #[tool(description = "Get the status of the corresponding shuriken")]
-    // pub async fn shuriken_status(&self) -> Result<CallToolResult, McpError> {
-    //     Ok(CallToolResult::success(vec![Content::text(
-    //         "Shuriken started successfully",
-    //     )]))
-    // }
+    #[tool(description = "List shurikens along with their states if specified.")]
+    pub async fn shuriken_status(
+        &self,
+        Parameters(ListRequest { state }): Parameters<ListRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let res = &self
+            .manager
+            .list(state)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        if let Some(left) = res.clone().left() {
+            Ok(CallToolResult::success(vec![Content::json(left)?]))
+        } else if let Some(right) = res.clone().right() {
+            Ok(CallToolResult::success(vec![Content::json(right)?]))
+        } else {
+            Err(McpError::internal_error(
+                "Somehow you managed to turn a boolean ternary. I'm not even mad i'm impressed -- HS.",
+                None,
+            ))
+        }
+    }
+
+    #[tool(description = "Execute a script using the ninja dsl")]
+    pub async fn dsl_execute(
+        &self,
+        Parameters(ScriptRequest { script }): Parameters<ScriptRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let manager = &self.manager;
+        let context = DslContext::new(manager.clone());
+
+        let res = execute_commands(&context, script)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        Ok(CallToolResult::success(vec![Content::text(res.join("\n"))]))
+    }
+
+    #[tool(description = "Execute a script using the ninja engine")]
+    pub async fn ninjascript_execute(
+        &self,
+        Parameters(ScriptRequest { script }): Parameters<ScriptRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let _ = &self
+            .manager
+            .engine
+            .execute(&script)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        Ok(CallToolResult::success(vec![Content::text(
+            "Script executed successfully",
+        )]))
+    }
 }
 
 #[tool_handler]

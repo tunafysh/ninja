@@ -7,3 +7,4 @@ pub mod scripting;
 pub mod shuriken;
 pub mod templater;
 pub mod types;
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

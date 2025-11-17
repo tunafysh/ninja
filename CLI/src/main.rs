@@ -3,8 +3,9 @@ use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
+    VERSION,
     manager::{ArmoryMetadata, ShurikenManager},
-    shuriken::{MaintenanceType, Shuriken, ShurikenConfig, ShurikenMetadata},
+    shuriken::{ManagementType, Shuriken, ShurikenConfig, ShurikenMetadata},
     types::{FieldValue, PlatformPath, ShurikenState},
 };
 use ninja_api::server;
@@ -20,6 +21,7 @@ use std::{
     path::PathBuf,
     process::exit,
 };
+
 use tokio::fs;
 
 mod log;
@@ -30,7 +32,7 @@ use repl::repl_mode;
 
 #[derive(Parser)]
 #[command(name = "ninja")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(version = VERSION)]
 #[command(about = "shurikenctl - The command line version of Ninja")]
 struct NinjaCli {
     #[command(subcommand)]
@@ -207,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::New) => {
             let theme = ColorfulTheme::default();
-            let maintenance_types = ["native", "script"];
+            let management_types = ["native", "script"];
 
             println!("{}", "Manifest section".bold().blue());
 
@@ -228,14 +230,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .unwrap();
 
             // ===== Maintenance prompt =====
-            let maintenance_choice = Select::with_theme(&theme)
-                .with_prompt("Enter the maintenance type (native/script)")
-                .items(&maintenance_types)
+            let management_choice = Select::with_theme(&theme)
+                .with_prompt("Enter the management type (native/script)")
+                .items(&management_types)
                 .default(0)
                 .interact()
                 .unwrap();
 
-            let maintenance = match maintenance_types[maintenance_choice] {
+            let management = match management_types[management_choice] {
                 "native" => {
                     let bin_path_windows: String = Input::with_theme(&theme)
                         .with_prompt("Enter the binary path for Windows systems")
@@ -257,7 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .then(|| input.split(',').map(|s| s.trim().to_string()).collect())
                     };
 
-                    MaintenanceType::Native {
+                    ManagementType::Native {
                         bin_path: PlatformPath::Platform {
                             windows: bin_path_windows,
                             unix: bin_path_unix,
@@ -273,34 +275,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let script_path = PathBuf::from(script_path);
 
-                    MaintenanceType::Script { script_path }
+                    ManagementType::Script { script_path }
                 }
                 _ => {
-                    eprintln!("Invalid maintenance type selected.");
+                    eprintln!("Invalid management type selected.");
                     exit(1);
                 }
             };
 
             // ===== Shuriken type prompt (tagged struct) =====
-            let options = ["daemon", "executable"];
+            let shuriken_options = ["daemon", "executable"];
             let choice = Select::with_theme(&theme)
                 .with_prompt("Enter the shuriken type")
-                .items(&options)
+                .items(&shuriken_options)
                 .default(0)
                 .interact()
                 .unwrap();
 
-            let shuriken_type = match options[choice] {
-                "daemon" => "Daemon",
-                "executable" => "Executable",
-                _ => "",
-            };
-
-            let add_path = dialoguer::Confirm::with_theme(&theme)
-                .with_prompt("Add to PATH?")
-                .default(false)
-                .interact()
+            let add_path: String = Input::with_theme(&theme)
+                .with_prompt("Enter path to add to PATH variable (optional, leave blank for none)")
+                .allow_empty(true)
+                .interact_text()
                 .unwrap();
+
+            let add_path = if !add_path.trim().is_empty() {
+                Some(PathBuf::from(add_path))
+            } else {
+                None
+            };
 
             let admin = dialoguer::Confirm::with_theme(&theme)
                 .with_prompt("Require administrator priviliges to launch?")
@@ -373,8 +375,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     name: name.clone(),
                     id: id.clone(),
                     version,
-                    maintenance,
-                    shuriken_type: shuriken_type.to_string(),
+                    management,
+                    shuriken_type: shuriken_options[choice].to_string(),
                     add_path,
                     require_admin: admin,
                 },
@@ -404,7 +406,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let MaintenanceType::Script { script_path } = &manifest.metadata.maintenance {
+            if let ManagementType::Script { script_path } = &manifest.metadata.management {
                 if let Some(parent) = script_path.parent() {
                     fs::create_dir_all(parent).await?;
                 }

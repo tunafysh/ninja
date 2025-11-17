@@ -74,18 +74,18 @@ pub struct ShurikenMetadata {
     pub name: String,
     pub id: String,
     pub version: String,
-    pub maintenance: MaintenanceType,
+    pub management: ManagementType,
     #[serde(rename = "type")]
     pub shuriken_type: String,
     #[serde(rename = "add-path")]
-    pub add_path: bool,
+    pub add_path: Option<PathBuf>,
     #[serde(rename = "require-admin")]
     pub require_admin: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(tag = "type")] // tag field determines the variant
-pub enum MaintenanceType {
+pub enum ManagementType {
     #[serde(rename = "native")]
     Native {
         #[serde(rename = "bin-path")]
@@ -219,10 +219,10 @@ impl Shuriken {
     pub async fn start(&self) -> Result<(), String> {
         info!("Starting shuriken {}", self.metadata.name);
 
-        let maintenance = &self.metadata.maintenance; // borrow, not clone
+        let management = &self.metadata.management; // borrow, not clone
 
-        match maintenance {
-            MaintenanceType::Native { bin_path, args, .. } => {
+        match management {
+            ManagementType::Native { bin_path, args, .. } => {
                 let bin_str = bin_path.get_path();
 
                 let mut cmd = if self.metadata.require_admin {
@@ -266,7 +266,7 @@ impl Shuriken {
 
                 Ok(())
             }
-            MaintenanceType::Script { script_path } => {
+            ManagementType::Script { script_path } => {
                 let engine = NinjaEngine::new()
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 
@@ -334,10 +334,10 @@ impl Shuriken {
     pub async fn stop(&self) -> Result<(), String> {
         info!("Stopping shuriken {}", self.metadata.name);
 
-        let maintenance = &self.metadata.maintenance;
+        let management = &self.metadata.management;
 
-        match maintenance {
-            MaintenanceType::Native { .. } => {
+        match management {
+            ManagementType::Native { .. } => {
                 let lock_contents = fs::read_to_string("shuriken.lck")
                     .await
                     .map_err(|e| format!("Failed to read lockfile: {}", e))?;
@@ -371,7 +371,7 @@ impl Shuriken {
 
                 Ok(())
             }
-            MaintenanceType::Script { script_path } => {
+            ManagementType::Script { script_path } => {
                 let engine = NinjaEngine::new()
                     .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
 

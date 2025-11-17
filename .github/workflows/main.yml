@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ----------------------------
+      # macOS / Windows only setup
+      # ----------------------------
       - name: setup uv (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: astral-sh/setup-uv@v6
@@ -28,7 +31,6 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         run: uv python install
 
-      # --- Setup Node (macOS/Windows only) ---
       - name: setup node (macOS/Windows only)
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: actions/setup-node@v4
@@ -41,7 +43,6 @@ jobs:
         with:
           version: latest
 
-      # --- Rust setup (still needed for library build) ---
       - name: install Rust
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: dtolnay/rust-toolchain@stable
@@ -50,9 +51,11 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm'
         uses: swatinem/rust-cache@v2
 
-      # --- Frontend build (macOS/Windows) ---
+      # ----------------------------
+      # macOS frontend & build
+      # ----------------------------
       - name: install frontend deps and build the app (macOS)
-        if: matrix.platform != 'ubuntu-22.04' && matrix.platform != 'ubuntu-22.04-arm' && matrix.platform != 'windows-latest'
+        if: matrix.platform == 'macos-latest'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
@@ -62,59 +65,70 @@ jobs:
           uv run build.py
           mkdir -p dist
           find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
-          ! -name "bundle_dmg.sh" \
-          ! -name "icon.icns" \
-          ! -name "Ninja.app.tar.gz*" \
-          -exec cp {} dist/ \;
+            \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.tar.gz" -o -name "*.sig" \) \
+            -exec cp {} dist/ \;
 
+      # ----------------------------
+      # Windows build
+      # ----------------------------
       - name: install deps and build the app (Windows)
         if: matrix.platform == 'windows-latest'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # Add cargo bin to PATH
           $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-        
           cd GUI
           pnpm install
           cd ..
           uv run build.py
-
           mkdir dist
-          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File | Where-Object { $_.Extension -in '.exe', '.msi', '.sig' } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
 
+          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File |
+            Where-Object { $_.Extension -in '.exe', '.msi', '.zip', '.sig' } |
+            ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
 
-      # --- Ubuntu builds using Docker ---
-      - name: Build using Docker (Ubuntu)
+      # ----------------------------
+      # Linux builds via Docker
+      # ----------------------------
+      - name: Build using Docker (Ubuntu / ARM)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
         run: |
           echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
           DOCKER_BUILDKIT=1 docker build \
             --secret id=tauri_key,src=tauri_signing_key.pem \
             -t ninja:latest .
-          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \;'docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c 'find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f -exec cp {} /dist/ \; && cp -v /build/target/release/shurikenctl-linux-x86 /dist/ 2>/dev/null && cp -v /build/target/release/shurikenctl-linux-arm /dist/ 2>/dev/null'
 
-      # --- Upload artifacts ---
-      - name: Upload build artifacts for Windows and Ubuntu
-        if: matrix.platform != 'macos-latest'
+          mkdir -p dist
+
+          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c '
+            find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f \
+              \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" -o -name "*.sig" \) \
+              -exec cp {} /dist/ \;
+            cp -v /build/target/release/shurikenctl-linux-x86 /dist/ 2>/dev/null || true
+            cp -v /build/target/release/shurikenctl-linux-arm /dist/ 2>/dev/null || true
+          '
+
+      # ----------------------------
+      # Upload artifacts
+      # ----------------------------
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-build
           path: dist/
 
-      - name: Upload build artifacts for macOS
-        if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform }}-build
-          path: dist/
+  # ======================================================================
+  # Release job
+  # ======================================================================
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v4
+
       - run: mkdir artifacts
 
       - name: Download all artifacts
@@ -122,47 +136,53 @@ jobs:
         with:
           path: ./artifacts
 
-      # --- Collect signatures for release body ---
-      - name: Collect signatures for release body
-        id: signatures
+      # -------------------------------------------------
+      # Extract version from ninja/core/Cargo.toml
+      # -------------------------------------------------
+      - name: Read Ninja version
+        id: version
         run: |
-          echo "### Digital Signatures" > release_body.txt
-          echo "" >> release_body.txt
+          VERSION=$(grep '^version =' ninja/core/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          # Find all .sig files under linux, macos, and windows
-          find artifacts/linux artifacts/macos artifacts/windows -type f -name "*.sig" | sort | while read sigfile; do
-            base=$(basename "$sigfile" .sig)
-            echo "#### $base" >> release_body.txt
-            echo '```' >> release_body.txt
-            cat "$sigfile" >> release_body.txt
-            echo '```' >> release_body.txt
-            echo "" >> release_body.txt
+      # -------------------------------------------------
+      # Build release body (signatures)
+      # -------------------------------------------------
+      - name: Collect signatures for release body
+        run: |
+          echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+          echo "### Digital Signatures"
+          echo ""
+
+          find artifacts -type f -name "*.sig" | sort | while read sigfile; do
+            base=$(basename "$sigfile")
+            echo "#### $base"
+            echo '```'
+            cat "$sigfile"
+            echo '```'
+            echo ""
           done
 
-          echo "" >> release_body.txt
-          echo "All signatures are verified and generated automatically during CI." >> release_body.txt
-
-          # Save the content to an output so it can be used in env
-          echo "description<<EOF" >> $GITHUB_ENV
-          cat release_body.txt >> $GITHUB_ENV
+          echo "All signatures generated automatically during CI."
           echo "EOF" >> $GITHUB_ENV
 
-
-      # --- Create GitHub Release ---
+      # -------------------------------------------------
+      # Create GitHub Release
+      # -------------------------------------------------
       - name: Create GitHub Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: "Ninja v${{ github.run_number }}"
-          body: ${{ env.description }}
+          tag_name: "v${{ env.VERSION }}"
+          name: "Ninja ${{ env.VERSION }}"
+          body: ${{ env.RELEASE_BODY }}
           files: |
             artifacts/**/Ninja*.exe
             artifacts/**/Ninja*.msi
+            artifacts/**/Ninja*.zip
             artifacts/**/Ninja*.dmg
             artifacts/**/Ninja*.deb
             artifacts/**/Ninja*.rpm
+            artifacts/**/Ninja*.tar.gz
             artifacts/**/*.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        

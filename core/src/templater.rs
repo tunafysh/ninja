@@ -1,6 +1,6 @@
 use super::types::FieldValue;
 use log::{debug, error, info};
-use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
+use std::{collections::HashMap, env, error::Error, fmt::Display, path::PathBuf};
 use tera::{Context, Error as TeraError, ErrorKind, Tera};
 use tokio::{fs, sync::RwLock};
 
@@ -35,10 +35,18 @@ pub struct Templater {
 
 impl Templater {
     pub fn new(
-        context: HashMap<String, FieldValue>,
+        mut context: HashMap<String, FieldValue>,
         root_path: PathBuf,
     ) -> Result<Self, TemplateError> {
         debug!("Initializing Templater at root: {}", root_path.display());
+
+        // Inject default keys
+        context
+            .entry("platform".to_string())
+            .or_insert_with(|| FieldValue::String(env::consts::OS.to_string()));
+        context
+            .entry("root".to_string())
+            .or_insert_with(|| FieldValue::String(root_path.display().to_string()));
 
         let pattern = root_path.join(".ninja").join("**/*.tmpl");
         let pattern_str = pattern.to_string_lossy();

@@ -4,8 +4,9 @@ version = "0.8.5"
 edition = "2024"
 
 [dependencies]
-actix-web = { version = "4.11.0", default-features = false, features = ["rustls", "macros"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 ninja-core = { path = "../core" }
 async-graphql = { version = "7.0.17", default-features = false }
-tokio = { version = "1.45.1", default-features = false }
+tokio = { version = "1.45.1", default-features = false}
+anyhow = "1.0.100"
+tide = "0.16.0"
