@@ -3,6 +3,7 @@ use crate::{manager::ShurikenManager, types::FieldValue};
 use anyhow::{Error, Result};
 use either::Either;
 use shlex::split;
+use std::env;
 use std::sync::Arc;
 use std::{io, path::PathBuf};
 use tokio::sync::RwLock;
@@ -120,6 +121,31 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
         commands.push(command);
     }
     Ok(commands)
+}
+
+// ==================
+// Helper Function
+// ==================
+
+fn locate_ninja_cli() -> Result<PathBuf> {
+    let exe_path = env::current_exe()?;
+    if let Some(root) = exe_path.parent() {
+        let cli_path = if cfg!(windows){
+            root.join("shurikenctl.exe")
+        }
+        else {
+            root.join("shurikenctl")
+        };
+
+        if !cli_path.exists() {
+            return Err(Error::msg("No ninja CLI found"))
+        }
+
+        Ok(cli_path)
+    }
+    else {
+        return Err(Error::msg("No parent directory? where and how did you run this? please email me i'm genuinely curious. -- Hannan \"tunafysh\" Smani"))
+    }
 }
 
 pub struct DslContext {

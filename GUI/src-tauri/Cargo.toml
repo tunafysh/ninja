@@ -4,6 +4,7 @@ description = "A control panel similar to XAMPP"
 authors = ["Hanan Smani"]
 license = "Ninja End User License Agreement (2025)"
 edition = "2021"
+version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

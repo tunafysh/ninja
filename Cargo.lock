@@ -1676,6 +1676,9 @@ name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "embed-resource"
@@ -3436,7 +3439,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "ninja"
-version = "0.0.0"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "log",
@@ -3458,7 +3461,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-api"
-version = "0.8.5"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -3470,7 +3473,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-cli"
-version = "0.8.5"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3492,7 +3495,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-core"
-version = "0.8.5"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3520,8 +3523,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ninja-ffi"
+version = "0.9.4"
+dependencies = [
+ "either",
+ "ninja-core",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ninja-mcp"
-version = "0.8.5"
+version = "0.9.4"
 dependencies = [
  "log",
  "ninja-core",

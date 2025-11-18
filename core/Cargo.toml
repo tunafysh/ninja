@@ -1,12 +1,12 @@
 [package]
 name = "ninja-core"
-version = "0.8.5"
+version.workspace = true
 edition = "2024"
 
 [lib]
 name = "ninja"
 path = "src/lib.rs"
-crate-type = ["staticlib", "rlib", "cdylib"]
+crate-type = ["staticlib", "rlib"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.175"

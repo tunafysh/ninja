@@ -131,6 +131,12 @@ jobs:
 
       - run: mkdir artifacts
 
+      - name: setup uv (macOS/Windows only)
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install python (macOS/Windows only)
+        run: uv python install
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
