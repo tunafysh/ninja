@@ -1,3 +1,2 @@
 [alias]
-xtask = "run --package xtask --"
 test-all = "test -p tests"

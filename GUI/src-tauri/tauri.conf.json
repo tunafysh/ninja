@@ -38,9 +38,8 @@
       "nsis": {
         "installMode": "both"
       }
-    },    "externalBin": [
-     "binaries/shurikenctl"
-    ],
+    },
+    "externalBin": ["binaries/shurikenctl"],
     "macOS": {
       "dmg": {
         "appPosition": {
@@ -60,7 +59,7 @@
       "hardenedRuntime": true,
       "minimumSystemVersion": "10.13"
     },
-    "targets": ["msi", "dmg", "nsis", "deb", "rpm", "app"],
+    "targets": "all",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -70,14 +69,16 @@
     ]
   },
   "plugins": {
-    "deep-link":{
-      "desktop" : {
-        "schemes": ["binaries/shurikenctl"]
+    "deep-link": {
+      "desktop": {
+        "schemes": ["shurikenctl"]
       }
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJDRTAyRkNGRkIzMDlDNDYKUldSR25ERDd6eS9nTEViRnltVWNkdG9LaDBWUjMrNGpMczZnUlQwZXp4K0d0dUV5MzFLVDY1R1UK",
-      "endpoints": ["https://github.com/tunafysh/ninja/releases/latest/download/latest.json"]
+      "endpoints": [
+        "https://github.com/tunafysh/ninja/releases/latest/download/latest.json"
+      ]
     }
   }
 }

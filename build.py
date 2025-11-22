@@ -131,6 +131,57 @@ def build_lib(args):
     run([cargo, "build", "--package", "ninja-core"] + args, "Core build")
 
 
+def build_ffi(args): 
+    cargo = find_cargo()
+    print_status("Info", "Building ninja-ffi")
+    run([cargo, "build", "--package", "ninja-ffi"] + args, "Core build")
+    
+    # Determine if release build
+    release = "-r" in args or "--release" in args
+    build_type = "release" if release else "debug"
+
+    # Determine target library name based on OS
+    if sys.platform.startswith("win"):
+        src_name = "libninja_ffi.dll"
+        out_name = "ninja.dll"
+    elif sys.platform.startswith("darwin"):
+        src_name = "libninja_ffi.dylib"
+        out_name = "ninja.dylib"
+    else:
+        src_name = "libninja_ffi.so"
+        out_name = "ninja.so"
+
+    # Source path
+    src = Path("target") / build_type / src_name
+    if not src.exists():
+        print(f"Error: {src_name} not found at {src}")
+        return
+
+    # Destination path
+    sdk_dir = Path("./sdk")
+    include_dir = sdk_dir / "include"
+    sdk_dir.mkdir(exist_ok=True)
+    include_dir.mkdir(exist_ok=True)
+
+    dest = sdk_dir / out_name
+    shutil.copy(src, dest)
+    print_status("Info", f"Copied {src_name} → {dest}")
+
+    # Install cbindgen (if needed)
+    run(["cargo", "install", "cbindgen"], "Installing cbindgen")
+
+    # Generate header
+    run(
+        [
+            "cbindgen",
+            "--config", "FFI/cbindgen.toml",
+            "--crate", "ninja-ffi",
+            "--output", str(include_dir / "ninja.h")
+        ],
+        "Generating header file"
+    )
+
+
 def build_cli(args):
     cargo = find_cargo()
     target = extract_target(args) or detect_target()
@@ -249,21 +300,28 @@ def main():
         "--cli-only", action="store_true", help="Build only the CLI binaries."
     )
     parser.add_argument(
+        "--ffi-only", action="store_true", help="Build only the FFI library."
+    )
+    parser.add_argument(
         "--gui-only", action="store_true", help="Build only the GUI."
     )
 
     args = parser.parse_args()
-
     if args.clean:
         clean()
         return
 
+    # please place args manually lol
     if args.libs_only:
         build_lib(args=[])
         return
 
     if args.cli_only:
         build_cli(args=[])
+        return
+    
+    if args.ffi_only:
+        build_ffi(args=[])
         return
 
     if args.gui_only:
@@ -272,6 +330,7 @@ def main():
 
     # Default: build everything
     build_lib(args=[])
+    build_ffi(args=[])
     build_cli(args=[])
     build_gui(args=[])
 

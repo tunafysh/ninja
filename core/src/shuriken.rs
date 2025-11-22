@@ -77,8 +77,6 @@ pub struct ShurikenMetadata {
     pub management: ManagementType,
     #[serde(rename = "type")]
     pub shuriken_type: String,
-    #[serde(rename = "add-path")]
-    pub add_path: Option<PathBuf>,
     #[serde(rename = "require-admin")]
     pub require_admin: bool,
 }

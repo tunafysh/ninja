@@ -1,13 +1,15 @@
 use super::scripting::NinjaEngine;
 use crate::{manager::ShurikenManager, types::FieldValue};
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, bail};
 use either::Either;
 use shlex::split;
 use std::env;
 use std::sync::Arc;
-use std::{io, path::PathBuf};
+use std::{io, path::PathBuf, process::Stdio};
+use tokio::process::Command as SubprocessCommand;
 use tokio::sync::RwLock;
 
+/// Commands (added ConfigureBlock)
 #[derive(Debug, Clone)]
 pub enum Command {
     HttpStart(u16),
@@ -17,6 +19,7 @@ pub enum Command {
     Get(String),
     Exit,
     Configure,
+    ConfigureBlock(Vec<(String, FieldValue)>),
     Set { key: String, value: FieldValue },
     List,
     ListState,
@@ -27,14 +30,157 @@ pub enum Command {
     None,
 }
 
-// ---- Parser ----
-fn parser(script: &str) -> Vec<Vec<String>> {
-    let lines: Vec<&str> = script.split('\n').collect();
+// -----------------
+// Parsing helpers
+// -----------------
 
-    let mut output: Vec<Vec<String>> = Vec::new();
+// strip single-line comments (// or #)
+fn strip_comments(line: &str) -> &str {
+    if let Some(i) = line.find("//") {
+        &line[..i]
+    } else if let Some(i) = line.find('#') {
+        &line[..i]
+    } else {
+        line
+    }
+}
 
-    for line in lines {
-        if let Some(tokens) = split(line) {
+// detect and parse a single value into FieldValue with basic type detection
+fn parse_value(raw: &str) -> FieldValue {
+    let v = raw.trim();
+
+    // quoted string support
+    if (v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\'')) {
+        let inner = &v[1..v.len() - 1];
+        return FieldValue::String(inner.to_string());
+    }
+
+    // boolean
+    match v.to_ascii_lowercase().as_str() {
+        "true" => return FieldValue::Bool(true),
+        "false" => return FieldValue::Bool(false),
+        _ => {}
+    }
+
+    // integer (i64)
+    if let Ok(i) = v.parse::<i64>() {
+        return FieldValue::Number(i);
+    }
+
+    // fallback: raw string
+    FieldValue::String(v.to_string())
+}
+
+// parse a single "key = value" text into (key, FieldValue)
+fn parse_kv(text: &str) -> Result<Option<(String, FieldValue)>> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some((left, right)) = t.split_once('=') {
+        let key = left.trim();
+        let val = right.trim();
+
+        if key.is_empty() {
+            bail!("Invalid assignment (empty key): `{}`", text);
+        }
+
+        // support trailing semicolon being present on the right side
+        let val = val.trim_end_matches(';').trim();
+        Ok(Some((key.to_string(), parse_value(val))))
+    } else {
+        // not an assignment (maybe a standalone token) — ignore gracefully
+        Ok(None)
+    }
+}
+
+// collect block content after the '{' and until matching '}'. Supports inline and multiline.
+fn collect_block<'a, I>(first_after_brace: &'a str, lines: &mut I) -> Result<String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    // If the `first_after_brace` already contains the closing brace on same line
+    let trimmed_after = first_after_brace.trim();
+
+    if trimmed_after.ends_with('}') {
+        // slice out trailing `}` and return
+        let inner = &trimmed_after[..trimmed_after.len() - 1];
+        return Ok(inner.trim().to_string());
+    }
+
+    // Start with what's after the brace on the first line
+    let mut collected = String::new();
+    if !trimmed_after.is_empty() {
+        collected.push_str(trimmed_after);
+        collected.push('\n');
+    }
+
+    // gather until we find a line containing a `}` (allow trailing whitespace)
+    for next in lines {
+        let stripped = strip_comments(next).trim();
+        if stripped.ends_with('}') {
+            let inner = &stripped[..stripped.len() - 1];
+            if !inner.trim().is_empty() {
+                collected.push_str(inner.trim());
+            }
+            return Ok(collected.trim().to_string());
+        } else {
+            if !stripped.is_empty() {
+                collected.push_str(stripped);
+                collected.push('\n');
+            }
+        }
+    }
+
+    // If we get here: no closing brace found
+    bail!("Missing closing '}}' for block");
+}
+
+// ---- Parser: keeps your previous fallback but adds rich configure block handling ----
+fn command_parser(script: &str) -> Result<Vec<Command>> {
+    let mut commands = Vec::new();
+
+    // iterate over raw lines but keep ownership as &str slices from script.lines()
+    let mut lines = script.lines();
+
+    // We need an iterator that allows peeking; we'll manually consume lines as needed
+    while let Some(raw_line) = lines.next() {
+        // remove comments first
+        let no_comment = strip_comments(raw_line);
+        let trimmed = no_comment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // ---------- CONFIGURE BLOCK detection ----------
+        // handle: configure { ... }  (inline or multiline)
+        if trimmed.starts_with("configure") {
+            // after the word `configure`, find '{' if present
+            if let Some((_, after_brace)) = trimmed.split_once('{') {
+                // collect inner content (inline or multiline)
+                let block_content = collect_block(after_brace, &mut lines)?;
+                // split by semicolons or newlines and parse assignments
+                let mut kvs: Vec<(String, FieldValue)> = Vec::new();
+
+                for chunk in block_content.split(|c| c == ';' || c == '\n') {
+                    if let Some((k, v)) = parse_kv(chunk)? {
+                        kvs.push((k, v));
+                    }
+                }
+
+                commands.push(Command::ConfigureBlock(kvs));
+                continue;
+            } else {
+                // no brace on this line — treat as `configure` (legacy)
+                commands.push(Command::Configure);
+                continue;
+            }
+        }
+
+        // ---------- FALLBACK: use shlex tokenization like before ----------
+        // allow tokens with quotes and splitting similar to previous implementation
+        if let Some(tokens) = split(trimmed) {
             let tokens: Vec<String> = tokens
                 .into_iter()
                 .filter(|token| {
@@ -43,83 +189,82 @@ fn parser(script: &str) -> Vec<Vec<String>> {
                 })
                 .collect();
 
-            if !tokens.is_empty() {
-                output.push(tokens)
+            if tokens.is_empty() {
+                continue;
             }
+
+            let cmd = match tokens[0].as_str() {
+                "http" => {
+                    if tokens.len() >= 3 && tokens[1] == "start" {
+                        Command::HttpStart(tokens[2].parse().unwrap_or(80))
+                    } else {
+                        Command::None
+                    }
+                }
+                "start" => Command::Start,
+                "stop" => Command::Stop,
+                "select" => {
+                    if tokens.len() > 1 {
+                        Command::Select(tokens[1].clone())
+                    } else {
+                        Command::None
+                    }
+                }
+                "help" => Command::Help,
+                "get" => {
+                    if tokens.len() > 1 {
+                        Command::Get(tokens[1].clone())
+                    } else {
+                        Command::None
+                    }
+                }
+                "set" => {
+                    if tokens.len() > 2 {
+                        Command::Set {
+                            key: tokens[1].clone(),
+                            value: parse_value(tokens[2].as_str()),
+                        }
+                    } else {
+                        Command::None
+                    }
+                }
+                "list" => {
+                    if tokens.len() > 1 && tokens[1].eq_ignore_ascii_case("state") {
+                        Command::ListState
+                    } else {
+                        Command::List
+                    }
+                }
+                "install" => {
+                    if tokens.len() > 1 {
+                        Command::Install(PathBuf::from(tokens[1].clone()))
+                    } else {
+                        Command::None
+                    }
+                }
+                "toggle" => {
+                    if tokens.len() > 1 {
+                        Command::Toggle(tokens[1].clone())
+                    } else {
+                        Command::None
+                    }
+                }
+                "execute" => {
+                    if tokens.len() > 1 {
+                        Command::Execute(PathBuf::from(tokens[1].clone()))
+                    } else {
+                        Command::None
+                    }
+                }
+                "exit" => Command::Exit,
+                "configure" => Command::Configure, // fallback if no {}
+                _ => Command::None,
+            };
+
+            commands.push(cmd);
         }
     }
 
-    output
-}
-
-// ---- Command Parser ----
-fn command_parser(script: &str) -> Result<Vec<Command>> {
-    let tokens = parser(script);
-
-    let mut commands = Vec::new();
-
-    for token in tokens {
-        let command = match token[0].as_str() {
-            "http" => match (token[1].as_str(), &token[2]) {
-                ("start", port) => Command::HttpStart(port.parse().unwrap_or(80)),
-                _ => Command::None,
-            },
-            "start" => Command::Start,
-            "stop" => Command::Stop,
-            "select" => {
-                if !token[1].is_empty() {
-                    Command::Select(token[1].clone())
-                } else {
-                    Command::None
-                }
-            }
-            "help" => Command::Help,
-            "get" => {
-                if !token[1].is_empty() {
-                    Command::Get(token[1].clone())
-                } else {
-                    Command::None
-                }
-            }
-            "set" => {
-                let (k, v) = (&token[1], &token[2]);
-                Command::Set {
-                    key: k.clone(),
-                    value: FieldValue::from(v.as_str()),
-                }
-            }
-            "list" => match token[1].clone() {
-                a if a.eq_ignore_ascii_case("state") => Command::ListState,
-                _ => Command::List,
-            },
-            "install" => {
-                if !token[1].is_empty() {
-                    Command::Install(PathBuf::from(token[1].clone()))
-                } else {
-                    Command::None
-                }
-            }
-            "toggle" => {
-                if !token[1].is_empty() {
-                    Command::Toggle(token[1].clone())
-                } else {
-                    Command::None
-                }
-            }
-            "execute" => {
-                if !token[1].is_empty() {
-                    Command::Execute(PathBuf::from(token[1].clone()))
-                } else {
-                    Command::None
-                }
-            }
-            "exit" => Command::Exit,
-            "configure" => Command::Configure,
-            _ => Command::None,
-        };
-
-        commands.push(command);
-    }
     Ok(commands)
 }
 
@@ -130,21 +275,21 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
 fn locate_ninja_cli() -> Result<PathBuf> {
     let exe_path = env::current_exe()?;
     if let Some(root) = exe_path.parent() {
-        let cli_path = if cfg!(windows){
+        let cli_path = if cfg!(windows) {
             root.join("shurikenctl.exe")
-        }
-        else {
+        } else {
             root.join("shurikenctl")
         };
 
         if !cli_path.exists() {
-            return Err(Error::msg("No ninja CLI found"))
+            return Err(Error::msg("No ninja CLI found"));
         }
 
         Ok(cli_path)
-    }
-    else {
-        return Err(Error::msg("No parent directory? where and how did you run this? please email me i'm genuinely curious. -- Hannan \"tunafysh\" Smani"))
+    } else {
+        return Err(Error::msg(
+            "No parent directory? where and how did you run this? please email me i'm genuinely curious. -- Hannan \"tunafysh\" Smani",
+        ));
     }
 }
 
@@ -171,6 +316,15 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
         match command {
             // HTTP server
             Command::HttpStart(port) => {
+                let path = locate_ninja_cli()?;
+                SubprocessCommand::new(path)
+                    .arg("api")
+                    .arg(port.to_string())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .stdin(Stdio::inherit())
+                    .status()
+                    .await?;
                 output.push(format!("HTTP server started on port {}", port));
             }
 
@@ -184,6 +338,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 }
             }
 
+            // simple legacy configure
             Command::Configure => {
                 if let Some(name) = &*ctx.selected.read().await {
                     let mut shurikens = ctx.manager.shurikens.write().await;
@@ -199,12 +354,40 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                 }
             }
 
+            // New: configure block
+            Command::ConfigureBlock(kvs) => {
+                if let Some(shuriken_name) = &*ctx.selected.read().await {
+                    let mut shurikens = ctx.manager.shurikens.write().await;
+                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                        && let Some(cfg) = &mut shuriken.config
+                    {
+                        let partial_options = cfg.options.get_or_insert_with(Default::default);
+                        for (k, v) in kvs {
+                            partial_options.insert(k.clone(), v.clone());
+                            output.push(format!(
+                                "Set {} = {} for {}",
+                                k,
+                                v.render(),
+                                shuriken_name
+                            ));
+                        }
+                    } else {
+                        output.push(format!(
+                            "No selected shuriken or missing config while applying configure block."
+                        ));
+                    }
+                } else {
+                    output.push("No shuriken selected — configure block ignored.".into());
+                }
+            }
+
             Command::Help => {
                 output.push(
                     "Available commands:
                   http start <port>        - Start the HTTP server
                   select <name>            - Select a shuriken
                   configure                - Generate configuration for the selected shuriken
+                  configure { k = v }      - Apply config assignments to the selected shuriken
                   set <key> <value>        - Set a config key for the selected shuriken
                   get <key>                - Get a config key's value
                   toggle <key>             - Toggle a boolean config key
@@ -219,6 +402,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                         .to_string(),
                 );
             }
+
             // Config commands
             Command::Set { key, value } => {
                 if let Some(shuriken_name) = &*ctx.selected.read().await {
@@ -248,9 +432,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                         && let Some(cfg) = &shuriken.config
                         && let Some(options) = &cfg.options
                     {
-                        {
-                            output.push(format!("{:?} = {:?}", key, options.get(&key)));
-                        }
+                        output.push(format!("{:?} = {:?}", key, options.get(&key)));
                     }
                 }
             }
@@ -263,10 +445,8 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                         && let Some(options) = &mut cfg.options
                         && let Some(FieldValue::Bool(value)) = options.get_mut(&key)
                     {
-                        {
-                            *value = !*value;
-                            output.push(format!("Toggled {} to {}", key, value));
-                        }
+                        *value = !*value;
+                        output.push(format!("Toggled {} to {}", key, value));
                     }
                 }
             }
@@ -319,11 +499,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     *ctx.selected.write().await = None;
                     output.push("Discarded current shuriken".into());
                 } else {
-                    output.push(
-                        "Cannot exit when there's no shuriken to discard
-                    ."
-                        .into(),
-                    );
+                    output.push("Cannot exit when there's no shuriken to discard.".into());
                 }
             }
 

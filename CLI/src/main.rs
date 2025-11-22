@@ -292,18 +292,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .interact()
                 .unwrap();
 
-            let add_path: String = Input::with_theme(&theme)
-                .with_prompt("Enter path to add to PATH variable (optional, leave blank for none)")
-                .allow_empty(true)
-                .interact_text()
-                .unwrap();
-
-            let add_path = if !add_path.trim().is_empty() {
-                Some(PathBuf::from(add_path))
-            } else {
-                None
-            };
-
             let admin = dialoguer::Confirm::with_theme(&theme)
                 .with_prompt("Require administrator priviliges to launch?")
                 .default(false)
@@ -377,7 +365,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     version,
                     management,
                     shuriken_type: shuriken_options[choice].to_string(),
-                    add_path,
                     require_admin: admin,
                 },
                 config: conf_path.map(|path| ShurikenConfig {

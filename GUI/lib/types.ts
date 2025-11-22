@@ -63,3 +63,8 @@ export interface LocalArmoryItem extends ArmoryItem {
     installed: boolean,
     localVersion: string
 }
+
+export type Project = {
+  name: string;
+  readme?: string; // optional snippet or full README content
+};

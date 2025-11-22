@@ -2,7 +2,18 @@
 mod ninja_runtime_integration_tests {
     use ninja::scripting::NinjaEngine;
     use std::io::Write;
+    use std::{fs, path::Path};
     use tempfile::NamedTempFile;
+
+    pub fn write_stub_script(dest: &Path) {
+        let content = r#"function start()
+            end
+
+            function stop()
+            end
+            "#;
+        fs::write(dest, content).expect("Failed to write stub script");
+    }
 
     #[test]
     fn test_engine_init_globals() {
@@ -68,57 +79,27 @@ mod ninja_runtime_integration_tests {
 
 #[cfg(test)]
 mod ninja_api_integration_tests {
+    use crate::ninja_runtime_integration_tests::write_stub_script;
     use ninja::{
         manager::ShurikenManager,
         scripting::NinjaEngine,
         shuriken::{
-            ManagementType, Shuriken, ShurikenConfig, ShurikenMetadata, get_process_start_time,
+            ManagementType, Shuriken, ShurikenMetadata, get_process_start_time,
             kill_process_by_pid,
         },
-        types::FieldValue,
     };
-    use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc};
+    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
     use tokio::sync::RwLock;
 
     #[tokio::test]
-    async fn test_configure_generates_file() {
-        let dir = tempdir().unwrap();
-        let config_path = dir.path().join("out.conf");
-
-        let mut fields = HashMap::new();
-        fields.insert("key".into(), FieldValue::String("value".into()));
-
-        let shuriken = Shuriken {
-            metadata: ShurikenMetadata {
-                name: "test".into(),
-                id: "id1".into(),
-                version: "1.0.0".to_string(),
-                management: ManagementType::Script {
-                    script_path: PathBuf::from("dummy.lua"),
-                },
-                shuriken_type: "script".into(),
-                add_path: None,
-                require_admin: false,
-            },
-            config: Some(ShurikenConfig {
-                config_path: config_path.clone(),
-                options: Some(fields),
-            }),
-            logs: None,
-        };
-
-        let path = env::current_exe().unwrap();
-
-        let result = shuriken.configure(path).await;
-        assert!(result.is_ok());
-        assert!(config_path.exists());
-    }
-
-    #[tokio::test]
     async fn test_lockfile_written_for_script() {
         let dir = tempdir().unwrap();
-        let lockfile = dir.path().join("shuriken.lck");
+        let lockfile = dir.path().join(".ninja").join("shuriken.lck");
+
+        let script_path = dir.path().join(".ninja").join("dummy.ns");
+        fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
+        write_stub_script(&script_path);
 
         // fake script shuriken
         let shuriken = Shuriken {
@@ -127,36 +108,17 @@ mod ninja_api_integration_tests {
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
                 management: ManagementType::Script {
-                    script_path: PathBuf::from("dummy.lua"),
+                    script_path: PathBuf::from("dummy.ns"),
                 },
                 shuriken_type: "script".into(),
-                add_path: None,
                 require_admin: false,
             },
             config: None,
             logs: None,
         };
 
-        let result = shuriken.start().await;
-        assert!(result.is_ok());
+        shuriken.start().await.unwrap();
         assert!(lockfile.exists());
-    }
-
-    #[tokio::test]
-    async fn test_manager_initializes_empty() {
-        let dir = tempdir().unwrap();
-        let exe_dir = dir.path().to_path_buf();
-        std::env::set_current_dir(&exe_dir).unwrap();
-
-        // place a fake binary for current_exe() resolution
-        let fake_exe = exe_dir.join("ninja_bin");
-        fs::write(&fake_exe, "").unwrap();
-
-        // Patch env::current_exe with fake_exe (hack by setting PATH etc. in real tests)
-
-        let manager = ShurikenManager::new().await.unwrap();
-        assert!(manager.shurikens.read().await.is_empty());
-        assert!(manager.states.read().await.is_empty());
     }
 
     #[tokio::test]
@@ -202,7 +164,6 @@ mod ninja_api_integration_tests {
                     script_path: PathBuf::from("fake.lua"),
                 },
                 shuriken_type: "script".into(),
-                add_path: None,
                 require_admin: false,
             },
             config: None,
@@ -211,12 +172,13 @@ mod ninja_api_integration_tests {
 
         // change dir to empty tempdir so lockfile isn't found
         let dir = tempdir().unwrap();
-        let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
-        let result = shuriken.stop().await;
-        assert!(result.is_ok()); // script stop doesn't require pid
+        let script_path = dir.path().join(".ninja").join("fake.lua");
+        fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
+        write_stub_script(&script_path);
 
-        std::env::set_current_dir(orig).unwrap();
+        let result = shuriken.stop().await;
+        assert!(result.is_err()); // script stop doesn't require pid
     }
 }

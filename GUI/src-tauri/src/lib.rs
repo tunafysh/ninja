@@ -1,32 +1,67 @@
 use ninja::manager::ShurikenManager;
 use tauri::{LogicalSize, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 mod commands;
 use commands::*;
 use tokio::sync::Mutex;
+
+mod link_parser;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
 
     let mut builder = tauri::Builder::default()
+        .setup(|app| {
+            // Initialize ShurikenManager
+            let manager = Mutex::new(
+                tauri::async_runtime::block_on(ShurikenManager::new())
+                    .expect("Failed to spawn a shuriken manager"),
+            );
+            app.manage(manager);
+
+            let partial_win = app.get_webview_window("main");
+            if let Some(win) = partial_win {
+                win.set_size(LogicalSize::new(912, 513))?;
+            }
+
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                
+                app.deep_link().register_all()?;
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                let window = app.get_webview_window("main").unwrap();
+                window.set_shadow(true).unwrap();
+            }
+            
+            Ok(())
+        })
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init());
+
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let _ = app
-                .dialog()
-                .message(format!(
-                    "The deep-link works with the arguments {} was executed successfully",
-                    argv.join(", ")
-                ))
-                .kind(MessageDialogKind::Info)
-                .title("The deep-link works")
-                .blocking_show();
+            // Clone the handle, which is owned
+            let app_handle = app.clone();
+        
+            tauri::async_runtime::spawn(async move {
+            let manager_state = app_handle.state::<Mutex<ShurikenManager>>().clone();
+                // Now you have `app_handle` too if you need to emit or do things
+                link_parser::handle_shurikenctl(&argv[1], manager_state.clone()).await;
+            });
+        
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
         }));
+        
     }
+
     builder = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
@@ -48,33 +83,9 @@ pub fn run() {
             developer_mode,
             open_dir,
             save_config,
-            get_projects
-        ])
-        .setup(|app| {
-            app.manage(Mutex::new(
-                tauri::async_runtime::block_on(ShurikenManager::new())
-                    .expect("Failed to spawn a shuriken manager"),
-            ));
-
-            let partial_win = app.get_webview_window("main");
-
-            if let Some(win) = partial_win {
-                win.set_size(LogicalSize::new(912, 513))?;
-            }
-
-            #[cfg(any(windows, target_os = "linux"))]
-            {
-                use tauri_plugin_deep_link::DeepLinkExt;
-                app.deep_link().register_all()?;
-            }
-
-            #[cfg(target_os = "macos")]
-            {
-                let window = app.get_webview_window("main").unwrap();
-                window.set_shadow(true).unwrap();
-            };
-            Ok(())
-        });
+            get_projects,
+            get_project_readme
+        ]);
 
     builder
         .run(tauri::generate_context!())

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,9 +10,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useShuriken } from "@/hooks/use-shuriken"
 import { invoke } from "@tauri-apps/api/core"
+import LocalProjectsSidebar from "../ui/projects-pane"
 
 export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
   const { allShurikens, refreshShurikens, startShuriken, stopShuriken, loading } = useShuriken()
+  const [projects, setProjects] = useState<string[]>([""])
+
+  const refreshProjects = () => {
+    invoke<string[]>("get_projects").then((e) => {
+      setProjects(e)
+      console.log("Projects found: "+e)
+    })
+  }
 
   const toggleShuriken = async (shuriken: typeof allShurikens[number]) => {
     if (shuriken.metadata.type !== "daemon") return
@@ -27,8 +36,17 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
     await invoke("open_dir", { path: "shurikens"})
   }
 
+  const openProjectsFolder = async () => {
+    await invoke("open_dir", { path: "projects"})
+  }
+
+  const openSpecificProject = async (name: string) => {
+    await invoke("open_dir", { path: "projects/"+name})
+  }
+  
   useEffect(() => {
     refreshShurikens()
+    refreshProjects()
   }, [refreshShurikens])
 
   if (loading) {
@@ -38,7 +56,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
   return (
     <div className="space-y-4 md:space-y-6 select-none">
       {/* Shurikens Section */}
-      <div>
+      <div className="p-3 md:p-4">
         <div className="flex justify-between">
           <h2 className="text-xl font-semibold mb-3 px-1">Shurikens</h2>
           <div className="flex gap-3">
@@ -54,23 +72,23 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
 
         {allShurikens.length > 0 ? (
           gridView === "grid" ? (
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-3 sm:grid-cols-1 gap-3 md:gap-4">
               {allShurikens.map((service) => (
                 <Card key={service.metadata.name} className="bg-card border-border py-0">
                   <CardHeader className="p-3 md:p-4 pb-0 md:pb-2 flex-row items-center justify-between space-y-0">
                     <div className="flex items-center gap-1">
                       <div className={`p-1.5 rounded-md mr-2 ${service.status === "running" ? "bg-green-500" : "bg-muted"}`} />
-                      <CardTitle className="text-sm md:text-base">
+                      <CardTitle className="text-sm md:text-base flex gap-2">
                         <p className="mr-2">{service.metadata.name}</p>
                         <Badge>{service.metadata.version}</Badge>
                       </CardTitle>
                     </div>
                   </CardHeader>
-                  <CardFooter className="pb-4 gap-3">
+                  <CardFooter className="pb-4 gap-2">
                     <Button
                       variant={service.metadata.type === "daemon" ? (service.status === "running" ? "destructive" : "default") : "outline"}
                       className="text-xs md:text-sm h-8 px-0 w-full"
-                      style={{ width: "90%" }}
+                      style={{ width: "80%" }}
                       onClick={() => toggleShuriken(service)}
                     >
                       {service.metadata.type === "daemon" ? (service.status === "running" ? "Stop" : "Start") : "Manage"}
@@ -129,42 +147,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
       </div>
 
       {/* Local Projects (unchanged) */}
-      <Card className="bg-background border-none py-0 mt-4">
-        <CardHeader className="p-3 md:p-4 pb-0 md:pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base md:text-lg">Local Projects</CardTitle>
-              <CardDescription className="text-xs md:text-sm">Your web projects in htdocs directory</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-3 md:p-4">
-          <ScrollArea className="w-full" type="always">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 min-w-[600px]">
-              {["Project 1", "WordPress Site", "Laravel App", "React App", "Vue Project"].map((project, index) => (
-                <Card key={index} className="bg-muted/50 border-border py-0">
-                  <CardHeader className="p-3 pb-0">
-                    <CardTitle className="text-sm md:text-base truncate">{project}</CardTitle>
-                  </CardHeader>
-                  <CardFooter className="p-3 pt-2 flex justify-between">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs px-2">
-                      <Globe className="mr-1 h-3 w-3" />
-                      Open
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs px-2">
-                      <FileCode className="mr-1 h-3 w-3" />
-                      Files
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </ScrollArea>
-          <Button variant="outline" size="sm" className="w-full mt-3 sm:hidden">
-            View All Projects
-          </Button>
-        </CardContent>
-      </Card>
+      <LocalProjectsSidebar projects={projects} refreshProjects={refreshProjects} openProjectsFolder={openProjectsFolder} />
     </div>
   )
 }

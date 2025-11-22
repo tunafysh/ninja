@@ -1,4 +1,5 @@
 use crate::{
+    dsl::DslContext,
     scripting::NinjaEngine,
     shuriken::{Shuriken, ShurikenConfig},
     types::{FieldValue, ShurikenState},
@@ -587,6 +588,13 @@ impl ShurikenManager {
         }
     }
 
+    pub fn dsl_ctx(&self) -> DslContext {
+        DslContext {
+            selected: Arc::new(RwLock::new(None)),
+            manager: self.clone(),
+        }
+    }
+
     pub async fn install(&self, path: PathBuf) -> Result<()> {
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
@@ -682,7 +690,8 @@ impl ShurikenManager {
             let path = entry.path();
 
             if path.is_dir()
-                && let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
                 if name == "pma" || name == "fancy-index" {
                     continue;
                 }

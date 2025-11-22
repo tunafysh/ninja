@@ -155,13 +155,7 @@ async fn list_shurikens(req: Request<AppState>) -> tide::Result {
 
 // Stop the API
 async fn stop_api(_req: Request<AppState>) -> tide::Result {
-    tokio::spawn(async {
-        std::process::exit(0);
-    });
-
-    Ok(Response::builder(StatusCode::Ok)
-        .body("Exiting immediately".to_string())
-        .build())
+    std::process::exit(0);
 }
 
 // Main server function

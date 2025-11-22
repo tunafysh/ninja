@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use log::{error, info};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
-use tokio::sync::Mutex;
+use tokio::{fs, sync::Mutex};
 
 use ninja::{
     dsl::{execute_commands, DslContext},
@@ -173,8 +173,7 @@ pub async fn open_dir(
 ) -> Result<(), String> {
     let manager = manager.lock().await;
     let path = manager.root_path.join(path);
-    app
-        .opener()
+    app.opener()
         .open_path(path.display().to_string(), None::<&str>)
         .map_err(|e| e.to_string())
 }
@@ -199,4 +198,29 @@ pub async fn get_projects(
 ) -> Result<Vec<String>, String> {
     let manager = manager.lock().await;
     manager.get_projects().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_project_readme(
+    name: &str,
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<String, String> {
+    let manager = manager.lock().await;
+    let root = &manager.root_path;
+    let project = root.join("projects").join(name);
+
+    // Common README file variants
+    let readme_files = ["README.md", "README.MD", "README", "readme.md", "readme"];
+
+    for filename in &readme_files {
+        let path: PathBuf = project.join(filename);
+        if fs::metadata(&path).await.is_ok() {
+            match fs::read_to_string(&path).await {
+                Ok(content) => return Ok(content),
+                Err(e) => return Err(format!("Failed to read {}: {}", filename, e)),
+            }
+        }
+    }
+
+    Ok("".to_string()) // no README found
 }

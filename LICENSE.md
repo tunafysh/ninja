@@ -8,7 +8,7 @@
 
 **2. Permissions**  
  **All users may:**  
-- Use, copy, and distribute the **Original Software** for any purpose.  
+- Use and copy the **Original Software** for any purpose.  
 - View and study the source code.  
 
  **Non-commercial users may additionally:**  
