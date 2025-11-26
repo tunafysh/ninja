@@ -17,3 +17,4 @@ package.json
 pnpm-lock.yaml
 GUI/src-tauri/binaries
 include
+sdk/ninja.so
