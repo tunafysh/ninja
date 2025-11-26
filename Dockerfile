@@ -2,8 +2,8 @@
 
 FROM node:current-bookworm
 
-# --- Install Rust Nightly ---
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
+# --- Install Rust stable ---
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # --- Install system dependencies for Tauri or other crates ---

@@ -167,20 +167,6 @@ def build_ffi(args):
     shutil.copy(src, dest)
     print_status("Info", f"Copied {src_name} → {dest}")
 
-    # Install cbindgen (if needed)
-    run(["cargo", "install", "cbindgen"], "Installing cbindgen")
-
-    # Generate header
-    run(
-        [
-            "cbindgen",
-            "--config", "FFI/cbindgen.toml",
-            "--crate", "ninja-ffi",
-            "--output", str(include_dir / "ninja.h")
-        ],
-        "Generating header file"
-    )
-
 
 def build_cli(args):
     cargo = find_cargo()
@@ -281,6 +267,61 @@ def clean():
             p.unlink()
             print_status("Rm", f"GUI binary {p}")
 
+def export_dist():
+    """
+    Create a top-level dist/ folder and copy final Tauri bundle
+    artifacts + shurikenctl Linux binary into it.
+    """
+    root = Path(__file__).parent.resolve()
+    dist_dir = root / "dist"
+
+    # Clean existing dist folder
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+    dist_dir.mkdir(exist_ok=True)
+
+    # -----------------------
+    # 1. Collect Tauri bundles
+    # -----------------------
+    tauri_root = root / "GUI" / "src-tauri" / "target"
+
+    patterns = [
+        "**/*.msi",
+        "**/*.exe",
+        "**/*.dmg",
+        "**/*.app",
+        "**/*.AppImage",
+        "**/*.deb",
+        "**/*.rpm",
+        "**/*.zip",
+        "**/*.gz",
+    ]
+
+    found_artifacts = []
+    for pattern in patterns:
+        found_artifacts.extend(tauri_root.glob(pattern))
+
+    # Copy Tauri outputs
+    for f in found_artifacts:
+        dest = dist_dir / f.name
+        if f.is_dir():
+            shutil.copytree(f, dest)
+        else:
+            shutil.copy2(f, dest)
+        print_status("Info", f"Copied {f} → dist/{f.name}")
+
+    # ----------------------------------------
+    # 2. Add shurikenctl Linux binary only
+    # ----------------------------------------
+    shuri = root / "target" / "release" / "shurikenctl"
+    if shuri.exists():
+        shutil.copy2(shuri, dist_dir / "shurikenctl")
+        print_status("Info", "Included Linux shurikenctl → dist/shurikenctl")
+    else:
+        print_status("Warn", "Linux shurikenctl binary not found")
+
+    print_status("Info", "Dist export completed.")
+
 
 # ===== CLI Entrypoint =====
 def main():
@@ -318,6 +359,7 @@ def main():
 
     if args.cli_only:
         build_cli(args=[])
+        export_dist()
         return
     
     if args.ffi_only:
@@ -326,6 +368,7 @@ def main():
 
     if args.gui_only:
         build_gui(args=[])
+        export_dist()
         return
 
     # Default: build everything
@@ -334,6 +377,7 @@ def main():
     build_cli(args=[])
     build_gui(args=[])
 
+    export_dist()
 
 
 if __name__ == "__main__":
