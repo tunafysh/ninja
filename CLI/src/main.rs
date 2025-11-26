@@ -363,7 +363,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     name: name.clone(),
                     id: id.clone(),
                     version,
-                    management,
+                    management: Some(management),
                     shuriken_type: shuriken_options[choice].to_string(),
                     require_admin: admin,
                 },
@@ -393,12 +393,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let ManagementType::Script { script_path } = &manifest.metadata.management {
-                if let Some(parent) = script_path.parent() {
-                    fs::create_dir_all(parent).await?;
+            
+            if let Some(management) = &manifest.metadata.management {
+                if let ManagementType::Script { script_path } = management {
+                    if let Some(parent) = script_path.parent() {
+                        fs::create_dir_all(parent).await?;
+                    }
+                    fs::write(
+                        script_path,
+                        "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
+                    )
+                    .await?;
                 }
-                fs::write(script_path, "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend").await?;
             }
+
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
                 eprintln!("Failed to serialize manifest for shuriken '{}'", name);

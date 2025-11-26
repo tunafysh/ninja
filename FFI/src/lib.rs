@@ -1,5 +1,4 @@
-// Updated ninja FFI - ownership fixes (no double frees)
-// Replace your existing file with this.
+
 
 use either::Either;
 use once_cell::sync::Lazy;
@@ -7,11 +6,14 @@ use serde::Serialize;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use std::ptr;
+use std::path::PathBuf;
+use anyhow;
 use std::sync::Mutex;
 use tokio::runtime::{Builder, Runtime};
+use tokio::fs;
 
 // Adapt this import to match your core crate
-use ninja::{manager::ShurikenManager, types::ShurikenState};
+use ninja::{manager::{ShurikenManager, ArmoryMetadata}, types::ShurikenState};
 
 // ========================
 // Global Tokio runtime
@@ -368,6 +370,621 @@ pub extern "C" fn ninja_stop_shuriken_async(
 
     let _handle = RUNTIME.spawn(async move {
         let r = manager.stop(&name_clone).await;
+        let json = match r {
+            Ok(()) => "{\"ok\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        };
+        let userdata_ptr = userdata_usize as *mut c_void;
+        call_callback(cb, userdata_ptr, json);
+    });
+}
+
+// -----------------------------
+// Additional FFI helpers
+// -----------------------------
+fn path_from_c(ptr: *const c_char) -> Option<PathBuf> {
+    str_from_c(ptr).map(PathBuf::from)
+}
+
+fn json_result_or_error<T: Serialize>(res: Result<T, anyhow::Error>, out_err: *mut *mut c_char) -> *mut c_char {
+    match res {
+        Ok(v) => {
+            match serde_json::to_string(&v) {
+                Ok(s) => CString::new(s).unwrap().into_raw(),
+                Err(e) => {
+                    let msg = format!("serde_json error: {}", e);
+                    set_last_error(msg.clone());
+                    unsafe {
+                        if !out_err.is_null() {
+                            *out_err = CString::new(msg).unwrap().into_raw();
+                        }
+                    }
+                    ptr::null_mut()
+                }
+            }
+        }
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            ptr::null_mut()
+        }
+    }
+}
+
+// -----------------------------
+// ninja_refresh_sync
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_refresh_sync(
+    mgr: *mut NinjaManagerOpaque,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.refresh().await });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_configure_sync
+// (calls manager.configure(name))
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_configure_sync(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.configure(&name).await });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_write_options_toml_sync
+// (writes raw TOML string into <root>/shurikens/<name>/.ninja/options.toml)
+// This is a simple alternative to marshalling FieldValue across FFI.
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_write_options_toml_sync(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    toml_str: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+    let toml = match str_from_c(toml_str) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null toml string").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    // Determine path and write
+    let options_path = manager
+        .root_path
+        .join("shurikens")
+        .join(&name)
+        .join(".ninja")
+        .join("options.toml");
+
+    let res = RUNTIME.block_on(async {
+        if let Some(parent) = options_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        fs::write(&options_path, toml).await?;
+        Ok::<(), anyhow::Error>(())
+    });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_remove_sync
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_remove_sync(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.remove(&name).await });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_install_sync
+// (install from a shuriken package file path)
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_install_sync(
+    mgr: *mut NinjaManagerOpaque,
+    package_path: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let path = match path_from_c(package_path) {
+        Some(p) => p,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null package path").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.install(path).await });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_forge_sync
+// (forges a shuriken package; meta is provided as JSON string; src path and output dir path are C strings)
+// meta JSON should map to ArmoryMetadata shape
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_forge_sync(
+    mgr: *mut NinjaManagerOpaque,
+    meta_json: *const c_char,
+    src_path: *const c_char,
+    output_dir: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let meta_str = match str_from_c(meta_json) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null meta json").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
+        Ok(m) => m,
+        Err(e) => {
+            let msg = format!("meta json parse error: {}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let src = match path_from_c(src_path) {
+        Some(p) => p,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null src path").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let out_dir = match path_from_c(output_dir) {
+        Some(p) => p,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null output path").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return -1;
+        }
+    };
+
+    let res = RUNTIME.block_on(async move {
+        manager.forge(meta, src, out_dir).await
+    });
+
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            -1
+        }
+    }
+}
+
+// -----------------------------
+// ninja_get_projects_sync
+// (returns JSON array of project names, caller must free string)
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_get_projects_sync(
+    mgr: *mut NinjaManagerOpaque,
+    out_err: *mut *mut c_char,
+) -> *mut c_char {
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return ptr::null_mut();
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.get_projects().await });
+
+    json_result_or_error(res.map(|v| v), out_err)
+}
+
+// -----------------------------
+// ninja_get_shuriken_sync
+// returns the Shuriken manifest (serialized to JSON) for a given name
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_get_shuriken_sync(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    out_err: *mut *mut c_char,
+) -> *mut c_char {
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+            }
+            return ptr::null_mut();
+        }
+    };
+
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m,
+        None => {
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+            }
+            return ptr::null_mut();
+        }
+    };
+
+    let res = RUNTIME.block_on(async { manager.get(name).await });
+
+    match res {
+        Ok(shuriken) => {
+            match serde_json::to_string(&shuriken) {
+                Ok(s) => CString::new(s).unwrap().into_raw(),
+                Err(e) => {
+                    let msg = format!("serde_json error: {}", e);
+                    set_last_error(msg.clone());
+                    unsafe {
+                        if !out_err.is_null() {
+                            *out_err = CString::new(msg).unwrap().into_raw();
+                        }
+                    }
+                    ptr::null_mut()
+                }
+            }
+        }
+        Err(e) => {
+            let msg = format!("{}", e);
+            set_last_error(msg.clone());
+            unsafe {
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+            }
+            ptr::null_mut()
+        }
+    }
+}
+
+// -----------------------------
+// Async versions using callbacks (pattern matches your start/stop async)
+// Example: ninja_install_async, ninja_refresh_async, ninja_remove_async, ninja_forge_async
+// Each will call the callback with a JSON string {"ok":true} or {"error":"..."}.
+// -----------------------------
+#[no_mangle]
+pub extern "C" fn ninja_refresh_async(
+    mgr: *mut NinjaManagerOpaque,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => return,
+    };
+
+    let userdata_usize = userdata as usize;
+
+    let _handle = RUNTIME.spawn(async move {
+        let r = manager.refresh().await;
+        let json = match r {
+            Ok(()) => "{\"ok\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        };
+        let userdata_ptr = userdata_usize as *mut c_void;
+        call_callback(cb, userdata_ptr, json);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn ninja_remove_async(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => return,
+    };
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => return,
+    };
+    let name_clone = name.clone();
+    let userdata_usize = userdata as usize;
+
+    let _handle = RUNTIME.spawn(async move {
+        let r = manager.remove(&name_clone).await;
+        let json = match r {
+            Ok(()) => "{\"ok\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        };
+        let userdata_ptr = userdata_usize as *mut c_void;
+        call_callback(cb, userdata_ptr, json);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn ninja_install_async(
+    mgr: *mut NinjaManagerOpaque,
+    package_path: *const c_char,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    let package = match path_from_c(package_path) {
+        Some(p) => p,
+        None => return,
+    };
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => return,
+    };
+    let userdata_usize = userdata as usize;
+
+    let _handle = RUNTIME.spawn(async move {
+        let r = manager.install(package).await;
+        let json = match r {
+            Ok(()) => "{\"ok\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        };
+        let userdata_ptr = userdata_usize as *mut c_void;
+        call_callback(cb, userdata_ptr, json);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn ninja_forge_async(
+    mgr: *mut NinjaManagerOpaque,
+    meta_json: *const c_char,
+    src_path: *const c_char,
+    output_dir: *const c_char,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    let meta_str = match str_from_c(meta_json) {
+        Some(s) => s,
+        None => return,
+    };
+    let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    let src = match path_from_c(src_path) {
+        Some(p) => p,
+        None => return,
+    };
+    let out_dir = match path_from_c(output_dir) {
+        Some(p) => p,
+        None => return,
+    };
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => return,
+    };
+    let userdata_usize = userdata as usize;
+
+    let _handle = RUNTIME.spawn(async move {
+        let r = manager.forge(meta, src, out_dir).await;
         let json = match r {
             Ok(()) => "{\"ok\":true}".to_string(),
             Err(e) => format!("{{\"error\":\"{}\"}}", e),

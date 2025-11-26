@@ -107,10 +107,10 @@ mod ninja_api_integration_tests {
                 name: "test_script".into(),
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
-                management: ManagementType::Script {
+                management: Some(ManagementType::Script {
                     script_path: PathBuf::from("dummy.ns"),
-                },
-                shuriken_type: "script".into(),
+                }),
+                shuriken_type: "daemon".into(),
                 require_admin: false,
             },
             config: None,
@@ -160,10 +160,10 @@ mod ninja_api_integration_tests {
                 name: "fake".into(),
                 id: "id3".into(),
                 version: "1.0.0".to_string(),
-                management: ManagementType::Script {
+                management: Some(ManagementType::Script {
                     script_path: PathBuf::from("fake.lua"),
-                },
-                shuriken_type: "script".into(),
+                }),
+                shuriken_type: "daemon".into(),
                 require_admin: false,
             },
             config: None,

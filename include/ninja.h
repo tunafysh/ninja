@@ -34,3 +34,49 @@ void ninja_stop_shuriken_async(struct NinjaManagerOpaque *mgr,
                                const char *name,
                                void (*cb)(void*, const char*),
                                void *userdata);
+
+int32_t ninja_refresh_sync(struct NinjaManagerOpaque *mgr, char **out_err);
+
+int32_t ninja_configure_sync(struct NinjaManagerOpaque *mgr, const char *name, char **out_err);
+
+int32_t ninja_write_options_toml_sync(struct NinjaManagerOpaque *mgr,
+                                      const char *name,
+                                      const char *toml_str,
+                                      char **out_err);
+
+int32_t ninja_remove_sync(struct NinjaManagerOpaque *mgr, const char *name, char **out_err);
+
+int32_t ninja_install_sync(struct NinjaManagerOpaque *mgr,
+                           const char *package_path,
+                           char **out_err);
+
+int32_t ninja_forge_sync(struct NinjaManagerOpaque *mgr,
+                         const char *meta_json,
+                         const char *src_path,
+                         const char *output_dir,
+                         char **out_err);
+
+char *ninja_get_projects_sync(struct NinjaManagerOpaque *mgr, char **out_err);
+
+char *ninja_get_shuriken_sync(struct NinjaManagerOpaque *mgr, const char *name, char **out_err);
+
+void ninja_refresh_async(struct NinjaManagerOpaque *mgr,
+                         void (*cb)(void*, const char*),
+                         void *userdata);
+
+void ninja_remove_async(struct NinjaManagerOpaque *mgr,
+                        const char *name,
+                        void (*cb)(void*, const char*),
+                        void *userdata);
+
+void ninja_install_async(struct NinjaManagerOpaque *mgr,
+                         const char *package_path,
+                         void (*cb)(void*, const char*),
+                         void *userdata);
+
+void ninja_forge_async(struct NinjaManagerOpaque *mgr,
+                       const char *meta_json,
+                       const char *src_path,
+                       const char *output_dir,
+                       void (*cb)(void*, const char*),
+                       void *userdata);
