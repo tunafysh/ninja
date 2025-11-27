@@ -63,10 +63,6 @@ jobs:
           pnpm install
           cd ..
           uv run build.py
-          mkdir -p dist
-          find target/release/bundle -mindepth 2 -maxdepth 2 -type f \
-            \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.tar.gz" -o -name "*.sig" \) \
-            -exec cp {} dist/ \;
 
       # ----------------------------
       # Windows build
@@ -81,11 +77,6 @@ jobs:
           pnpm install
           cd ..
           uv run build.py
-          mkdir dist
-
-          Get-ChildItem -Path 'target/release/bundle' -Recurse -Depth 2 -File |
-            Where-Object { $_.Extension -in '.exe', '.msi', '.zip', '.sig' } |
-            ForEach-Object { Copy-Item $_.FullName -Destination 'dist' }
 
       # ----------------------------
       # Linux builds via Docker
@@ -100,13 +91,9 @@ jobs:
 
           mkdir -p dist
 
-          docker run --rm -v $(pwd)/dist:/dist ninja:latest bash -c '
-            find /build/target/release/bundle -mindepth 2 -maxdepth 2 -type f \
-              \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" -o -name "*.sig" \) \
-              -exec cp {} /dist/ \;
-            cp -v /build/target/release/shurikenctl-linux-x86 /dist/ 2>/dev/null || true
-            cp -v /build/target/release/shurikenctl-linux-arm /dist/ 2>/dev/null || true
-          '
+          docker run --rm \
+            -v "$(pwd)/dist:/build/dist" \
+            ninja:latest
 
       # ----------------------------
       # Upload artifacts

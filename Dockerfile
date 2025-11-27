@@ -34,7 +34,6 @@ RUN npm i -g pnpm@latest
 # --- Create working directory ---
 RUN mkdir /build
 WORKDIR /build
-
 # --- Copy project files ---
 COPY . .
 
