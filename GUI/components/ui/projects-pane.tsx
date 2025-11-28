@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RefreshCcw, FolderOpen, FileCode } from "lucide-react";
@@ -11,10 +17,12 @@ export default function LocalProjectsSidebar({
   projects,
   refreshProjects,
   openProjectsFolder,
+  openSpecificProject,
 }: {
   projects: string[];
   refreshProjects: () => void;
   openProjectsFolder: () => void;
+  openSpecificProject: (projectName: string) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [readme, setReadme] = useState<string | null>(null);
@@ -33,38 +41,54 @@ export default function LocalProjectsSidebar({
   }, [selected]);
 
   return (
-    <Card className="bg-background border-none py-0 mt-4">
-      <CardHeader className="p-3 md:p-4 pb-0 md:pb-2">
+    <Card className="bg-background border-none py-0 mt-4 shadow-sm rounded-xl">
+      <CardHeader className="p-4 pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base md:text-lg">Local Projects</CardTitle>
-            <CardDescription className="text-xs md:text-sm">
-              Your web projects in htdocs directory
+            <CardTitle className="text-lg font-semibold">Local Projects</CardTitle>
+            <CardDescription className="text-sm">
+              Your web projects in the <b>htdocs</b> directory
             </CardDescription>
           </div>
-          <div className="flex gap-3">
-            <Button size="icon" onClick={refreshProjects}>
-              <RefreshCcw />
+
+          <div className="flex gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="hover:bg-accent rounded-lg"
+              onClick={refreshProjects}
+            >
+              <RefreshCcw className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="outline" onClick={openProjectsFolder}>
-              <FolderOpen />
+
+            <Button
+              size="icon"
+              variant="outline"
+              className="rounded-lg"
+              onClick={openProjectsFolder}
+            >
+              <FolderOpen className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-0 md:p-0 flex">
+      <CardContent className="p-0 flex border-2 border-muted rounded-lg">
         {/* Sidebar */}
-        <div className="w-40 md:w-56 border-r bg-card/30 p-2">
+        <div className="w-52 border-r bg-muted/30 p-2 min-h-48">
           <ScrollArea className="h-full">
             <div className="space-y-1">
-              {projects && projects.length > 0 ? (
-                projects.map((p, i) => (
+              {projects?.length ? (
+                projects.map((p) => (
                   <button
-                    key={i}
+                    key={p}
                     onClick={() => setSelected(selected === p ? null : p)}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition
-                      ${selected === p ? "bg-accent" : "hover:bg-accent/50"}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition
+                      ${
+                        selected === p
+                          ? "bg-accent text-accent-foreground shadow-sm"
+                          : "hover:bg-accent/40"
+                      }`}
                   >
                     {p}
                   </button>
@@ -79,19 +103,23 @@ export default function LocalProjectsSidebar({
         </div>
 
         {/* Details Pane */}
-        <div className="flex-1 p-4 overflow-auto">
+        <div className="flex-1 p-6 overflow-auto">
           {selected ? (
             <motion.div
               key={selected}
-              initial={{ opacity: 0, y: 5 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-4"
+              transition={{ duration: 0.18 }}
+              className="space-y-5"
             >
-              <h2 className="text-lg font-semibold">{selected}</h2>
-              <p className="text-sm text-muted-foreground">Project details and quick actions.</p>
+              <div>
+                <h2 className="text-xl font-semibold">{selected}</h2>
+                <p className="text-sm text-muted-foreground">
+                  Project details and quick actions
+                </p>
+              </div>
 
-              <div className="prose max-w-none text-sm">
+              <div className="prose prose-sm dark:prose-invert max-w-none bg-card rounded-lg p-4 border">
                 {loading ? (
                   <p className="text-muted-foreground">Loading README...</p>
                 ) : readme ? (
@@ -101,9 +129,9 @@ export default function LocalProjectsSidebar({
                 )}
               </div>
 
-              <div className="flex gap-3">
-                <Button variant="outline" size="sm" className="h-8">
-                  <FileCode className="h-4 w-4 mr-1" /> Files
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => openSpecificProject(selected)}>
+                  <FileCode className="h-4 w-4 mr-2" /> Open Files
                 </Button>
               </div>
             </motion.div>

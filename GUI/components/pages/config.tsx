@@ -8,10 +8,7 @@ import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
 import { useShuriken } from "@/hooks/use-shuriken"
 import { invoke } from "@tauri-apps/api/core"
 import { Switch } from "../ui/switch"
-
-function capitalizeFirstLetter(str: string) {
-  return str.charAt(0).toUpperCase() + str.slice(1)
-}
+import { capitalizeFirstLetter } from "@/lib/utils"
 
 // Render input based on plain JS type
 function renderInput(
