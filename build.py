@@ -18,8 +18,6 @@ def print_status(status: str, msg: str):
     }
     reset = "\033[0m"
     color = colors.get(status, "\033[1;37m")
-
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     arrow = "->" if os.name == "nt" else "→"
     msg = msg.replace("→", arrow)
 
@@ -203,7 +201,7 @@ def build_cli(args):
         copy_dir = Path("GUI/src-tauri")
         copy_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(renamed, copy_dir / renamed.name)
-        print_status("Info", f"Copied to GUI")
+        print_status("Info", "Copied to GUI")
 
     if release.exists() and release != host_release:
         shutil.rmtree(release, ignore_errors=True)
@@ -283,7 +281,7 @@ def export_dist():
     # -----------------------
     # 1. Collect Tauri bundles
     # -----------------------
-    tauri_root = root / "GUI" / "src-tauri" / "target"
+    tauri_root = root / "target" / "release"
 
     patterns = [
         "**/*.msi",
@@ -371,12 +369,9 @@ def main():
         export_dist()
         return
 
-    # Default: build everything
-    build_lib(args=[])
-    build_ffi(args=[])
+    # Default: build the cli and gui. 
     build_cli(args=[])
     build_gui(args=[])
-
     export_dist()
 
 
