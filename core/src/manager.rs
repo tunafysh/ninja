@@ -57,16 +57,16 @@ fn create_tar_gz_bytes(src_dir: &PathBuf) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ArmoryMetadata {
     pub name: String,
     pub id: String,
     pub platform: String,
     pub version: String,
-    pub dependencies: Vec<String>,
+    pub synopsis: Option<String>,
     pub postinstall: Option<PathBuf>,
     pub description: Option<String>,
-    pub author: Option<String>,
+    pub authors: Option<Vec<String>>,
     pub license: Option<String>,
 }
 

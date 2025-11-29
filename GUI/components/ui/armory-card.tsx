@@ -5,10 +5,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { useOutsideClick } from "@/hooks/use-outside-click";
 import { ArmoryItem } from "@/lib/types";
 import { Card } from "./card";
+import { Button } from "./button";
 import {
   ExternalLink,
   Package,
-  Terminal,
+  Check,
   BadgeCheck,
   Code2,
   ShieldCheck,
@@ -81,13 +82,22 @@ export default function ArmoryCard({ shuriken }: { shuriken: ArmoryItem }) {
                     <ExternalLink className="w-4 h-4" />
                     Repo
                   </a>
-                  <button
+                  <Button
                     onClick={() => alert(`Installing ${active.name}...`)}
-                    className="inline-flex items-center gap-1 px-4 py-2 text-sm font-bold rounded-md bg-foreground text-background hover:opacity-90 transition"
+                    disabled={shuriken.installed}
                   >
-                    <Download className="w-4 h-4" />
-                    Install
-                  </button>
+                    {shuriken.installed ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <p>Installed</p>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <p>Install</p>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
 

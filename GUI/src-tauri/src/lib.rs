@@ -1,11 +1,15 @@
 use ninja::manager::ShurikenManager;
-use tauri::{LogicalSize, Manager};
-
+use tauri::{Manager, Emitter};
+use url::Url;
 mod commands;
 use commands::*;
 use tokio::sync::Mutex;
 
 mod link_parser;
+
+fn is_url(s: &str) -> bool {
+    Url::parse(s).is_ok()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,15 +24,10 @@ pub fn run() {
             );
             app.manage(manager);
 
-            let partial_win = app.get_webview_window("main");
-            if let Some(win) = partial_win {
-                win.set_size(LogicalSize::new(912, 513))?;
-            }
-
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                
+
                 app.deep_link().register_all()?;
             }
 
@@ -37,7 +36,7 @@ pub fn run() {
                 let window = app.get_webview_window("main").unwrap();
                 window.set_shadow(true).unwrap();
             }
-            
+
             Ok(())
         })
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -48,18 +47,21 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Clone the handle, which is owned
             let app_handle = app.clone();
-        
-            tauri::async_runtime::spawn(async move {
-            let manager_state = app_handle.state::<Mutex<ShurikenManager>>().clone();
-                // Now you have `app_handle` too if you need to emit or do things
-                link_parser::handle_shurikenctl(&argv[1], manager_state.clone()).await;
-            });
-        
+
+            if is_url(&argv[1].as_str()) {
+                tauri::async_runtime::spawn(async move {
+                    let manager_state = app_handle.state::<Mutex<ShurikenManager>>().clone();
+                    // Now you have `app_handle` too if you need to emit or do things
+                    link_parser::handle_shurikenctl(&argv[1], manager_state.clone()).await;
+                });
+            } else {
+                let metadata = open_shuriken(argv[1].to_string().clone()).unwrap();
+                let _ = app.emit("view_local_shuriken", (metadata, argv[1].to_string())).unwrap();
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
-        }));
-        
+        }))
     }
 
     builder = builder
@@ -84,7 +86,8 @@ pub fn run() {
             open_dir,
             save_config,
             get_projects,
-            get_project_readme
+            get_project_readme,
+            open_shuriken
         ]);
 
     builder

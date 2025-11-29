@@ -372,6 +372,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: None,
                 }),
                 logs: None,
+                tools:None,
             };
 
             create_dir_all(format!("shurikens/{}/.ninja", name)).unwrap_or_else(|_| {
@@ -492,12 +493,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .interact()
                     .map(|s: String| s.is_empty().not().then_some(s))
                     .unwrap();
-
-                let author: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Author of this shuriken (whoever made it, optional)")
+                
+                let synopsis: Option<String> = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
                     .map(|s: String| s.is_empty().not().then_some(s))
                     .unwrap();
+
+                let authors: Option<Vec<String>> =
+                    Input::<String>::with_theme(&ColorfulTheme::default())
+                        .with_prompt("Authors of this shuriken (optional, comma‑separated)")
+                        .allow_empty(true)
+                        .interact_text().ok()
+                        .map(|s| s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect::<Vec<_>>())
+                        .and_then(|v| if v.is_empty() { None } else { Some(v) });
+
 
                 let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
@@ -512,11 +522,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     id,
                     platform,
                     version,
-                    dependencies,
                     postinstall,
                     description,
-                    author,
+                    authors,
                     license,
+                    synopsis,
                 };
 
                 println!("{}", "Creating shuriken...".bold());

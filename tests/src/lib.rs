@@ -115,6 +115,7 @@ mod ninja_api_integration_tests {
             },
             config: None,
             logs: None,
+            tools: None
         };
 
         shuriken.start().await.unwrap();
@@ -168,6 +169,7 @@ mod ninja_api_integration_tests {
             },
             config: None,
             logs: None,
+            tools:None,
         };
 
         // change dir to empty tempdir so lockfile isn't found

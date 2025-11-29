@@ -1,13 +1,13 @@
-use std::{collections::HashMap, path::PathBuf};
-
 use log::{error, info};
+use serde_cbor;
+use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
 
 use ninja::{
     dsl::{execute_commands, DslContext},
-    manager::ShurikenManager,
+    manager::{ArmoryMetadata, ShurikenManager},
     shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
     types::{FieldValue, ShurikenState},
 };
@@ -223,4 +223,25 @@ pub async fn get_project_readme(
     }
 
     Ok("".to_string()) // no README found
+}
+
+#[tauri::command]
+pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let mut header = [0u8; 8];
+    file.read_exact(&mut header).map_err(|e| e.to_string())?;
+
+    if &header[0..2] != b"HS" {
+        return Err("Invalid shuriken file".into());
+    }
+
+    let metadata_len = u16::from_le_bytes([header[3], header[4]]);
+    let mut metadata_buf = vec![0u8; metadata_len.into()];
+    file.read_exact(&mut metadata_buf)
+        .map_err(|e| e.to_string())?;
+
+    let metadata: ArmoryMetadata =
+        serde_cbor::from_slice(&metadata_buf).map_err(|e| e.to_string())?;
+
+    Ok(metadata)
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -55,7 +55,6 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
 
   return (
     <div className="space-y-4 md:space-y-6 select-none">
-      <Suspense fallback={<p className="text-center my-8">Loading shurikens...</p>}>
         {/* Shurikens Section */}
         <div className="p-3 md:p-4">
           <div className="flex justify-between">
@@ -182,7 +181,6 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
             <div className="text-center text-muted-foreground my-8">No Shurikens found.</div>
           )}
         </div>
-      </Suspense>
 
       {/* Local Projects */}
       <LocalProjectsSidebar

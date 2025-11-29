@@ -2,10 +2,31 @@
 import { ApplicationMenubar } from "@/components/ui/application-menubar";
 import ArmoryCard from "@/components/ui/armory-card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Search } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
 export default function Armory({platform}: {platform: "mac" | "windows" | "linux" | "unknown"}) {
+    const installLocalFile = async () => {
+        let file = await open({
+          filters: [
+            {
+              name: "Shurikens",
+              extensions: ["shuriken"]
+            }
+          ]
+        })
+        
+        if (file) {
+          console.log("Selected file:", file);
+          let res = await invoke("open_shuriken", {path: file});
+        }
+        else {
+          console.log("No file selected");
+        }
+    };
     const [shurikens, setShurikens] = useState([
       {
         "name": "Apache HTTP",
@@ -95,14 +116,17 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
 
     return (
         <div className="relative w-screen h-screen overflow-hidden flex justify-center">
-            <div className={`h-full w-5/6 ${platform == "mac"? "mt-8": "mt-10"}`}>
+            <div className={`h-full w-5/6`}>
               <div id="search" className="w-full flex justify-center items-center my-10">
+                <div className="flex gap-2 w-full">
                 <div className="relative w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                   <Input
                     className="pl-10 w-full"
                     placeholder="Search..."
                   />
+                </div>
+                  <Button onClick={() => installLocalFile()} >Install local file</Button>
                 </div>
               </div>
               <div className="w-full flex justify-center">

@@ -1,8 +1,8 @@
 use log::{error, info, warn};
 use ninja::{dsl::execute_commands, manager::ShurikenManager};
 use std::{collections::HashMap, path::PathBuf};
-use tokio::sync::Mutex;
 use tauri::State;
+use tokio::sync::Mutex;
 use url::Url;
 
 pub async fn handle_shurikenctl(url: &str, manager: State<'_, Mutex<ShurikenManager>>) {

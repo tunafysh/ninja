@@ -54,9 +54,9 @@ export type ArmoryItem = {
     authors: string[],
     license: string,
     repository: string,
-    dependencies: string[],
     platforms: string[],
-    checksum: string
+    checksum: string,
+    installed: boolean
 }
 
 export interface LocalArmoryItem extends ArmoryItem {

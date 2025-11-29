@@ -8,11 +8,12 @@ import Dashboard from "@/components/pages/dashboard"
 import DeveloperModePanel from "@/components/pages/developer"
 import Configuration from "@/components/pages/config"
 import Logs from "@/components/pages/logs"
-import { HomeIcon, Cog, FileText, Sparkle, Code } from "lucide-react"
+import { HomeIcon, Cog, FileText, Sparkle, Code, Database } from "lucide-react"
 import Armory from "@/components/pages/armory"
 import { Toaster } from "@/components/ui/sonner"
 import { useShuriken } from "@/hooks/use-shuriken"
 import { useKonami } from "react-konami-code"
+import Backup from "@/components/pages/backup"
 
 export default function Page() {
   const [devMode, setDevMode] = useState<boolean>(false);
@@ -27,7 +28,7 @@ export default function Page() {
   const { allShurikens, refreshShurikens, startShuriken, stopShuriken } = useShuriken()
 
   // Base tabs
-  const baseTabs = ["Dashboard", "Configuration", "Logs", "Armory"];
+  const baseTabs = ["Dashboard", "Configuration", "Logs", "Backups", "Armory"];
   const tabs = devMode ? [...baseTabs, "Developer"] : baseTabs;
 
   useKonami(() => setDevMode(!devMode))
@@ -37,6 +38,7 @@ export default function Page() {
     <HomeIcon key="home" className={`w-4 h-4 mr-1 ${activeIndex !== 0 ? "dark:text-[#ffffff99]" : "text-red-500"}`} />, 
     <Cog key="cog" className={`w-4 h-4 mr-1 ${activeIndex !== 1 ? "dark:text-[#ffffff99]" : "text-orange-500"}`}/>, 
     <FileText key="file" className={`w-4 h-4 mr-1 ${activeIndex !== 2 ? "dark:text-[#ffffff99]" : "text-green-500"}`}/>,
+    <Database key="database" className={`w-4 h-4 mr-1 ${activeIndex !== 3 ? "dark:text-[#ffffff99]" : "text-purple-500"}`}/>,
     <div key="zap" className="relative">
       <svg className="w-0 h-0 absolute">
         <defs>
@@ -46,7 +48,7 @@ export default function Page() {
           </linearGradient>
         </defs>
       </svg>
-      <Sparkle className={`mr-1 h-4 w-4 ${activeIndex !== 3 ? "dark:text-[#ffffff99]" : ""}`} style={activeIndex === 3 ? { 
+      <Sparkle className={`mr-1 h-4 w-4 ${activeIndex !== 4 ? "dark:text-[#ffffff99]" : ""}`} style={activeIndex === 4 ? { 
              fill: 'none', 
              stroke: 'url(#zapStrokeGradient)', 
              strokeWidth: 2 
@@ -183,8 +185,10 @@ export default function Page() {
           ) : activeIndex === 2 ? (
             <Logs shurikens={allShurikens}/>
           ) : activeIndex === 3 ? (
+            <Backup />
+          ) : activeIndex === 4 ? (
             <Armory platform={platform} />
-          ) : activeIndex === 4 && devMode ? (
+          ) : activeIndex === 5 && devMode ? (
             <DeveloperModePanel />
           ) : null}
         </div>
