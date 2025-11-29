@@ -120,20 +120,6 @@ export default function ArmoryCard({ shuriken }: { shuriken: ArmoryItem }) {
                 </section>
 
                 <section className="col-span-full">
-                  <h3 className="text-sm font-medium uppercase text-muted-foreground mb-1">Dependencies</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {active.dependencies.length > 0 ? active.dependencies.map((dep) => (
-                      <span
-                        key={dep}
-                        className="inline-block px-2 py-1 text-xs rounded bg-muted text-muted-foreground"
-                      >
-                        {dep}
-                      </span>
-                    )) : <p className="text-sm text-neutral-500">None</p>}
-                  </div>
-                </section>
-
-                <section className="col-span-full">
                   <h3 className="text-sm font-medium uppercase text-muted-foreground mb-1">Supported Platforms</h3>
                   <div className="flex flex-wrap gap-2">
                     {active.platforms.length > 0 ? active.platforms.map((plat) => (
