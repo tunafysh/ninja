@@ -39,7 +39,7 @@
         "installMode": "both"
       }
     },
-    "externalBin": ["binaries/shurikenctl"],
+    "externalBin": ["shurikenctl"],
     "macOS": {
       "dmg": {
         "appPosition": {

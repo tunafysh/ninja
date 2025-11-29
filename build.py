@@ -200,10 +200,10 @@ def build_cli(args):
         dest.rename(renamed)
         print_status("Info", f"Renamed to {renamed.name}")
 
-        copy_dir = Path("GUI/src-tauri/binaries")
+        copy_dir = Path("GUI/src-tauri")
         copy_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(renamed, copy_dir / renamed.name)
-        print_status("Info", f"Copied to GUI/binaries")
+        print_status("Info", f"Copied to GUI")
 
     if release.exists() and release != host_release:
         shutil.rmtree(release, ignore_errors=True)

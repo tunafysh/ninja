@@ -127,7 +127,6 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                           >
                             Restart
                           </DropdownMenuItem>
-                          <DropdownMenuItem>View Logs</DropdownMenuItem>
                           <DropdownMenuItem>Configure</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -188,6 +187,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
         refreshProjects={refreshProjects}
         openProjectsFolder={openProjectsFolder}
         openSpecificProject={openSpecificProject}
+        gridView={gridView}
       />
     </div>
   )
