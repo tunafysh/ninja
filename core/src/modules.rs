@@ -2,6 +2,8 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
+use crate::util::make_admin_command;
+
 #[allow(unused_imports)]
 use std::{
     env, fs, io,
@@ -188,10 +190,36 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     shell_module.set(
         "exec",
-        lua.create_function(|lua, command: String| {
+        lua.create_function(|lua, (command, admin): (String, bool)| {
             // Create result table
             let result_table = lua.create_table()?;
 
+            if admin {
+                #[cfg(target_os = "linux")]
+                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).output();                
+                #[cfg(target_os = "windows")]
+                let cmd = make_admin_command("cmd", Some(&["/C".to_string(), command])).output();
+                #[cfg(target_os = "macos")]
+                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).output();
+                
+                match cmd {
+                    Ok(cmd_output) => {
+                        let exit_code = cmd_output.status.code().unwrap_or(-1);
+                        result_table.set("code", exit_code)?;
+                        let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
+                        let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
+                        result_table.set("stdout", stdout)?;
+                        result_table.set("stderr", stderr)?;
+                    }
+                    Err(e) => {
+                        result_table.set("code", -1)?;
+                        result_table.set("stdout", "")?;
+                        result_table.set("stderr", format!("Command execution failed: {}", e))?;
+                    }
+                }
+            }
+            else {
+                
             // Run command and capture output
             #[cfg(windows)]
             let output: Result<Output> = run_windows_command(&command);
@@ -216,6 +244,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
                     result_table.set("stdout", "")?;
                     result_table.set("stderr", format!("Command execution failed: {}", e))?;
                 }
+            }
             }
 
             Ok(result_table)

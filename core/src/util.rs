@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 pub fn get_http_port() -> Result<u16> {
     let apache_conf = "shurikens/Apache/conf/httpd.conf";
@@ -42,4 +43,52 @@ fn parse_nginx_port(path: &str) -> Result<u16> {
     Err(anyhow!(
         "Nginx config exists but contains no listen directive"
     ))
+}
+
+pub fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
+    #[cfg(target_os = "linux")]
+    {
+        let mut cmd = Command::new("pkexec");
+        cmd.arg(bin);
+        if let Some(a) = args {
+            cmd.args(a);
+        }
+        cmd
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use shell_escape;
+        // osascript will trigger the GUI "enter password" dialog
+        let mut cmd = Command::new("osascript");
+        cmd.arg("-e").arg(format!(
+            "do shell script \"{} {}\" with administrator privileges",
+            shell_escape::escape(bin.into()),
+            args.unwrap_or(&vec![]).join(" ")
+        ));
+        cmd
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // runas triggers UAC, -PassThru returns the Process object, we extract .Id
+        let mut cmd = Command::new("powershell");
+        cmd.arg("-NoProfile");
+        cmd.arg("-NonInteractive");
+        cmd.arg("-Command");
+
+        // build PowerShell one-liner
+        let mut script = format!("(Start-Process '{}' -Verb RunAs -PassThru", bin);
+
+        if let Some(a) = args {
+            // use array syntax for multiple args
+            let joined = a.join("','");
+            script.push_str(&format!(" -ArgumentList @('{}')", joined));
+        }
+
+        script.push_str(").Id"); // return PID
+
+        cmd.arg(script);
+        cmd
+    }
 }

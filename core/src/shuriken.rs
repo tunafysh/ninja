@@ -14,7 +14,7 @@ use std::{
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::{fs, process::Command};
 
-fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
+pub fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
     #[cfg(target_os = "linux")]
     {
         let mut cmd = Command::new("pkexec");
