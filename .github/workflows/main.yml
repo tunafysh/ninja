@@ -135,7 +135,7 @@ jobs:
       - name: Read Ninja version
         id: version
         run: |
-          VERSION=$(grep '^version =' core/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          VERSION=$(grep 'package.version =' Cargo.toml | sed -E 's/package.version = "(.*)"/\1/')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       # -------------------------------------------------
