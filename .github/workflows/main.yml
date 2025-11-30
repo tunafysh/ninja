@@ -149,7 +149,7 @@ jobs:
 
           find artifacts -type f -name "*.sig" | sort | while read sigfile; do
             base=$(basename "$sigfile")
-            echo "#### $base""
+            echo "#### $base"
             echo '```'
             cat "$sigfile"
             echo '```'
