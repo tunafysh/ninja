@@ -7,3 +7,8 @@
 
 * Added `admin` parameter to `shell.exec()` function. and a while make_admin_command() in the util
 * Also almost forgot to update the version smh
+
+## 0.12.0
+
+* Fixed a bug in the admin functionality...
+* Switched to using PowerShell instead of cmd.

@@ -74,7 +74,8 @@ pub fn make_admin_command(bin: &str, args: Option<&[String]>) -> Command {
         // runas triggers UAC, -PassThru returns the Process object, we extract .Id
         let mut cmd = Command::new("powershell");
         cmd.arg("-NoProfile");
-        cmd.arg("-NonInteractive");
+        cmd.arg("-WindowStyle");
+        cmd.arg("Hidden");
         cmd.arg("-Command");
 
         // build PowerShell one-liner

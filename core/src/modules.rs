@@ -15,25 +15,28 @@ use std::{
 
 #[cfg(windows)]
 fn run_windows_command(command: &str) -> Result<std::process::Output> {
-    use std::process::Stdio;
+    use std::process::{Command, Stdio};
+    use std::io;
 
-    match Command::new("cmd")
-        .arg("/C")
+    // Use PowerShell instead of cmd
+    match Command::new("powershell.exe")
+        .arg("-NoProfile")           // avoid loading user profile
+        .arg("-WindowStyle").arg("Hidden") // optional: hide PowerShell window
+        .arg("-Command")
         .arg(command)
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
     {
-        Ok(output) => return Ok(output),
+        Ok(output) => Ok(output),
         Err(_) => Err(mlua::Error::external(io::Error::new(
             io::ErrorKind::NotFound,
-            "No shell found",
+            "PowerShell not found",
         ))),
     }
-
-    // If all failed, return the last error
 }
+
 
 #[cfg(unix)]
 fn run_unix_command(command: &str) -> Result<std::process::Output> {
@@ -196,25 +199,19 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
             if admin {
                 #[cfg(target_os = "linux")]
-                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).output();                
+                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).spawn();                
                 #[cfg(target_os = "windows")]
-                let cmd = make_admin_command("cmd", Some(&["/C".to_string(), command])).output();
+                let cmd = make_admin_command("cmd", Some(&["/C".to_string(), command])).spawn();
                 #[cfg(target_os = "macos")]
-                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).output();
+                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).spawn();
                 
                 match cmd {
-                    Ok(cmd_output) => {
-                        let exit_code = cmd_output.status.code().unwrap_or(-1);
-                        result_table.set("code", exit_code)?;
-                        let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
-                        let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
-                        result_table.set("stdout", stdout)?;
-                        result_table.set("stderr", stderr)?;
+                    Ok(mut c) => {
+                        let status = c.wait()?;
+                        result_table.set("code", status.code().unwrap_or(-1))?;
                     }
                     Err(e) => {
                         result_table.set("code", -1)?;
-                        result_table.set("stdout", "")?;
-                        result_table.set("stderr", format!("Command execution failed: {}", e))?;
                     }
                 }
             }
