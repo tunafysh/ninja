@@ -1,4 +1,8 @@
-w## 0.10.0
+## 0.10.0
 
 * Fixing CI.
 * Added simple backup functionality.
+
+## 0.11.0
+
+* Added `admin` parameter to `shell.exec()` function. and a while make_admin_command() in the util
