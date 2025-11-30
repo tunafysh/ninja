@@ -231,7 +231,7 @@ def build_gui(args):
         cmd = ["pnpm", "dlx", "@tauri-apps/cli", "build"] + args
         if subprocess.call(cmd) != 0:
             print_status("Warn", "pnpm failed, trying cargo tauri as fallback")
-            ensure_tool("cargo")
+            ensure_tool("cargo", ["cargo", "install", "tauri-cli"])
             cargo = find_cargo()
             run([cargo, "tauri", "build", "--"] + args, "GUI build")
 
@@ -300,7 +300,12 @@ def export_dist():
         found_artifacts.extend(tauri_root.glob(pattern))
 
     # Copy Tauri outputs
+    # Copy Tauri outputs
     for f in found_artifacts:
+        # --- Skip unwanted Debian internals ---
+        if f.name in ("control.tar.gz", "data.tar.gz"):
+            continue
+
         dest = dist_dir / f.name
         if f.is_dir():
             shutil.copytree(f, dest)

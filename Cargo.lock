@@ -288,19 +288,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-compression"
-version = "0.4.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e86f6d3dc9dc4352edeea6b8e499e13e3f5dc3b964d7ca5fd411415a3498473"
-dependencies = [
- "compression-codecs",
- "compression-core",
- "futures-core",
- "pin-project-lite 0.2.16",
- "tokio",
-]
-
-[[package]]
 name = "async-dup"
 version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1187,23 +1174,6 @@ dependencies = [
  "bytes",
  "memchr",
 ]
-
-[[package]]
-name = "compression-codecs"
-version = "0.4.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "302266479cb963552d11bd042013a58ef1adc56768016c8b82b4199488f2d4ad"
-dependencies = [
- "compression-core",
- "flate2",
- "memchr",
-]
-
-[[package]]
-name = "compression-core"
-version = "0.4.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75984efb6ed102a0d42db99afb6c1948f0380d1d91808d5529916e6c08b49d8d"
 
 [[package]]
 name = "concurrent-queue"
@@ -3589,7 +3559,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "ninja"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "chrono",
  "log",
@@ -3613,7 +3583,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-api"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -3625,7 +3595,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-cli"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3647,15 +3617,13 @@ dependencies = [
 
 [[package]]
 name = "ninja-core"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "anyhow",
- "async-compression",
  "chrono",
  "dirs-next",
  "either",
  "flate2",
- "futures-util",
  "globwalk",
  "ignore",
  "libc",
@@ -3673,16 +3641,14 @@ dependencies = [
  "tar",
  "tera",
  "tokio",
- "tokio-util",
  "toml 0.8.23",
  "urlencoding",
- "vfs",
  "windows",
 ]
 
 [[package]]
 name = "ninja-ffi"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "cbindgen",
@@ -3696,7 +3662,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-mcp"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "log",
  "ninja-core",
@@ -7406,15 +7372,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vfs"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e723b9e1c02a3cf9f9d0de6a4ddb8cdc1df859078902fe0ae0589d615711ae6"
-dependencies = [
- "filetime",
-]
 
 [[package]]
 name = "vswhom"

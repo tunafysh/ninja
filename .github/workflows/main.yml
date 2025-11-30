@@ -92,8 +92,8 @@ jobs:
           mkdir -p dist
 
           docker run --rm \
-            -v "$(pwd)/dist:/build/dist" \
-            ninja:latest
+            -v "$(pwd)/dist:/dist" \
+            ninja:latest bash -c "cp -r /build/dist/* /dist"
 
       # ----------------------------
       # Upload artifacts

@@ -48,5 +48,6 @@ RUN pnpm i -C ./GUI
 
 # --- Run Python xtask build instead of cargo xtask ---
 RUN --mount=type=secret,id=tauri_key \
+    --mount=type=cache,id=uv-cache,target=/build/target \
     export TAURI_SIGNING_PRIVATE_KEY="$(cat /run/secrets/tauri_key)" && \
     uv run build.py
