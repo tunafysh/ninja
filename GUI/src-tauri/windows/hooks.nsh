@@ -1,4 +1,5 @@
 !include "FileFunc.nsh"
+!include "WordFunc.nsh"
 !insertmacro WordFind
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -6,12 +7,12 @@
   ReadRegStr $0 HKCU "Environment" "PATH"
 
   ; Check if $INSTDIR is already in PATH
-  ; Syntax: ${WordFind} <output_var> <string> <word> <case_sensitive> <delimiter>
-  ${WordFind} $1 "$0" "$INSTDIR" 0 ";"
+  ; WordFind params: output_var, string, word, case_sensitive, delimiter
+  ${WordFind} $1 $0 $INSTDIR 0 ";"
 
   ; $1 = -1 → not found
   ${If} $1 == -1
-    ; Not found → append to PATH
+    ; Append $INSTDIR to PATH
     StrCmp $0 "" 0 +2
       StrCpy $0 "$INSTDIR"
       Goto +3
