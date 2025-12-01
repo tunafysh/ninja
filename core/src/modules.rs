@@ -199,21 +199,11 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
             if admin {
                 #[cfg(target_os = "linux")]
-                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).spawn();                
+                make_admin_command("sh", Some(&["-c".to_string(), command]))?;                
                 #[cfg(target_os = "windows")]
-                let cmd = make_admin_command("cmd", Some(&["/C".to_string(), command])).spawn();
+                make_admin_command("cmd", Some(&["/C".to_string(), command]))?;
                 #[cfg(target_os = "macos")]
-                let cmd = make_admin_command("sh", Some(&["-c".to_string(), command])).spawn();
-                
-                match cmd {
-                    Ok(mut c) => {
-                        let status = c.wait()?;
-                        result_table.set("code", status.code().unwrap_or(-1))?;
-                    }
-                    Err(e) => {
-                        result_table.set("code", -1)?;
-                    }
-                }
+                make_admin_command("sh", Some(&["-c".to_string(), command]))?;
             }
             else {
                 
