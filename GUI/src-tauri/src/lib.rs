@@ -71,7 +71,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .filter(|metadata| !metadata.target().starts_with("tao"))
-f        )
+        )
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             start_shuriken,
