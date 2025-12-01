@@ -3,6 +3,7 @@ pub mod dsl;
 pub mod error;
 pub mod manager;
 mod modules;
+pub mod process;
 pub mod scripting;
 pub mod shuriken;
 pub mod templater;
