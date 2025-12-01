@@ -1,6 +1,6 @@
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
-use mlua::{Lua, LuaSerdeExt, Result, Table};
+use mlua::{Lua, LuaSerdeExt, Result, Table, ExternalError};
 use runas::Command as AdminCmd;
 use crate::shuriken::{kill_process_by_pid, kill_process_by_name};
 use serde_json::Value;
@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     env,
     fs,
-    io::{self, Write},
+    io::Write,
     path::Path,
     process::{Command, Output, Stdio},
     sync::Mutex,
@@ -186,7 +186,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     json_module.set("decode", lua.create_function(|lua, s: String| {
         let val: Value = serde_json::from_str(&s).unwrap_or(Value::String(format!("Invalid JSON: {}", s)));
         match lua.to_value(&val) {
-            mlua::Value::Table(t) => Ok(t),
+            Ok(mlua::Value::Table(t)) => Ok(t),
             _ => Err(mlua::Error::DeserializeError("Expected JSON object/array".into())),
         }
     })?)?;
