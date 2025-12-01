@@ -110,7 +110,7 @@ pub struct LogsConfig {
     pub log_path: PathBuf,
 }
 
-fn kill_process_by_name(name: &str) -> bool {
+pub fn kill_process_by_name(name: &str) -> bool {
     let mut sys = System::new_all();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 

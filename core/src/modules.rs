@@ -2,6 +2,7 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table, Value as LuaValue};
 use runas::Command as AdminCmd;
+use crate::shuriken::{kill_process_by_pid, kill_process_by_name};
 use serde_json::Value;
 
 #[allow(unused_imports)]
@@ -204,6 +205,21 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     env_module.set(
         "cwd",
         lua.create_function(|_, _: ()| Ok(env::current_dir()?))?,
+    )?;
+    
+    env_module.set(
+        "kill_pid",
+        lua.create_function(|_, pid: u32| Ok(kill_process_by_pid(pid)))?,
+    )?;
+    
+    env_module.set(
+        "kill_name",
+        lua.create_function(|_, name: String| Ok(kill_process_by_name(&name)))?,
+    )?;
+
+    env_module.set(
+        "kill_name",
+        lua.create_function(|_, name: String| Ok(kill_process_by_name(&name)))?,
     )?;
 
     // ================= shell module =================
