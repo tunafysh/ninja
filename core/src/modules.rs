@@ -14,6 +14,24 @@ use std::{
 };
 
 #[cfg(windows)]
+fn find_powershell() -> Option<String> {
+    // PowerShell 7+
+    let ps7 = r"C:\Program Files\PowerShell\7\pwsh.exe";
+    if Path::new(ps7).exists() {
+        return Some(ps7.to_string());
+    }
+
+    // Windows PowerShell 5.1
+    let ps51 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+    if Path::new(ps51).exists() {
+        return Some(ps51.to_string());
+    }
+
+    None
+}
+
+
+#[cfg(windows)]
 fn run_windows_command(command: &str) -> Result<std::process::Output> {
     use std::process::{Command, Stdio};
     use std::io;
@@ -198,11 +216,24 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
             let result_table = lua.create_table()?;
 
             if admin {
-                let cmd = AdminCmd::new(command)
-                    .show(false)
-                    .status()?;
-                if let Some(code) = cmd.code() {
-                    result_table.push(LuaValue::Integer(code.into()))?;
+                #[cfg(windows)]
+                {
+                    let pwsh = find_powershell()?;
+                    let cmd = AdminCmd::new(pwsh)
+                        .show(false)
+                        .status()?;
+                    if let Some(code) = cmd.code() {
+                        result_table.push(LuaValue::Integer(code.into()))?;
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let cmd = AdminCmd::new(command)
+                        .show(false)
+                        .status()?;
+                    if let Some(code) = cmd.code() {
+                        result_table.push(LuaValue::Integer(code.into()))?;
+                    }
                 }
             }
             else {

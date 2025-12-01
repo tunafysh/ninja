@@ -12,3 +12,12 @@
 
 * Fixed a bug in the admin functionality...
 * Switched to using PowerShell instead of cmd.
+
+## 0.12.2
+
+* Idk what im doing atp.
+
+## 0.12.3
+
+* Fixed a bug in the admin functionality...
+* Switched to using PowerShell instead of cmd.
