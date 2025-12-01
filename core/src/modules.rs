@@ -95,6 +95,8 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     
         if detached {
             #[cfg(windows)]
+            use std::os::windows::process::CommandExt;
+            #[cfg(windows)]
             let child = Command::new("powershell.exe")
                 .arg("-NoProfile")
                 .arg("-Command")

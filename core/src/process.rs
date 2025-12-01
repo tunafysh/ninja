@@ -25,6 +25,7 @@ impl DetachedProcess {
 
         #[cfg(unix)]
         {
+            use libc;
             use std::os::unix::process::CommandExt;
             unsafe {
                 command.pre_exec(|| {
@@ -51,19 +52,11 @@ impl DetachedProcess {
 
         #[cfg(windows)]
         {
-            use windows_sys::Win32::System::Threading::*;
-            use windows_sys::Win32::Foundation::CloseHandle;
+            use windows::Win32::System::Threading::*;
 
             unsafe {
-                let handle = OpenProcess(PROCESS_TERMINATE, 0, self.pid);
-                if handle == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                let result = TerminateProcess(handle, 1);
-                CloseHandle(handle);
-                if result == 0 {
-                    return Err(io::Error::last_os_error());
-                }
+                let handle = OpenProcess(PROCESS_TERMINATE, false, self.pid);
+                TerminateProcess(handle?, 1)?;
                 Ok(())
             }
         }
