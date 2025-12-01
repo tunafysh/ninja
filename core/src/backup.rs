@@ -1,13 +1,13 @@
-use std::process::Command;
 use crate::manager::ShurikenManager;
+use chrono::Utc;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use ignore::WalkBuilder;
 use opendal::Operator;
 use opendal::services::Fs;
 use std::fs::File;
+use std::process::Command;
 use tar::Builder as TarBuilder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use chrono::Utc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BackupFrequency {
@@ -109,34 +109,30 @@ pub async fn create_backup(manager: &ShurikenManager) -> Result<(), String> {
     let backup_file_path_clone = backup_file_path.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let backup_file = File::create(&backup_file_path_clone)
-            .map_err(|e| e.to_string())?;
+        let backup_file = File::create(&backup_file_path_clone).map_err(|e| e.to_string())?;
         let mut gzip = GzEncoder::new(backup_file, Compression::default());
         {
-            
-        let mut tar = TarBuilder::new(&mut gzip);
+            let mut tar = TarBuilder::new(&mut gzip);
 
-        for entry in WalkBuilder::new(&projects_path)
-            .git_ignore(true)
-            .git_global(true)
-            .ignore(true)
-            .build()
-        {
-            let entry = entry.map_err(|e| e.to_string())?;
-            if entry.file_type().map_or(false, |ft| ft.is_file()) {
-                let path = entry.path();
-                let rel_path = path
-                    .strip_prefix(&projects_path)
-                    .map_err(|e| e.to_string())?;
-                tar.append_path_with_name(path, rel_path)
-                    .map_err(|e| e.to_string())?;
+            for entry in WalkBuilder::new(&projects_path)
+                .git_ignore(true)
+                .git_global(true)
+                .ignore(true)
+                .build()
+            {
+                let entry = entry.map_err(|e| e.to_string())?;
+                if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                    let path = entry.path();
+                    let rel_path = path
+                        .strip_prefix(&projects_path)
+                        .map_err(|e| e.to_string())?;
+                    tar.append_path_with_name(path, rel_path)
+                        .map_err(|e| e.to_string())?;
+                }
             }
-        }
-        tar.finish().map_err(|e| e.to_string())?;
+            tar.finish().map_err(|e| e.to_string())?;
         }
 
-        
-        
         // Then finish gzip
         gzip.finish().map_err(|e| e.to_string())?;
 
@@ -151,14 +147,14 @@ pub async fn create_backup(manager: &ShurikenManager) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .finish();
 
-    let backup_name = backup_file_path
-        .file_name()
-        .unwrap()
-        .to_string_lossy();
+    let backup_name = backup_file_path.file_name().unwrap().to_string_lossy();
     let data = tokio::fs::read(&backup_file_path)
         .await
         .map_err(|e| e.to_string())?;
-    fs_op.write(&backup_name, data).await.map_err(|e| e.to_string())?;
+    fs_op
+        .write(&backup_name, data)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

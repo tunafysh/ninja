@@ -1,8 +1,8 @@
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table, Value as LuaValue};
-use serde_json::Value;
 use runas::Command as AdminCmd;
+use serde_json::Value;
 
 #[allow(unused_imports)]
 use std::{
@@ -30,16 +30,16 @@ fn find_powershell() -> Option<String> {
     None
 }
 
-
 #[cfg(windows)]
 fn run_windows_command(command: &str) -> Result<std::process::Output> {
-    use std::process::{Command, Stdio};
     use std::io;
+    use std::process::{Command, Stdio};
 
     // Use PowerShell instead of cmd
     match Command::new("powershell.exe")
-        .arg("-NoProfile")           // avoid loading user profile
-        .arg("-WindowStyle").arg("Hidden") // optional: hide PowerShell window
+        .arg("-NoProfile") // avoid loading user profile
+        .arg("-WindowStyle")
+        .arg("Hidden") // optional: hide PowerShell window
         .arg("-Command")
         .arg(command)
         .stdin(Stdio::inherit())
@@ -54,7 +54,6 @@ fn run_windows_command(command: &str) -> Result<std::process::Output> {
         ))),
     }
 }
-
 
 #[cfg(unix)]
 fn run_unix_command(command: &str) -> Result<std::process::Output> {
@@ -218,51 +217,46 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
             if admin {
                 #[cfg(windows)]
                 {
-                    let pwsh = find_powershell().map_err(|e| lua.create_string(e.to_string()))?;
-                    let cmd = AdminCmd::new(pwsh)
-                        .show(false)
-                        .status()?;
-                    if let Some(code) = cmd.code() {
-                        result_table.push(LuaValue::Integer(code.into()))?;
+                    if let Some(pwsh) = find_powershell() {
+                        let cmd = AdminCmd::new(pwsh).show(false).status()?;
+                        if let Some(code) = cmd.code() {
+                            result_table.push(LuaValue::Integer(code.into()))?;
+                        }
                     }
                 }
                 #[cfg(not(windows))]
                 {
-                    let cmd = AdminCmd::new(command)
-                        .show(false)
-                        .status()?;
+                    let cmd = AdminCmd::new(command).show(false).status()?;
                     if let Some(code) = cmd.code() {
                         result_table.push(LuaValue::Integer(code.into()))?;
                     }
                 }
-            }
-            else {
-                
-            // Run command and capture output
-            #[cfg(windows)]
-            let output: Result<Output> = run_windows_command(&command);
+            } else {
+                // Run command and capture output
+                #[cfg(windows)]
+                let output: Result<Output> = run_windows_command(&command);
 
-            #[cfg(unix)]
-            let output: Result<Output> = run_unix_command(&command);
+                #[cfg(unix)]
+                let output: Result<Output> = run_unix_command(&command);
 
-            #[cfg(not(any(windows, unix)))]
-            let output: Result<Output> = Err(mlua::Error::external("Unsupported OS"));
+                #[cfg(not(any(windows, unix)))]
+                let output: Result<Output> = Err(mlua::Error::external("Unsupported OS"));
 
-            match output {
-                Ok(cmd_output) => {
-                    let exit_code = cmd_output.status.code().unwrap_or(-1);
-                    result_table.set("code", exit_code)?;
-                    let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
-                    let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
-                    result_table.set("stdout", stdout)?;
-                    result_table.set("stderr", stderr)?;
+                match output {
+                    Ok(cmd_output) => {
+                        let exit_code = cmd_output.status.code().unwrap_or(-1);
+                        result_table.set("code", exit_code)?;
+                        let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
+                        let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
+                        result_table.set("stdout", stdout)?;
+                        result_table.set("stderr", stderr)?;
+                    }
+                    Err(e) => {
+                        result_table.set("code", -1)?;
+                        result_table.set("stdout", "")?;
+                        result_table.set("stderr", format!("Command execution failed: {}", e))?;
+                    }
                 }
-                Err(e) => {
-                    result_table.set("code", -1)?;
-                    result_table.set("stdout", "")?;
-                    result_table.set("stderr", format!("Command execution failed: {}", e))?;
-                }
-            }
             }
 
             Ok(result_table)

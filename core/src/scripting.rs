@@ -46,26 +46,25 @@ impl NinjaEngine {
 
     pub fn execute_function(&self, function: &str, path: &PathBuf) -> Result<(), LuaError> {
         let lua = &self.lua;
-    
+
         let script = std::fs::read_to_string(path)?;
-    
+
         // Create isolated env for the script
         let env = lua.create_table()?;
-    
+
         // Make environment inherit standard functions (optional)
         let globals = lua.globals();
         env.set_metatable(Some(lua.create_table_from([("__index", globals)])?))?;
-    
+
         // Load script into the isolated environment
         let chunk = lua.load(&script).set_environment(env.clone());
-    
+
         // Execute only once, into env, NOT global
-        chunk.exec()?; 
-    
+        chunk.exec()?;
+
         // Now extract the function from the isolated environment
         let func: mlua::Function = env.get(function)?;
-    
+
         func.call::<()>(())
     }
-
 }
