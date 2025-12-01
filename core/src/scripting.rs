@@ -1,6 +1,6 @@
 use super::modules::make_modules;
 use log::info;
-use mlua::{Error as LuaError, Function, Lua};
+use mlua::{Error as LuaError, Lua};
 use std::{fs, path::PathBuf};
 
 #[derive(Clone, Debug)]
@@ -45,22 +45,27 @@ impl NinjaEngine {
     }
 
     pub fn execute_function(&self, function: &str, path: &PathBuf) -> Result<(), LuaError> {
-        let globals = self.lua.globals();
-
+        let lua = &self.lua;
+    
         let script = std::fs::read_to_string(path)?;
-
-        // First try evaluating the script and capturing its return value
-        let value = self.lua.load(&script).eval::<mlua::Value>()?;
-
-        // Try to get the function from return value if it's a table
-        let func: Function = match value {
-            mlua::Value::Table(table) => table.get(function)?,
-            _ => {
-                // Fall back to looking in globals
-                globals.get(function)?
-            }
-        };
-
+    
+        // Create isolated env for the script
+        let env = lua.create_table()?;
+    
+        // Make environment inherit standard functions (optional)
+        let globals = lua.globals();
+        env.set_metatable(Some(lua.create_table_from([("__index", globals)])?))?;
+    
+        // Load script into the isolated environment
+        let chunk = lua.load(&script).set_environment(env.clone());
+    
+        // Execute only once, into env, NOT global
+        chunk.exec()?; 
+    
+        // Now extract the function from the isolated environment
+        let func: mlua::Function = env.get(function)?;
+    
         func.call::<()>(())
     }
+
 }
