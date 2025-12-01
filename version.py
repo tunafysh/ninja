@@ -1,7 +1,7 @@
 import tomllib
 import re
 import json
-import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 def get_version():
@@ -45,7 +45,7 @@ def get_signature(name: str) -> str:
 root = {
     "version": get_version(),
     "notes": get_changelog_for_version(get_version()),
-    "pub_date": time.time(),
+    "pub_date": datetime.now(timezone.utc).isoformat(),
     "platforms": {
         "linux-x86_64": {
             "signature": get_signature("ubuntu-22.04-build"),

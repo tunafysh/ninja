@@ -137,7 +137,10 @@ jobs:
         run: |
           VERSION=$(grep 'package.version =' Cargo.toml | sed -E 's/package.version = "(.*)"/\1/')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
+          
+      - name: Generate latest.json
+        run: |
+          uv run version.py
       # -------------------------------------------------
       # Build release body (signatures)
       # -------------------------------------------------
@@ -177,5 +180,6 @@ jobs:
             artifacts/**/Ninja*.rpm
             artifacts/**/Ninja*.tar.gz
             artifacts/**/*.sig
+            **/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
