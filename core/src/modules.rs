@@ -1,8 +1,8 @@
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
-use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
+use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table, Value as LuaValue};
 use serde_json::Value;
-use crate::util::make_admin_command;
+use runas::Command as AdminCmd;
 
 #[allow(unused_imports)]
 use std::{
@@ -198,12 +198,12 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
             let result_table = lua.create_table()?;
 
             if admin {
-                #[cfg(target_os = "linux")]
-                make_admin_command("sh", Some(&["-c".to_string(), command]))?;                
-                #[cfg(target_os = "windows")]
-                make_admin_command("cmd", Some(&["/C".to_string(), command]))?;
-                #[cfg(target_os = "macos")]
-                make_admin_command("sh", Some(&["-c".to_string(), command]))?;
+                let cmd = AdminCmd::new(command)
+                    .show(false)
+                    .status()?;
+                if let Some(code) = cmd.code() {
+                    result_table.push(LuaValue::Integer(code.into()))?;
+                }
             }
             else {
                 
