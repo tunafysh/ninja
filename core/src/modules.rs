@@ -218,7 +218,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
             if admin {
                 #[cfg(windows)]
                 {
-                    let pwsh = find_powershell()?;
+                    let pwsh = find_powershell().map_err(|e| lua.create_string(e.to_string()))?;
                     let cmd = AdminCmd::new(pwsh)
                         .show(false)
                         .status()?;
