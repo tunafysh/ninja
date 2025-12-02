@@ -1,3 +1,4 @@
+use dirs_next::data_dir;
 use ninja::{
     dsl::{DslContext, execute_commands},
     manager::ShurikenManager,
@@ -9,6 +10,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
+use std::fs;
 
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ShurikenRequest {
@@ -32,12 +34,13 @@ pub struct ScriptRequest {
     pub script: String,
 }
 
+#[derive(Clone)]
 pub struct Manager {
     manager: ShurikenManager,
     tool_router: ToolRouter<Self>,
 }
 
-#[tool_router( router = tool_router)]
+#[tool_router(router = tool_router)]
 impl Manager {
     pub async fn new() -> Self {
         let manager = ShurikenManager::new()
@@ -147,11 +150,30 @@ impl Manager {
         let _ = &self
             .manager
             .engine
+            .lock()
+            .await
             .execute(&script)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Script executed successfully",
         )]))
+    }
+
+    #[tool(
+        description = "Tool for reading the cheatsheet because rmcp doesn't support resources yet."
+    )]
+    pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
+        if let Some(data_dir) = data_dir() {
+            let cheatsheet_path = data_dir.join("shurikenctl").join("cheatsheet.md");
+            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+            })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                cheatsheet_content.as_str(),
+            )]))
+        } else {
+            Err(McpError::internal_error("Data directory not found", None))
+        }
     }
 }
 

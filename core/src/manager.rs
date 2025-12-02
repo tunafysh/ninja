@@ -24,6 +24,7 @@ use tar::{Archive, Builder as TarBuilder};
 use tokio::{
     fs::{self, File},
     io::AsyncWriteExt,
+    sync::Mutex,
     sync::RwLock,
 };
 
@@ -73,7 +74,7 @@ pub struct ArmoryMetadata {
 #[derive(Clone, Debug)]
 pub struct ShurikenManager {
     pub root_path: PathBuf,
-    pub engine: NinjaEngine,
+    pub engine: Arc<Mutex<NinjaEngine>>,
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
     pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
 }
@@ -251,11 +252,11 @@ impl ShurikenManager {
             }
         }
 
-        let engine = NinjaEngine::new();
+        let engine = NinjaEngine::new().map_err(|e| Error::msg(e.to_string()))?;
 
         Ok(Self {
             root_path: exe_dir,
-            engine: engine.map_err(|e| Error::msg(e.to_string()))?,
+            engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(shurikens)),
             states: Arc::new(RwLock::new(states)),
         })
@@ -287,7 +288,7 @@ impl ShurikenManager {
         env::set_current_dir(&shuriken_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
         // Run async start
-        if let Err(e) = shuriken.start().await {
+        if let Err(e) = shuriken.start(Some(&*self.engine.lock().await)).await {
             env::set_current_dir(original_dir).ok();
             return Err(anyhow::Error::msg(format!(
                 "Failed to start shuriken '{}': {}",
@@ -537,7 +538,7 @@ impl ShurikenManager {
         let original_dir = env::current_dir().map_err(|e| anyhow::Error::msg(e.to_string()))?;
         env::set_current_dir(&shuriken_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-        if let Err(e) = shuriken.stop().await {
+        if let Err(e) = shuriken.stop(Some(&*self.engine.lock().await)).await {
             env::set_current_dir(original_dir).ok();
             return Err(anyhow::Error::msg(format!(
                 "Failed to stop shuriken '{}': {}",
@@ -641,7 +642,8 @@ impl ShurikenManager {
         if let Some(pi_script) = &metadata.postinstall {
             info!("Running postinstall script");
 
-            let _ = &self.engine.execute_file(pi_script)?;
+            let engine = &self.engine.lock().await;
+            let _ = engine.execute_file(pi_script)?;
         }
 
         #[cfg(debug_assertions)]
@@ -660,7 +662,8 @@ impl ShurikenManager {
             fs::create_dir_all(output).await?;
         }
 
-        let mut file = File::create(output.join(format!("{}-{}.shuriken", meta.id, meta.platform))).await?;
+        let mut file =
+            File::create(output.join(format!("{}-{}.shuriken", meta.id, meta.platform))).await?;
         let serialized_metadata = to_vec(&meta)?;
 
         let archive = create_tar_gz_bytes(&path)?;

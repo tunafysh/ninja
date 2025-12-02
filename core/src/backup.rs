@@ -1,22 +1,22 @@
 use crate::manager::ShurikenManager;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use flate2::Compression;
-use flate2::{write::GzEncoder, read::GzDecoder};
+use flate2::{read::GzDecoder, write::GzEncoder};
 use ignore::WalkBuilder;
 use opendal::Operator;
 use opendal::services::Fs;
-use std::fs::File;
-use std::{process::Command, path::Path};
-use tar::{Builder as TarBuilder, Archive};
-use tokio::task;
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::{path::Path, process::Command};
+use tar::{Archive, Builder as TarBuilder};
+use tokio::task;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CompressionType {
     Fast,
     Normal,
-    Best
+    Best,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -99,7 +99,10 @@ pub fn uninstall_backup_schedule() -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn create_backup(manager: &ShurikenManager, compression: Option<CompressionType>) -> Result<()> {
+pub async fn create_backup(
+    manager: &ShurikenManager,
+    compression: Option<CompressionType>,
+) -> Result<()> {
     let backup_dir = manager.root_path.join("backups");
 
     // Make sure backup directory exists
@@ -119,8 +122,8 @@ pub async fn create_backup(manager: &ShurikenManager, compression: Option<Compre
 
     // Run synchronous backup in blocking task
     task::spawn_blocking(move || -> Result<()> {
-        let backup_file = File::create(&backup_file_path_clone)
-            .context("Failed to create backup file")?;
+        let backup_file =
+            File::create(&backup_file_path_clone).context("Failed to create backup file")?;
         let level: Compression = if let Some(compression) = compression {
             match compression {
                 CompressionType::Best => Compression::best(),
@@ -130,7 +133,7 @@ pub async fn create_backup(manager: &ShurikenManager, compression: Option<Compre
         } else {
             Compression::default()
         };
-        
+
         let mut gzip = GzEncoder::new(backup_file, level);
         {
             let mut tar = TarBuilder::new(&mut gzip);
@@ -145,7 +148,8 @@ pub async fn create_backup(manager: &ShurikenManager, compression: Option<Compre
                 let entry = entry.context("Failed to read directory entry")?;
                 if entry.file_type().map_or(false, |ft| ft.is_file()) {
                     let path = entry.path();
-                    let rel_path = path.strip_prefix(&projects_path)
+                    let rel_path = path
+                        .strip_prefix(&projects_path)
                         .context("Failed to strip prefix for path")?;
                     tar.append_path_with_name(path, rel_path)
                         .context("Failed to append file to tar")?;
@@ -156,8 +160,9 @@ pub async fn create_backup(manager: &ShurikenManager, compression: Option<Compre
 
         gzip.finish().context("Failed to finish gzip compression")?;
         Ok(())
-    }).await
-      .context("Backup task panicked")??;
+    })
+    .await
+    .context("Backup task panicked")??;
 
     // Optional: upload to Opendal
     let fs_builder = Fs::default().root(&backup_dir.display().to_string());
@@ -169,7 +174,8 @@ pub async fn create_backup(manager: &ShurikenManager, compression: Option<Compre
     let data = tokio::fs::read(&backup_file_path)
         .await
         .context("Failed to read backup file")?;
-    fs_op.write(&backup_name, data)
+    fs_op
+        .write(&backup_name, data)
         .await
         .context("Failed to write backup file to Opendal")?;
 
@@ -184,17 +190,19 @@ pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()
 
     // Run synchronous restore in blocking task
     task::spawn_blocking(move || -> Result<()> {
-        let backup_file = File::open(&backup_file_path_clone)
-            .context("Failed to open backup file")?;
+        let backup_file =
+            File::open(&backup_file_path_clone).context("Failed to open backup file")?;
         let decompressor = GzDecoder::new(backup_file);
         let mut archive = Archive::new(decompressor);
 
-        archive.unpack(&projects_path_clone)
+        archive
+            .unpack(&projects_path_clone)
             .context("Failed to unpack backup archive")?;
 
         Ok(())
-    }).await
-      .context("Restore task panicked")??;
+    })
+    .await
+    .context("Restore task panicked")??;
 
     Ok(())
 }

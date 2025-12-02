@@ -187,7 +187,6 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
         refreshProjects={refreshProjects}
         openProjectsFolder={openProjectsFolder}
         openSpecificProject={openSpecificProject}
-        gridView={gridView}
       />
     </div>
   )

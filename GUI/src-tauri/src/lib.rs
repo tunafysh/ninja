@@ -1,8 +1,11 @@
 use ninja::manager::ShurikenManager;
-use tauri::{Manager, Emitter};
+use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
 use commands::*;
+use dirs_next::data_dir;
+use std::fs;
 use tokio::sync::Mutex;
 
 mod link_parser;
@@ -14,7 +17,7 @@ fn is_url(s: &str) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
- 
+
     let mut builder = tauri::Builder::default()
         .setup(|app| {
             // Initialize ShurikenManager
@@ -22,7 +25,29 @@ pub fn run() {
                 tauri::async_runtime::block_on(ShurikenManager::new())
                     .expect("Failed to spawn a shuriken manager"),
             );
+            
             app.manage(manager);
+            {
+                let resource_dir = app.path().resource_dir()?;
+                let docs_path = resource_dir.join("cheatsheet.md");
+                let target_path = data_dir().unwrap().join("shurikenctl");
+                if !target_path.exists() {
+                    fs::create_dir_all(&target_path).expect("Failed to create docs directory");
+                    fs::copy(&docs_path, target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
+                }
+                
+                let important_file = resource_dir.join("coconut.jpg");
+                if !important_file.exists() {
+                    app.dialog()
+                        .message("Required file 'coconut.jpg' is missing.\nNinja will not run without it.\nIf you think this is a mistake — reinstall or restore the file.\n(Yes — the coconut is important.)")
+                        .kind(MessageDialogKind::Error)
+                        .title("Source Engine Error")
+                        .blocking_show();
+                }
+                
+            }
+            
+            
 
             #[cfg(any(windows, target_os = "linux"))]
             {
@@ -56,7 +81,9 @@ pub fn run() {
                 });
             } else {
                 let metadata = open_shuriken(argv[1].to_string().clone()).unwrap();
-                let _ = app.emit("view_local_shuriken", (metadata, argv[1].to_string())).unwrap();
+                let _ = app
+                    .emit("view_local_shuriken", (metadata, argv[1].to_string()))
+                    .unwrap();
             }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
@@ -71,7 +98,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .filter(|metadata| !metadata.target().starts_with("tao"))
-                .build()
+                .build(),
         )
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

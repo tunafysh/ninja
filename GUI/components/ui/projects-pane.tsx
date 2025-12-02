@@ -18,7 +18,6 @@ interface LocalProjectsSidebarProps {
   refreshProjects: () => void;
   openProjectsFolder: () => void;
   openSpecificProject: (projectName: string) => void;
-  gridView: "grid" | "list";
 }
 
 export default function LocalProjectsSidebar({
@@ -26,7 +25,6 @@ export default function LocalProjectsSidebar({
   refreshProjects,
   openProjectsFolder,
   openSpecificProject,
-  gridView,
 }: LocalProjectsSidebarProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [readmeCache, setReadmeCache] = useState<Record<string, string>>({});
@@ -87,59 +85,6 @@ export default function LocalProjectsSidebar({
           </div>
         </div>
       </CardHeader>
-
-      {/* Grid View */}
-      {gridView === "grid" ? (
-        <CardContent>
-          {projects?.length ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projects.map((p) => {
-                const isExpanded = selected === p;
-                return (
-                  <div
-                    key={p}
-                    className={`shadow-sm rounded-lg overflow-hidden cursor-pointer transition-all duration-300 p-1.5 ${
-                      isExpanded ? "shadow-xl bg-card" : "bg-card hover:scale-105"
-                    }`}
-                    onClick={() => toggleExpand(p)}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between p-2">
-                      <CardTitle className="text-sm font-medium">{capitalizeFirstLetter(p)}</CardTitle>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openSpecificProject(p);
-                        }}
-                      >
-                        <FolderOpen className="w-4 h-4" />
-                      </Button>
-                    </CardHeader>
-
-                    <div
-                      className={`overflow-hidden transition-all duration-300 ${
-                        isExpanded ? "max-h-96 opacity-100 p-4 border-t" : "max-h-0 opacity-0"
-                      }`}
-                    >
-                      {isExpanded && (loading && !readmeCache[p] ? (
-                        <p className="text-muted-foreground">Loading README...</p>
-                      ) : (
-                        renderReadme(p)
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-6 text-sm">
-              No projects found.
-            </div>
-          )}
-        </CardContent>
-      ) : (
-        // List View
         <CardContent className="p-0 flex border-2 border-muted rounded-lg">
           <div className="w-52 border-r bg-muted/30 p-2 min-h-48">
             <ScrollArea className="h-full">
@@ -188,7 +133,6 @@ export default function LocalProjectsSidebar({
             )}
           </div>
         </CardContent>
-      )}
     </Card>
   );
 }

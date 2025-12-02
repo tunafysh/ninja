@@ -196,12 +196,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = file_arg.as_str();
             let path = PathBuf::from(content);
             if path.exists() {
-                match manager.engine.execute_file(&path) {
+                match manager.engine.lock().await.execute_file(&path) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
             } else {
-                match manager.engine.execute(content) {
+                match manager.engine.lock().await.execute(content) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -372,7 +372,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: None,
                 }),
                 logs: None,
-                tools:None,
+                tools: None,
             };
 
             create_dir_all(format!("shurikens/{}/.ninja", name)).unwrap_or_else(|_| {
@@ -394,7 +394,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            
             if let Some(management) = &manifest.metadata.management {
                 if let ManagementType::Script { script_path } = management {
                     if let Some(parent) = script_path.parent() {
@@ -407,7 +406,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .await?;
                 }
             }
-
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
                 eprintln!("Failed to serialize manifest for shuriken '{}'", name);
@@ -441,9 +439,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     fs::create_dir("blacksmith").await?;
                 }
 
-                manager
-                    .forge(metadata, args.path)
-                    .await?;
+                manager.forge(metadata, args.path).await?;
             } else {
                 let theme = ColorfulTheme::default();
                 let name: String = Input::with_theme(&theme)
@@ -477,7 +473,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .interact()
                     .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
                     .unwrap();
-                
+
                 let synopsis: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
@@ -488,10 +484,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Input::<String>::with_theme(&ColorfulTheme::default())
                         .with_prompt("Authors of this shuriken (optional, comma‑separated)")
                         .allow_empty(true)
-                        .interact_text().ok()
-                        .map(|s| s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect::<Vec<_>>())
+                        .interact_text()
+                        .ok()
+                        .map(|s| {
+                            s.split(',')
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(String::from)
+                                .collect::<Vec<_>>()
+                        })
                         .and_then(|v| if v.is_empty() { return None } else { Some(v) });
-
 
                 let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
@@ -515,9 +517,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 println!("{}", "Creating shuriken...".bold());
 
-                manager
-                    .forge(metadata, args.path)
-                    .await?;
+                manager.forge(metadata, args.path).await?;
             }
         }
         Some(Commands::Remove(args)) => {

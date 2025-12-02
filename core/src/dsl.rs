@@ -194,9 +194,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
             }
 
             let cmd = match tokens[0].as_str() {
-                "http" => {
-                    Command::HttpStart(tokens[1].parse().unwrap_or(80))
-                }
+                "http" => Command::HttpStart(tokens[1].parse().unwrap_or(80)),
                 "start" => Command::Start,
                 "stop" => Command::Stop,
                 "select" => {

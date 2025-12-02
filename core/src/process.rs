@@ -1,5 +1,5 @@
-use std::process::{Command, Stdio};
 use std::io;
+use std::process::{Command, Stdio};
 
 #[derive(Debug)]
 pub struct DetachedProcess {
@@ -43,7 +43,7 @@ impl DetachedProcess {
     pub fn kill(&self) -> io::Result<()> {
         #[cfg(unix)]
         {
-            use nix::sys::signal::{kill, Signal};
+            use nix::sys::signal::{Signal, kill};
             use nix::unistd::Pid;
 
             kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL)

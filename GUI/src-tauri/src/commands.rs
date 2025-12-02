@@ -1,10 +1,10 @@
 use log::{error, info};
+use ninja::backup::{create_backup, restore_backup, CompressionType};
 use serde_cbor;
-use std::{collections::HashMap, io::Read, path::{PathBuf}};
+use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
-use ninja::backup::{create_backup, restore_backup, CompressionType};
 
 use ninja::{
     dsl::{execute_commands, DslContext},
@@ -248,16 +248,26 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
 }
 
 #[tauri::command]
-pub async fn backup_now(level: CompressionType, manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
-    let manager = manager.lock().await;    
-    create_backup(&manager, Some(level)).await.map_err(|e| e.to_string())?;
+pub async fn backup_now(
+    level: CompressionType,
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    create_backup(&manager, Some(level))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn backup_restore(file: String, manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
-    let manager = manager.lock().await;    
+pub async fn backup_restore(
+    file: String,
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
     let path = PathBuf::from(file);
-    restore_backup(&manager, &path).await.map_err(|e| e.to_string())?;
+    restore_backup(&manager, &path)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

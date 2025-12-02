@@ -1,19 +1,20 @@
-
-
+use anyhow;
 use either::Either;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
-use std::ptr;
 use std::path::PathBuf;
-use anyhow;
+use std::ptr;
 use std::sync::Mutex;
-use tokio::runtime::{Builder, Runtime};
 use tokio::fs;
+use tokio::runtime::{Builder, Runtime};
 
 // Adapt this import to match your core crate
-use ninja::{manager::{ShurikenManager, ArmoryMetadata}, types::ShurikenState};
+use ninja::{
+    manager::{ArmoryMetadata, ShurikenManager},
+    types::ShurikenState,
+};
 
 // ========================
 // Global Tokio runtime
@@ -386,23 +387,24 @@ fn path_from_c(ptr: *const c_char) -> Option<PathBuf> {
     str_from_c(ptr).map(PathBuf::from)
 }
 
-fn json_result_or_error<T: Serialize>(res: Result<T, anyhow::Error>, out_err: *mut *mut c_char) -> *mut c_char {
+fn json_result_or_error<T: Serialize>(
+    res: Result<T, anyhow::Error>,
+    out_err: *mut *mut c_char,
+) -> *mut c_char {
     match res {
-        Ok(v) => {
-            match serde_json::to_string(&v) {
-                Ok(s) => CString::new(s).unwrap().into_raw(),
-                Err(e) => {
-                    let msg = format!("serde_json error: {}", e);
-                    set_last_error(msg.clone());
-                    unsafe {
-                        if !out_err.is_null() {
-                            *out_err = CString::new(msg).unwrap().into_raw();
-                        }
+        Ok(v) => match serde_json::to_string(&v) {
+            Ok(s) => CString::new(s).unwrap().into_raw(),
+            Err(e) => {
+                let msg = format!("serde_json error: {}", e);
+                set_last_error(msg.clone());
+                unsafe {
+                    if !out_err.is_null() {
+                        *out_err = CString::new(msg).unwrap().into_raw();
                     }
-                    ptr::null_mut()
                 }
+                ptr::null_mut()
             }
-        }
+        },
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
@@ -743,9 +745,7 @@ pub extern "C" fn ninja_forge_sync(
         }
     };
 
-    let res = RUNTIME.block_on(async move {
-        manager.forge(meta, src).await
-    });
+    let res = RUNTIME.block_on(async move { manager.forge(meta, src).await });
 
     match res {
         Ok(()) => 0,
@@ -825,21 +825,19 @@ pub extern "C" fn ninja_get_shuriken_sync(
     let res = RUNTIME.block_on(async { manager.get(name).await });
 
     match res {
-        Ok(shuriken) => {
-            match serde_json::to_string(&shuriken) {
-                Ok(s) => CString::new(s).unwrap().into_raw(),
-                Err(e) => {
-                    let msg = format!("serde_json error: {}", e);
-                    set_last_error(msg.clone());
-                    unsafe {
-                        if !out_err.is_null() {
-                            *out_err = CString::new(msg).unwrap().into_raw();
-                        }
+        Ok(shuriken) => match serde_json::to_string(&shuriken) {
+            Ok(s) => CString::new(s).unwrap().into_raw(),
+            Err(e) => {
+                let msg = format!("serde_json error: {}", e);
+                set_last_error(msg.clone());
+                unsafe {
+                    if !out_err.is_null() {
+                        *out_err = CString::new(msg).unwrap().into_raw();
                     }
-                    ptr::null_mut()
                 }
+                ptr::null_mut()
             }
-        }
+        },
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());

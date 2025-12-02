@@ -222,7 +222,7 @@ pub struct Shuriken {
 }
 
 impl Shuriken {
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&self, engine: Option<&NinjaEngine>) -> Result<(), String> {
         info!("Starting shuriken {}", self.metadata.name);
 
         match &self.metadata.management {
@@ -271,45 +271,32 @@ impl Shuriken {
             }
 
             Some(ManagementType::Script { script_path }) => {
-                let engine = NinjaEngine::new()
-                    .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
+                if let Some(engine) = engine {
+                    engine.execute_function("start", script_path).map_err(|e| {
+                        format!(
+                            "Failed to execute function 'start' in script '{}': {}",
+                            script_path.display(),
+                            e
+                        )
+                    })?;
 
-                engine.execute_function("start", script_path).map_err(|e| {
-                    format!(
-                        "Failed to execute function 'start' in script '{}': {}",
-                        script_path.display(),
-                        e
+                    let lockfile_data = json!({
+                        "name": self.metadata.name,
+                        "type": "Script",
+                    });
+
+                    fs::write(
+                        "shuriken.lck",
+                        serde_json::to_string(&lockfile_data).unwrap(),
                     )
-                })?;
-
-                let lockfile_data = json!({
-                    "name": self.metadata.name,
-                    "type": "Script",
-                });
-
-                fs::write(
-                    "shuriken.lck",
-                    serde_json::to_string(&lockfile_data).unwrap(),
-                )
-                .await
-                .map_err(|e| format!("Failed to write shuriken.lck: {}", e))?;
+                    .await
+                    .map_err(|e| format!("Failed to write shuriken.lck: {}", e))?;
+                }
 
                 Ok(())
             }
 
-            None => {
-                // Plain executable with no management
-                let bin_str = &self.metadata.shuriken_type; // or store actual path somewhere
-                let mut cmd = Command::new(bin_str);
-                let mut process = cmd
-                    .spawn()
-                    .map_err(|e| format!("Failed to spawn unmanaged shuriken: {}", e))?;
-
-                tokio::spawn(async move {
-                    let _ = process.wait().await;
-                });
-                Ok(())
-            }
+            None => Ok(()),
         }
     }
 
@@ -349,7 +336,7 @@ impl Shuriken {
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<(), String> {
+    pub async fn stop(&self, engine: Option<&NinjaEngine>) -> Result<(), String> {
         info!("Stopping shuriken {}", self.metadata.name);
 
         match &self.metadata.management {
@@ -386,34 +373,23 @@ impl Shuriken {
             }
 
             Some(ManagementType::Script { script_path }) => {
-                let engine = NinjaEngine::new()
-                    .map_err(|e| format!("Failed to create NinjaEngine: {}", e))?;
+                if let Some(engine) = engine {
+                    engine.execute_function("stop", script_path).map_err(|e| {
+                        format!(
+                            "Failed to execute 'stop' in script '{}': {}",
+                            script_path.display(),
+                            e
+                        )
+                    })?;
 
-                engine.execute_function("stop", script_path).map_err(|e| {
-                    format!(
-                        "Failed to execute 'stop' in script '{}': {}",
-                        script_path.display(),
-                        e
-                    )
-                })?;
-
-                fs::remove_file("shuriken.lck")
-                    .await
-                    .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
-
-                Ok(())
-            }
-
-            None => {
-                // No management: fallback to killing by name
-                if !kill_process_by_name(&self.metadata.name) {
-                    return Err(format!(
-                        "Failed to terminate unmanaged shuriken {}",
-                        self.metadata.name
-                    ));
+                    fs::remove_file("shuriken.lck")
+                        .await
+                        .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
                 }
                 Ok(())
             }
+
+            None => Ok(()),
         }
     }
 }

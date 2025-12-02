@@ -84,19 +84,18 @@ mod ninja_api_integration_tests {
         manager::ShurikenManager,
         scripting::NinjaEngine,
         shuriken::{
-            ManagementType, Shuriken, ShurikenMetadata, get_process_start_time,
-            kill_process_by_pid,
+            ManagementType, Shuriken, ShurikenMetadata, get_process_start_time, kill_process_by_pid,
         },
     };
     use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
-    use tokio::sync::RwLock;
+    use tokio::sync::{Mutex, RwLock};
 
     #[tokio::test]
     async fn test_lockfile_written_for_script() {
         let dir = tempdir().unwrap();
         let lockfile = dir.path().join(".ninja").join("shuriken.lck");
-
+        let engine = NinjaEngine::new().unwrap();
         let script_path = dir.path().join(".ninja").join("dummy.ns");
         fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
         write_stub_script(&script_path);
@@ -115,10 +114,10 @@ mod ninja_api_integration_tests {
             },
             config: None,
             logs: None,
-            tools: None
+            tools: None,
         };
 
-        shuriken.start().await.unwrap();
+        shuriken.start(Some(&engine)).await.unwrap();
         assert!(lockfile.exists());
     }
 
@@ -129,7 +128,7 @@ mod ninja_api_integration_tests {
         let engine = NinjaEngine::new().unwrap();
         let manager = ShurikenManager {
             root_path: dir.path().to_path_buf(),
-            engine,
+            engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
         };
@@ -156,6 +155,7 @@ mod ninja_api_integration_tests {
 
     #[tokio::test]
     async fn test_stop_without_lockfile() {
+        let engine = NinjaEngine::new().unwrap();
         let shuriken = Shuriken {
             metadata: ShurikenMetadata {
                 name: "fake".into(),
@@ -169,7 +169,7 @@ mod ninja_api_integration_tests {
             },
             config: None,
             logs: None,
-            tools:None,
+            tools: None,
         };
 
         // change dir to empty tempdir so lockfile isn't found
@@ -180,7 +180,7 @@ mod ninja_api_integration_tests {
         fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
         write_stub_script(&script_path);
 
-        let result = shuriken.stop().await;
+        let result = shuriken.stop(Some(&engine)).await;
         assert!(result.is_err()); // script stop doesn't require pid
     }
 }

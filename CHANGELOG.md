@@ -26,3 +26,8 @@
 
 * Improved backup functionality.
 * Backups no longer ignore hidden files.
+
+## 1.2.0
+
+* Added a new tool for reading the cheatsheet because rmcp doesn't support resources yet. And not to confuse the LLM.
+* Overhauled the way Scripted shurikens start and stop by sharing the engine. Thus improving speed and efficiency.
