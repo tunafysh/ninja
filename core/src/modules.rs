@@ -14,6 +14,23 @@ use std::{
 };
 
 #[cfg(windows)]
+fn find_powershell() -> Option<String> {
+    // PowerShell 7+
+    let ps7 = r"C:\Program Files\PowerShell\7\pwsh.exe";
+    if Path::new(ps7).exists() {
+        return Some(ps7.to_string());
+    }
+
+    // Windows PowerShell 5.1
+    let ps51 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+    if Path::new(ps51).exists() {
+        return Some(ps51.to_string());
+    }
+
+    None
+}
+
+#[cfg(windows)]
 fn run_windows_command(command: &str) -> Result<std::process::Output> {
     use std::io;
     use std::process::{Command, Stdio};
