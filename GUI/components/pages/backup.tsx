@@ -3,27 +3,36 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Select, SelectValue, SelectTrigger, SelectContent, SelectItem, SelectLabel } from "@/components/ui/select"
 import { toast } from "sonner"
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from "@tauri-apps/api/core"
 import { useState } from "react"
 
+type CompressionType = "Fast" | "Normal" | "Best";
+
+function parseCompressionType(s: string): CompressionType | undefined {
+  if (s === "Fast" || s === "Normal" || s === "Best") {
+    return s;
+  }
+  return undefined; // invalid value
+}
+
 export default function Backup() {
   const [restoringFile, setRestoringFile] = useState("")
-
+  const [compressionType, setCompressionType] = useState<CompressionType>("Normal")
   async function handleBackupNow() {
     try {
-      const path = await invoke<string>("backup_now")
-      toast.success(`Backup created: ${path}`)
-    } catch {
-      toast.error("Failed to create backup.")
+      await invoke("backup_now", { level: compressionType })
+      toast.success(`Backup created successfully.`)
+    } catch(e) {
+      toast.error(`Failed to create backup: ${e}`)
     }
   }
 
   async function handleRestore() {
     try {
-      await invoke("restore_backup", { file: restoringFile })
+      await invoke("backup_restore", { file: restoringFile })
       toast.success("Backup restored successfully")
     } catch {
       toast.error("Failed to restore backup.")
@@ -48,6 +57,21 @@ export default function Backup() {
             <p className="text-sm text-muted-foreground text-center">
               Create a backup of your projects in a compressed <code>.tar.gz</code> archive.
             </p>
+            <div className="flex w-full gap-2">
+              <Select
+                value={compressionType}
+                onValueChange={(value) => setCompressionType(parseCompressionType(value) ?? compressionType)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Compression Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Fast">Fast</SelectItem>
+                  <SelectItem value="Normal">Normal</SelectItem>
+                  <SelectItem value="Best">Best</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button onClick={handleBackupNow} className="w-full md:w-auto">
               Backup Now (.tar.gz)
             </Button>

@@ -22,6 +22,7 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
         if (file) {
           console.log("Selected file:", file);
           let res = await invoke("open_shuriken", {path: file});
+          console.log(res)
         }
         else {
           console.log("No file selected");

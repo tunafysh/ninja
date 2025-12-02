@@ -1,13 +1,23 @@
 use crate::manager::ShurikenManager;
 use chrono::Utc;
 use flate2::Compression;
-use flate2::write::GzEncoder;
+use flate2::{write::GzEncoder, read::GzDecoder};
 use ignore::WalkBuilder;
 use opendal::Operator;
 use opendal::services::Fs;
 use std::fs::File;
-use std::process::Command;
-use tar::Builder as TarBuilder;
+use std::{process::Command, path::Path};
+use tar::{Builder as TarBuilder, Archive};
+use tokio::task;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum CompressionType {
+    Fast,
+    Normal,
+    Best
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum BackupFrequency {
@@ -89,14 +99,14 @@ pub fn uninstall_backup_schedule() -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn create_backup(manager: &ShurikenManager) -> Result<(), String> {
+pub async fn create_backup(manager: &ShurikenManager, compression: Option<CompressionType>) -> Result<()> {
     let backup_dir = manager.root_path.join("backups");
 
-    // Make sure backup directory exists (async)
+    // Make sure backup directory exists
     if !backup_dir.exists() {
         tokio::fs::create_dir_all(&backup_dir)
             .await
-            .map_err(|e| e.to_string())?;
+            .context("Failed to create backup directory")?;
     }
 
     let backup_file_path = backup_dir.join(format!(
@@ -104,57 +114,87 @@ pub async fn create_backup(manager: &ShurikenManager) -> Result<(), String> {
         Utc::now().format("%Y-%m-%d-%H-%M-%S")
     ));
 
-    // Run synchronous backup in blocking task
     let projects_path = manager.root_path.join("projects");
     let backup_file_path_clone = backup_file_path.clone();
 
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let backup_file = File::create(&backup_file_path_clone).map_err(|e| e.to_string())?;
-        let mut gzip = GzEncoder::new(backup_file, Compression::default());
+    // Run synchronous backup in blocking task
+    task::spawn_blocking(move || -> Result<()> {
+        let backup_file = File::create(&backup_file_path_clone)
+            .context("Failed to create backup file")?;
+        let level: Compression = if let Some(compression) = compression {
+            match compression {
+                CompressionType::Best => Compression::best(),
+                CompressionType::Normal => Compression::default(),
+                CompressionType::Fast => Compression::fast(),
+            }
+        } else {
+            Compression::default()
+        };
+        
+        let mut gzip = GzEncoder::new(backup_file, level);
         {
             let mut tar = TarBuilder::new(&mut gzip);
 
             for entry in WalkBuilder::new(&projects_path)
+                .hidden(false)
                 .git_ignore(true)
                 .git_global(true)
                 .ignore(true)
                 .build()
             {
-                let entry = entry.map_err(|e| e.to_string())?;
+                let entry = entry.context("Failed to read directory entry")?;
                 if entry.file_type().map_or(false, |ft| ft.is_file()) {
                     let path = entry.path();
-                    let rel_path = path
-                        .strip_prefix(&projects_path)
-                        .map_err(|e| e.to_string())?;
+                    let rel_path = path.strip_prefix(&projects_path)
+                        .context("Failed to strip prefix for path")?;
                     tar.append_path_with_name(path, rel_path)
-                        .map_err(|e| e.to_string())?;
+                        .context("Failed to append file to tar")?;
                 }
             }
-            tar.finish().map_err(|e| e.to_string())?;
+            tar.finish().context("Failed to finish tar archive")?;
         }
 
-        // Then finish gzip
-        gzip.finish().map_err(|e| e.to_string())?;
-
+        gzip.finish().context("Failed to finish gzip compression")?;
         Ok(())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    }).await
+      .context("Backup task panicked")??;
 
-    // Optional: upload to Opendal (async)
+    // Optional: upload to Opendal
     let fs_builder = Fs::default().root(&backup_dir.display().to_string());
     let fs_op = Operator::new(fs_builder)
-        .map_err(|e| e.to_string())?
+        .context("Failed to create Opendal operator")?
         .finish();
 
     let backup_name = backup_file_path.file_name().unwrap().to_string_lossy();
     let data = tokio::fs::read(&backup_file_path)
         .await
-        .map_err(|e| e.to_string())?;
-    fs_op
-        .write(&backup_name, data)
+        .context("Failed to read backup file")?;
+    fs_op.write(&backup_name, data)
         .await
-        .map_err(|e| e.to_string())?;
+        .context("Failed to write backup file to Opendal")?;
+
+    Ok(())
+}
+
+pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()> {
+    let backup_file_path = file.to_path_buf();
+    let projects_path = manager.root_path.join("projects");
+    let backup_file_path_clone = backup_file_path.clone();
+    let projects_path_clone = projects_path.clone();
+
+    // Run synchronous restore in blocking task
+    task::spawn_blocking(move || -> Result<()> {
+        let backup_file = File::open(&backup_file_path_clone)
+            .context("Failed to open backup file")?;
+        let decompressor = GzDecoder::new(backup_file);
+        let mut archive = Archive::new(decompressor);
+
+        archive.unpack(&projects_path_clone)
+            .context("Failed to unpack backup archive")?;
+
+        Ok(())
+    }).await
+      .context("Restore task panicked")??;
 
     Ok(())
 }

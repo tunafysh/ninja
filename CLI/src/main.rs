@@ -17,7 +17,6 @@ use std::{
     env,
     fs::{File, create_dir_all},
     io::Write,
-    ops::Not,
     path::PathBuf,
     process::exit,
 };
@@ -113,6 +112,7 @@ pub struct ForgeArgs {
     /// The path of the files to forge a shuriken (with the .ninja folder and everything)
     pub path: PathBuf,
     /// optional path to something like forge-options.json to skip inputs (CI friendly)
+    #[arg(short = 'c', long)]
     pub options: Option<PathBuf>,
 }
 
@@ -442,7 +442,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 manager
-                    .forge(metadata, args.path, PathBuf::from("blacksmith/"))
+                    .forge(metadata, args.path)
                     .await?;
             } else {
                 let theme = ColorfulTheme::default();
@@ -466,38 +466,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .interact_text()
                     .unwrap();
 
-                let mut dependencies: Vec<String> = Vec::new();
-
-                loop {
-                    let value: String = Input::with_theme(&theme)
-                        .with_prompt("Enter option key (leave empty to finish)")
-                        .allow_empty(true)
-                        .interact_text()
-                        .unwrap();
-
-                    if value.trim().is_empty() {
-                        break;
-                    }
-
-                    dependencies.push(value);
-                }
-
                 let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
                     .interact()
-                    .map(|s: String| s.is_empty().not().then_some(PathBuf::from(s)))
+                    .map(|s: String| if s.trim().is_empty() {  return None } else { Some(PathBuf::from(s)) })
                     .unwrap();
 
                 let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
-                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
                     .unwrap();
                 
                 let synopsis: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
-                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
                     .unwrap();
 
                 let authors: Option<Vec<String>> =
@@ -506,13 +490,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .allow_empty(true)
                         .interact_text().ok()
                         .map(|s| s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect::<Vec<_>>())
-                        .and_then(|v| if v.is_empty() { None } else { Some(v) });
+                        .and_then(|v| if v.is_empty() { return None } else { Some(v) });
 
 
                 let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
                     .interact()
-                    .map(|s: String| s.is_empty().not().then_some(s))
+                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
                     .unwrap();
 
                 println!("{}", format!("Generating metadata for '{}'", &name).bold());
@@ -530,12 +514,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 println!("{}", "Creating shuriken...".bold());
-                if !PathBuf::from("blacksmith/").exists() {
-                    fs::create_dir("blacksmith").await?;
-                }
 
                 manager
-                    .forge(metadata, args.path, PathBuf::from("blacksmith/"))
+                    .forge(metadata, args.path)
                     .await?;
             }
         }

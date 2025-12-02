@@ -21,3 +21,8 @@
 
 * Fixed a bug in the admin functionality...
 * Switched to using PowerShell instead of cmd.
+
+## 1.1.0
+
+* Improved backup functionality.
+* Backups no longer ignore hidden files.

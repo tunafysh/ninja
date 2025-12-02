@@ -87,7 +87,9 @@ pub fn run() {
             save_config,
             get_projects,
             get_project_readme,
-            open_shuriken
+            open_shuriken,
+            backup_restore,
+            backup_now
         ]);
 
     builder

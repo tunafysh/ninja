@@ -691,7 +691,6 @@ pub extern "C" fn ninja_forge_sync(
     mgr: *mut NinjaManagerOpaque,
     meta_json: *const c_char,
     src_path: *const c_char,
-    output_dir: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
     let meta_str = match str_from_c(meta_json) {
@@ -732,18 +731,6 @@ pub extern "C" fn ninja_forge_sync(
         }
     };
 
-    let out_dir = match path_from_c(output_dir) {
-        Some(p) => p,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null output path").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m.clone(),
         None => {
@@ -757,7 +744,7 @@ pub extern "C" fn ninja_forge_sync(
     };
 
     let res = RUNTIME.block_on(async move {
-        manager.forge(meta, src, out_dir).await
+        manager.forge(meta, src).await
     });
 
     match res {
@@ -957,7 +944,6 @@ pub extern "C" fn ninja_forge_async(
     mgr: *mut NinjaManagerOpaque,
     meta_json: *const c_char,
     src_path: *const c_char,
-    output_dir: *const c_char,
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
 ) {
@@ -973,10 +959,6 @@ pub extern "C" fn ninja_forge_async(
         Some(p) => p,
         None => return,
     };
-    let out_dir = match path_from_c(output_dir) {
-        Some(p) => p,
-        None => return,
-    };
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m.clone(),
         None => return,
@@ -984,7 +966,7 @@ pub extern "C" fn ninja_forge_async(
     let userdata_usize = userdata as usize;
 
     let _handle = RUNTIME.spawn(async move {
-        let r = manager.forge(meta, src, out_dir).await;
+        let r = manager.forge(meta, src).await;
         let json = match r {
             Ok(()) => "{\"ok\":true}".to_string(),
             Err(e) => format!("{{\"error\":\"{}\"}}", e),

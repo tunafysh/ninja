@@ -596,6 +596,7 @@ impl ShurikenManager {
     }
 
     pub async fn install(&self, path: PathBuf) -> Result<()> {
+        info!("Starting installation");
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
         }
@@ -653,12 +654,13 @@ impl ShurikenManager {
         Ok(())
     }
 
-    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf, output: PathBuf) -> Result<()> {
-        if !path.exists() {
-            return Err(anyhow::Error::msg("Source folder does not exist"));
+    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf) -> Result<()> {
+        let output = &self.root_path.join("blacksmith");
+        if !output.exists() {
+            fs::create_dir_all(output).await?;
         }
 
-        let mut file = File::create(output.join(format!("{}-{}", meta.id, meta.platform))).await?;
+        let mut file = File::create(output.join(format!("{}-{}.shuriken", meta.id, meta.platform))).await?;
         let serialized_metadata = to_vec(&meta)?;
 
         let archive = create_tar_gz_bytes(&path)?;
