@@ -14,7 +14,7 @@ fn is_url(s: &str) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
-
+ 
     let mut builder = tauri::Builder::default()
         .setup(|app| {
             // Initialize ShurikenManager

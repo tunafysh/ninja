@@ -1,21 +1,14 @@
-!include "FileFunc.nsh"
-!include "WordFunc.nsh"
-!insertmacro WordFind
-
 !macro NSIS_HOOK_POSTINSTALL
   ; Read existing user PATH
   ReadRegStr $0 HKCU "Environment" "PATH"
 
   ; Check if $INSTDIR is already in PATH
-  ; WordFind params: output_var, string, word, case_sensitive, delimiter
-  ${WordFind} $1 $0 $INSTDIR 0 ";"
-
-  ; $1 = -1 → not found
-  ${If} $1 == -1
-    ; Append $INSTDIR to PATH
+  StrStr $1 $0 $INSTDIR
+  StrCmp $1 "" 0 +3
+    ; Not found → append to PATH
     StrCmp $0 "" 0 +2
       StrCpy $0 "$INSTDIR"
-      Goto +3
+      Goto +2
     StrCpy $0 "$0;$INSTDIR"
     WriteRegStr HKCU "Environment" "PATH" "$0"
 
@@ -24,5 +17,4 @@
 
     ; Optional confirmation
     MessageBox MB_OK "Ninja directory added to PATH!"
-  ${EndIf}
 !macroend
