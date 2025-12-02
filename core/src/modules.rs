@@ -14,66 +14,6 @@ use std::{
 };
 
 #[cfg(windows)]
-fn spawn_detached_admin(cmdline: &str) -> Result<i32> {
-    use windows::Win32::Foundation::*;
-    use windows::Win32::System::Threading::*;
-    use windows::Win32::System::WindowsProgramming::*;
-
-    let mut si = STARTUPINFOA::default();
-    si.cb = std::mem::size_of::<STARTUPINFOA>() as u32;
-
-    let mut pi = PROCESS_INFORMATION::default();
-
-    let cmd = std::ffi::CString::new(cmdline).unwrap();
-
-    // RUN DETACHED + RUN AS ADMIN
-    let created = unsafe {
-        CreateProcessA(
-            std::ptr::null(),
-            cmd.as_ptr() as *mut i8,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            FALSE,
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-            std::ptr::null(),
-            std::ptr::null(),
-            &mut si,
-            &mut pi,
-        )
-    };
-
-    if created == 0 {
-        return Err(mlua::Error::external("Failed to spawn admin process"));
-    }
-
-    unsafe {
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-    }
-
-    Ok(0)
-}
-
-#[cfg(windows)]
-fn run_powershell(command: &str) -> Result<Output> {
-    use std::process::Stdio;
-
-    Command::new("powershell.exe")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-ExecutionPolicy")
-        .arg("Bypass")
-        .arg("-Command")
-        .arg(command)
-        .stdin(Stdio::null())       // IMPORTANT
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut c| c.wait_with_output())
-        .map_err(mlua::Error::external)
-}
-
-#[cfg(windows)]
 fn run_windows_command(command: &str) -> Result<std::process::Output> {
     use std::io;
     use std::process::{Command, Stdio};
@@ -253,43 +193,56 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
 
     shell_module.set(
         "exec",
-        lua.create_function(move |lua, (command, admin): (String, bool)| {
-            let result = lua.create_table()?;
-    
+        lua.create_function(|lua, (command, admin): (String, bool)| {
+            // Create result table
+            let result_table = lua.create_table()?;
+
             if admin {
                 #[cfg(windows)]
                 {
-                    let exit = spawn_detached_admin(&format!("powershell -Command {}", command))?;
-                    result.set("code", exit)?;
-                    result.set("stdout", "")?;
-                    result.set("stderr", "")?;
-                    return Ok(result);
+                    if let Some(pwsh) = find_powershell() {
+                        let cmd = AdminCmd::new(pwsh).arg("-c").arg(format!("\"{}\"", command)).show(false).status()?;
+                        if let Some(code) = cmd.code() {
+                            result_table.push(LuaValue::Integer(code.into()))?;
+                        }
+                    }
                 }
-    
+                #[cfg(not(windows))]
+                {
+                    let cmd = AdminCmd::new(command).show(false).status()?;
+                    if let Some(code) = cmd.code() {
+                        result_table.push(LuaValue::Integer(code.into()))?;
+                    }
+                }
+            } else {
+                // Run command and capture output
+                #[cfg(windows)]
+                let output: Result<Output> = run_windows_command(&command);
+
                 #[cfg(unix)]
-                return Err(mlua::Error::external("Admin mode not implemented on unix"));
-            }
-    
-            #[cfg(windows)]
-            let output = run_powershell(&command);
-    
-            #[cfg(unix)]
-            let output = run_unix_command(&command);
-    
-            match output {
-                Ok(out) => {
-                    result.set("code", out.status.code().unwrap_or(-1))?;
-                    result.set("stdout", String::from_utf8_lossy(&out.stdout).to_string())?;
-                    result.set("stderr", String::from_utf8_lossy(&out.stderr).to_string())?;
+                let output: Result<Output> = run_unix_command(&command);
+
+                #[cfg(not(any(windows, unix)))]
+                let output: Result<Output> = Err(mlua::Error::external("Unsupported OS"));
+
+                match output {
+                    Ok(cmd_output) => {
+                        let exit_code = cmd_output.status.code().unwrap_or(-1);
+                        result_table.set("code", exit_code)?;
+                        let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
+                        let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
+                        result_table.set("stdout", stdout)?;
+                        result_table.set("stderr", stderr)?;
+                    }
+                    Err(e) => {
+                        result_table.set("code", -1)?;
+                        result_table.set("stdout", "")?;
+                        result_table.set("stderr", format!("Command execution failed: {}", e))?;
+                    }
                 }
-                Err(e) => {
-                    result.set("code", -1)?;
-                    result.set("stdout", "")?;
-                    result.set("stderr", format!("{}", e))?;
-                }
             }
-    
-            Ok(result)
+
+            Ok(result_table)
         })?,
     )?;
 
