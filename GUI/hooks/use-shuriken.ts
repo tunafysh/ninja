@@ -64,7 +64,8 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
 
     try {
       await invoke("refresh_shurikens")
-      const data = await invoke<Shuriken[]>("get_all_shurikens")
+      const temp_data = await invoke<Shuriken[]>("get_all_shurikens")
+      let data = temp_data.sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
       set({ allShurikens: data })
     } catch (err) {
       handleError(err, "refreshShurikens")

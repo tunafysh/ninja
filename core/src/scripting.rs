@@ -12,12 +12,12 @@ pub struct NinjaEngine {
 }
 
 impl NinjaEngine {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let lua = Lua::new();
 
         let globals = lua.globals();
 
-        let (fs, env, shell, time, json, http, log) = make_modules(&lua)?;
+        let (fs, env, shell, time, json, http, log, proc) = make_modules(&lua).await?;
 
         globals.set("fs", fs)?;
         globals.set("env", env)?;
@@ -26,6 +26,7 @@ impl NinjaEngine {
         globals.set("json", json)?;
         globals.set("http", http)?;
         globals.set("log", log)?;
+        globals.set("proc", proc)?;
 
         let engine = Self { lua };
         Ok(engine)

@@ -265,6 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             unix: bin_path_unix,
                         },
                         args,
+                        cwd: None
                     }
                 }
                 "script" => {
@@ -380,6 +381,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
+            
+
             env::set_current_dir(format!("shurikens/{}/.ninja", name))?;
 
             if let Some(opts) = options {
@@ -387,7 +390,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 fs::write("config.tmpl", "").await?;
                 fs::write("options.toml", serialized_options).await?;
             }
-            
+
             let manifest_path = PathBuf::from("manifest.toml");
             let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
                 eprintln!("Failed to create manifest file for shuriken '{}'", name);
@@ -417,7 +420,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            env::set_current_dir(manager.root_path)?;
+            env::set_current_dir(&manager.root_path)?;
 
             println!("Manifest for '{}' generated successfully!", name);
         }

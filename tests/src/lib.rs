@@ -15,9 +15,9 @@ mod ninja_runtime_integration_tests {
         fs::write(dest, content).expect("Failed to write stub script");
     }
 
-    #[test]
-    fn test_engine_init_globals() {
-        let engine = NinjaEngine::new().unwrap();
+    #[tokio::test]
+    async fn test_engine_init_globals() {
+        let engine = NinjaEngine::new().await.unwrap();
         let globals = engine.lua.globals();
 
         assert!(globals.contains_key("fs").unwrap());
@@ -29,16 +29,16 @@ mod ninja_runtime_integration_tests {
         assert!(globals.contains_key("log").unwrap());
     }
 
-    #[test]
-    fn test_execute_inline_script() {
-        let engine = NinjaEngine::new().unwrap();
+    #[tokio::test]
+    async fn test_execute_inline_script() {
+        let engine = NinjaEngine::new().await.unwrap();
         assert!(engine.execute("x = 2 + 2").is_ok());
         assert!(engine.execute("error('fail')").is_err());
     }
 
-    #[test]
-    fn test_execute_file() {
-        let engine = NinjaEngine::new().unwrap();
+    #[tokio::test]
+    async fn test_execute_file() {
+        let engine = NinjaEngine::new().await.unwrap();
 
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "x = 123").unwrap();
@@ -46,9 +46,9 @@ mod ninja_runtime_integration_tests {
         assert!(engine.execute_file(&tmp.path().to_path_buf()).is_ok());
     }
 
-    #[test]
-    fn test_execute_function_from_returned_table() {
-        let engine = NinjaEngine::new().unwrap();
+    #[tokio::test]
+    async fn test_execute_function_from_returned_table() {
+        let engine = NinjaEngine::new().await.unwrap();
 
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "return {{ greet = function() print('hi') end }}").unwrap();
@@ -61,9 +61,9 @@ mod ninja_runtime_integration_tests {
         );
     }
 
-    #[test]
-    fn test_execute_function_from_global() {
-        let engine = NinjaEngine::new().unwrap();
+    #[tokio::test]
+    async fn test_execute_function_from_global() {
+        let engine = NinjaEngine::new().await.unwrap();
 
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "function greet() print('hi') end").unwrap();
@@ -95,7 +95,7 @@ mod ninja_api_integration_tests {
     async fn test_lockfile_written_for_script() {
         let dir = tempdir().unwrap();
         let lockfile = dir.path().join(".ninja").join("shuriken.lck");
-        let engine = NinjaEngine::new().unwrap();
+        let engine = NinjaEngine::new().await.unwrap();
         let script_path = dir.path().join(".ninja").join("dummy.ns");
         fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
         write_stub_script(&script_path);
@@ -117,20 +117,20 @@ mod ninja_api_integration_tests {
             tools: None,
         };
 
-        shuriken.start(Some(&engine)).await.unwrap();
+        shuriken.start(Some(&engine), dir.path()).await.unwrap();
         assert!(lockfile.exists());
     }
 
     #[tokio::test]
     async fn test_manager_list_empty() {
         let dir = tempdir().unwrap();
-        std::env::set_current_dir(&dir).unwrap();
-        let engine = NinjaEngine::new().unwrap();
+        let engine = NinjaEngine::new().await.unwrap();
         let manager = ShurikenManager {
             root_path: dir.path().to_path_buf(),
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new()))
         };
 
         let list = manager.list(false).await.unwrap();
@@ -140,22 +140,22 @@ mod ninja_api_integration_tests {
         }
     }
 
-    #[test]
-    fn test_kill_process_by_pid_invalid() {
+    #[tokio::test]
+    async fn test_kill_process_by_pid_invalid() {
         // 999999 should not exist
         let success = kill_process_by_pid(999999);
         assert!(!success);
     }
 
-    #[test]
-    fn test_get_process_start_time_invalid() {
+    #[tokio::test]
+    async fn test_get_process_start_time_invalid() {
         let result = get_process_start_time(999999);
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn test_stop_without_lockfile() {
-        let engine = NinjaEngine::new().unwrap();
+        let engine = NinjaEngine::new().await.unwrap();
         let shuriken = Shuriken {
             metadata: ShurikenMetadata {
                 name: "fake".into(),
@@ -174,13 +174,12 @@ mod ninja_api_integration_tests {
 
         // change dir to empty tempdir so lockfile isn't found
         let dir = tempdir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
 
         let script_path = dir.path().join(".ninja").join("fake.lua");
         fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
         write_stub_script(&script_path);
 
-        let result = shuriken.stop(Some(&engine)).await;
+        let result = shuriken.stop(Some(&engine), dir.path()).await;
         assert!(result.is_err()); // script stop doesn't require pid
     }
 }

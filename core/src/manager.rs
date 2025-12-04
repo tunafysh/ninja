@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 use serde_cbor::to_vec;
 use std::{
     collections::HashMap,
-    env,
-    io,
-    path::{PathBuf, Path},
+    env, io,
+    path::{Path, PathBuf},
     str,
     sync::Arc,
 };
-use tar::{Builder as TarBuilder};
+use tar::Builder as TarBuilder;
+use tokio::process::{Child, Command};
 use tokio::{
     fs::{self, File},
     io::AsyncWriteExt,
@@ -71,50 +71,94 @@ pub struct ArmoryMetadata {
     pub license: Option<String>,
 }
 
+/// A thin wrapper around a spawned process. We keep it simple: the
+/// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
+#[derive(Debug)]
+pub struct ManagedProcess {
+    pub child: Child,
+    pub cmd: String,
+    pub args: Vec<String>,
+}
+
+impl ManagedProcess {
+    pub fn id(&self) -> Option<u32> {
+        self.child.id()
+    }
+
+    /// Attempt to check if the process is still running. Returns `Ok(true)` when running.
+    pub fn is_running_sync(&mut self) -> bool {
+        match self.child.try_wait() {
+            Ok(Some(_)) => false,
+            Ok(None) => true,
+            Err(_) => false,
+        }
+    }
+
+    /// Kill and await the child process.
+    pub async fn kill_and_wait(&mut self) -> Result<()> {
+        // kill() is synchronous (returns io::Result), wait is async
+        self.child
+            .kill()
+            .await
+            .map_err(|e| Error::msg(e.to_string()))?;
+        let _ = self
+            .child
+            .wait()
+            .await
+            .map_err(|e| Error::msg(e.to_string()))?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ShurikenManager {
     pub root_path: PathBuf,
     pub engine: Arc<Mutex<NinjaEngine>>,
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
     pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
+    /// Manage runtime processes for services started by Ninja
+    pub processes: Arc<RwLock<HashMap<String, Arc<Mutex<ManagedProcess>>>>>,
 }
 
 impl ShurikenManager {
     // Shared logic for loading shurikens from disk
-    async fn load_shurikens(root_path: &Path) -> Result<(HashMap<String, Shuriken>, HashMap<String, ShurikenState>)> {
+    async fn load_shurikens(
+        root_path: &Path,
+    ) -> Result<(HashMap<String, Shuriken>, HashMap<String, ShurikenState>)> {
         let shurikens_dir = root_path.join("shurikens");
         let mut shurikens = HashMap::new();
         let mut states = HashMap::new();
-    
+
         // Only iterate immediate children of `shurikens/`
         let mut dir = match fs::read_dir(&shurikens_dir).await {
             Ok(d) => d,
             Err(_) => return Ok((shurikens, states)), // no shurikens dir = empty
         };
-    
+
         while let Some(entry) = dir.next_entry().await? {
             let shuriken_path = entry.path();
             if !shuriken_path.is_dir() {
                 continue;
             }
-    
+
             let name = match shuriken_path.file_name().and_then(|n| n.to_str()) {
                 Some(n) => n.to_owned(),
                 None => continue, // skip non-UTF8 names
             };
-    
+
             let ninja_dir = shuriken_path.join(".ninja");
-    
+
             // 1. Load manifest (required)
             let manifest_path = ninja_dir.join("manifest.toml");
             if !manifest_path.exists() {
                 continue; // not a valid shuriken
             }
-    
+
             let content: String = fs::read_to_string(&manifest_path).await?;
-            let mut shuriken: Shuriken = toml::from_str(&content)
-                .map_err(|e| Error::msg(format!("TOML error in {}: {}", manifest_path.display(), e)))?;
-    
+            let mut shuriken: Shuriken = toml::from_str(&content).map_err(|e| {
+                Error::msg(format!("TOML error in {}: {}", manifest_path.display(), e))
+            })?;
+
             // 2. Check for lock file
             let lock_path = ninja_dir.join("shuriken.lck");
             let state = if lock_path.exists() {
@@ -122,14 +166,20 @@ impl ShurikenManager {
             } else {
                 ShurikenState::Idle
             };
-    
+
             // 3. Load options (optional)
             let options_path = ninja_dir.join("options.toml");
             if options_path.exists() {
                 let content: String = fs::read_to_string(&options_path).await?;
-                let options: HashMap<String, FieldValue> = toml::from_str(&content)
-                    .map_err(|e| Error::msg(format!("Options error in {}: {}", options_path.display(), e)))?;
-    
+                let options: HashMap<String, FieldValue> =
+                    toml::from_str(&content).map_err(|e| {
+                        Error::msg(format!(
+                            "Options error in {}: {}",
+                            options_path.display(),
+                            e
+                        ))
+                    })?;
+
                 if let Some(config) = &mut shuriken.config {
                     config.options = Some(options);
                 } else {
@@ -139,19 +189,18 @@ impl ShurikenManager {
                     });
                 }
             }
-    
+
             shurikens.insert(name.clone(), shuriken);
             states.insert(name, state);
         }
-    
+
         Ok((shurikens, states))
     }
-    
+
     pub async fn new() -> Result<Self> {
-        let exe_dir =
-            dirs::home_dir()
-                .ok_or_else(|| Error::msg("Could not find home directory"))?
-                .join(".ninja");
+        let exe_dir = dirs::home_dir()
+            .ok_or_else(|| Error::msg("Could not find home directory"))?
+            .join(".ninja");
 
         fs::create_dir_all(&exe_dir).await?;
 
@@ -171,13 +220,16 @@ impl ShurikenManager {
 
         let (shurikens, states) = Self::load_shurikens(&exe_dir).await?;
 
-        let engine = NinjaEngine::new().map_err(|e| Error::msg(e.to_string()))?;
+        let engine = NinjaEngine::new()
+            .await
+            .map_err(|e| Error::msg(e.to_string()))?;
 
         Ok(Self {
             root_path: exe_dir,
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(shurikens)),
             states: Arc::new(RwLock::new(states)),
+            processes: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -192,8 +244,8 @@ impl ShurikenManager {
             .get(name)
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
-        drop(shurikens); // Drop the lock before await
-
+        drop(shurikens);
+    
         let shuriken_dir = self.root_path.join("shurikens").join(name);
         if !shuriken_dir.exists() {
             return Err(anyhow::Error::msg(format!(
@@ -201,33 +253,25 @@ impl ShurikenManager {
                 shuriken_dir.display()
             )));
         }
-
-        // Change directory temporarily (but avoid blocking other threads)
-        let original_dir = env::current_dir().map_err(|e| anyhow::Error::msg(e.to_string()))?;
-        env::set_current_dir(&shuriken_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
-
-        // Run async start
-        if let Err(e) = shuriken.start(Some(&*self.engine.lock().await)).await {
-            env::set_current_dir(original_dir).ok();
+    
+        if let Err(e) = shuriken.start(Some(&*self.engine.lock().await), &shuriken_dir).await {
             return Err(anyhow::Error::msg(format!(
                 "Failed to start shuriken '{}': {}",
                 name, e
             )));
         }
-
-        env::set_current_dir(original_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
-
+    
         self.update_state(name, ShurikenState::Running).await;
         Ok(())
     }
 
     pub async fn refresh(&self) -> Result<()> {
-         let (new_shurikens, new_states) = Self::load_shurikens(&self.root_path).await?;
-         *self.shurikens.write().await = new_shurikens;
-         *self.states.write().await = new_states;
-         debug!("Shuriken manager refreshed.");
-         Ok(())
-     }
+        let (new_shurikens, new_states) = Self::load_shurikens(&self.root_path).await?;
+        *self.shurikens.write().await = new_shurikens;
+        *self.states.write().await = new_states;
+        debug!("Shuriken manager refreshed.");
+        Ok(())
+    }
 
     pub async fn configure(&self, name: &str) -> Result<()> {
         let partial_shuriken = &self.shurikens.write().await;
@@ -288,7 +332,7 @@ impl ShurikenManager {
             .get(name)
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
-        drop(shurikens); // Drop the lock
+        drop(shurikens);
 
         let shuriken_dir = self.root_path.join("shurikens").join(name);
         if !shuriken_dir.exists() {
@@ -298,18 +342,15 @@ impl ShurikenManager {
             )));
         }
 
-        let original_dir = env::current_dir().map_err(|e| anyhow::Error::msg(e.to_string()))?;
-        env::set_current_dir(&shuriken_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
-
-        if let Err(e) = shuriken.stop(Some(&*self.engine.lock().await)).await {
-            env::set_current_dir(original_dir).ok();
+        if let Err(e) = shuriken
+            .stop(Some(&*self.engine.lock().await), &shuriken_dir)
+            .await
+        {
             return Err(anyhow::Error::msg(format!(
                 "Failed to stop shuriken '{}': {}",
                 name, e
             )));
         }
-
-        env::set_current_dir(original_dir).map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
         self.update_state(name, ShurikenState::Idle).await;
         Ok(())
@@ -334,10 +375,8 @@ impl ShurikenManager {
     ) -> Result<Either<Vec<(String, ShurikenState)>, Vec<String>>> {
         if state {
             let states = self.states.read().await;
-            let values: Vec<(String, ShurikenState)> = states
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+            let values: Vec<(String, ShurikenState)> =
+                states.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(Left(values))
         } else {
             let shurikens = self.shurikens.read().await;
@@ -355,40 +394,44 @@ impl ShurikenManager {
 
     pub async fn install(&self, path: PathBuf) -> Result<()> {
         use tokio::io::AsyncReadExt;
-    
+
         info!("Starting installation");
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
         }
-    
+
         // Open the file asynchronously
-        let mut file = tokio::fs::File::open(&path).await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open shuriken file: {}", e)))?;
-    
+        let mut file = tokio::fs::File::open(&path).await.map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to open shuriken file: {}", e),
+            )
+        })?;
+
         // Read the 8-byte header
         let mut header = [0u8; 8];
         file.read_exact(&mut header).await?;
-    
+
         if &header[0..2] != MAGIC {
             return Err(anyhow::Error::msg("Invalid shuriken file."));
         }
-    
+
         let metadata_length = u16::from_le_bytes([header[3], header[4]]) as usize;
-    
+
         // Read the metadata
         let mut metadata_buf = vec![0u8; metadata_length];
         file.read_exact(&mut metadata_buf).await?;
         let metadata: ArmoryMetadata = serde_cbor::de::from_mut_slice(&mut metadata_buf)?;
-    
+
         info!("Metadata parsing complete");
-    
+
         #[cfg(debug_assertions)]
         {
             debug!("{:#?}", header);
             debug!("{:#?}", metadata_length);
             debug!("{:#?}", &metadata);
         }
-    
+
         // Platform check
         if !metadata.platform.contains(env::consts::OS)
             && !metadata.platform.contains(env::consts::ARCH)
@@ -397,30 +440,31 @@ impl ShurikenManager {
                 "Unsupported platform. Current platform is not the same with the shuriken's destined platform.",
             ));
         }
-    
+
         // Read the rest of the file into memory (archive)
         let mut archive_buf = Vec::new();
         file.read_to_end(&mut archive_buf).await?;
         let archive_cursor = std::io::Cursor::new(archive_buf);
-    
+
         // Unpack tar.gz archive in a blocking task
         let root_path = self.root_path.clone();
         let archive_name = metadata.name.clone();
         tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
             let gz_decoder = flate2::read::GzDecoder::new(archive_cursor);
             let mut archive = tar::Archive::new(gz_decoder);
-    
+
             archive.unpack(root_path.join(archive_name))?;
             Ok(())
-        }).await??;
-    
+        })
+        .await??;
+
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {
             info!("Running postinstall script");
             let engine = &self.engine.lock().await;
             let _ = engine.execute_file(pi_script)?;
         }
-    
+
         Ok(())
     }
 
@@ -473,5 +517,98 @@ impl ShurikenManager {
             }
         }
         Ok(entries)
+    }
+
+    // -------------------- Process management API --------------------
+
+    /// Spawn a process and track it under `proc_name`.
+    /// `cmd` is the executable, `args` are arguments. `cwd` and `envs` are optional.
+    pub async fn spawn_process(
+        &self,
+        proc_name: &str,
+        cmd: &str,
+        args: &[String],
+        cwd: Option<PathBuf>,
+        envs: Option<HashMap<String, String>>,
+    ) -> Result<()> {
+        let mut command = Command::new(cmd);
+        command.args(args);
+        if let Some(c) = cwd {
+            command.current_dir(c);
+        }
+        if let Some(map) = envs {
+            for (k, v) in map.into_iter() {
+                command.env(k, v);
+            }
+        }
+
+        let child = command.spawn().map_err(|e| Error::msg(e.to_string()))?;
+
+        let managed = ManagedProcess {
+            child,
+            cmd: cmd.to_string(),
+            args: args.to_vec(),
+        };
+
+        self.processes
+            .write()
+            .await
+            .insert(proc_name.to_string(), Arc::new(Mutex::new(managed)));
+        Ok(())
+    }
+
+    /// Stop (kill + wait) a named process and remove it from tracking.
+    pub async fn stop_process(&self, proc_name: &str) -> Result<()> {
+        let maybe = { self.processes.write().await.remove(proc_name) };
+        if let Some(proc_arc) = maybe {
+            let mut guard = proc_arc.lock().await;
+            let _ = guard.kill_and_wait().await;
+        }
+        Ok(())
+    }
+
+    /// Check whether a tracked process is still running.
+    pub async fn is_process_running(&self, proc_name: &str) -> Result<bool> {
+        let procs = self.processes.read().await;
+        if let Some(proc_arc) = procs.get(proc_name) {
+            let mut guard = proc_arc.lock().await;
+            Ok(guard.is_running_sync())
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// List tracked processes and their basic info.
+    pub async fn list_processes(&self) -> Result<Vec<(String, Option<u32>, bool)>> {
+        let procs = self.processes.read().await;
+        let mut out = Vec::new();
+        for (name, arc_proc) in procs.iter() {
+            let mut guard = arc_proc.lock().await;
+            out.push((name.clone(), guard.id(), guard.is_running_sync()));
+        }
+        Ok(out)
+    }
+
+    /// Kill all tracked processes. This is the async cleanup you should call on shutdown.
+    pub async fn cleanup(&self) {
+        let keys: Vec<String> = {
+            let procs = self.processes.read().await;
+            procs.keys().cloned().collect()
+        };
+
+        for k in keys {
+            let _ = self.stop_process(&k).await;
+        }
+    }
+}
+
+impl Drop for ShurikenManager {
+    fn drop(&mut self) {
+        // Best-effort: if a tokio runtime is active, schedule cleanup. If not, we don't block.
+        let manager = self.clone();
+        // Spawn an async task; if runtime is not available this will fail silently.
+        let _ = tokio::spawn(async move {
+            manager.cleanup().await;
+        });
     }
 }

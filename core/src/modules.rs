@@ -46,7 +46,7 @@ fn run_unix_command(command: &str) -> Result<Output> {
         .map_err(|e| mlua::Error::external(e))
 }
 
-pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table)> {
+pub async fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Table, Table, Table)> {
     let fs_module = lua.create_table()?;
     let env_module = lua.create_table()?;
     let shell_module = lua.create_table()?;
@@ -54,6 +54,7 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
     let json_module = lua.create_table()?;
     let http_module = lua.create_table()?;
     let log_module = lua.create_table()?;
+    let proc_module = lua.create_table()?;
 
     // ====== FS module ======
     fs_module.set(
@@ -140,14 +141,6 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         "cwd",
         lua.create_function(|_, _: ()| Ok(env::current_dir()?))?,
     )?;
-    env_module.set(
-        "kill_pid",
-        lua.create_function(|_, pid: u32| Ok(kill_process_by_pid(pid)))?,
-    )?;
-    env_module.set(
-        "kill_name",
-        lua.create_function(|_, name: String| Ok(kill_process_by_name(&name)))?,
-    )?;
 
     // ====== SHELL module ======
     shell_module.set(
@@ -164,8 +157,13 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
                     #[cfg(windows)]
                     let child = Command::new("powershell.exe")
                         .arg("-NoProfile")
+                        .arg("-WindowStyle")
+                        .arg("Hidden")
                         .arg("-Command")
                         .arg(&command)
+                        .stdin(Stdio::inherit())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
                         .creation_flags(0x08000000) // CREATE_NO_WINDOW
                         .spawn()
                         .map_err(|e| mlua::Error::external(e))?;
@@ -174,9 +172,9 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
                     let child = Command::new("sh")
                         .arg("-c")
                         .arg(&command)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
+                        .stdin(Stdio::inherit())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
                         .spawn()
                         .map_err(|e| mlua::Error::external(e))?;
 
@@ -187,6 +185,8 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
                     #[cfg(windows)]
                     let status = AdminCmd::new("powershell.exe")
                         .arg("-NoProfile")
+                        .arg("-WindowStyle")
+                        .arg("Hidden")
                         .arg("-Command")
                         .arg(&command)
                         .show(false)
@@ -239,16 +239,69 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         )?,
     )?;
 
-    shell_module.set(
+    // ====== PROC module ======
+    proc_module.set(
+        "spawn",
+        lua.create_function(
+            |lua, command:String| {
+                let result_table = lua.create_table()?;
+
+                    #[cfg(windows)]
+                    use std::os::windows::process::CommandExt;
+                    #[cfg(windows)]
+                    let child = Command::new("powershell.exe")
+                        .arg("-NoProfile")
+                        .arg("-WindowStyle")
+                        .arg("Hidden")
+                        .arg("-Command")
+                        .arg(&command)
+                        .stdin(Stdio::inherit())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                        .spawn()
+                        .map_err(|e| mlua::Error::external(e))?;
+
+                    #[cfg(unix)]
+                    let child = Command::new("sh")
+                        .arg("-c")
+                        .arg(&command)
+                        .stdin(Stdio::inherit())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .spawn()
+                        .map_err(|e| mlua::Error::external(e))?;
+
+                    let pid = child.id();
+                    DETACHED_PROCS.lock().unwrap().insert(pid, child);
+                    result_table.set("pid", pid)?;
+
+                Ok(result_table)
+            },
+        )?,
+    )?;
+
+    proc_module.set(
         "kill_pid",
         lua.create_function(|_, pid: u32| {
             if let Some(mut child) = DETACHED_PROCS.lock().unwrap().remove(&pid) {
                 child.kill().map_err(|e| mlua::Error::external(e))?;
                 Ok(true)
             } else {
-                Ok(false)
+                // Try system kill if not in our tracking
+                Ok(kill_process_by_pid(pid))
             }
         })?,
+    )?;
+
+    proc_module.set(
+        "kill_name",
+        lua.create_function(|_, name: String| Ok(kill_process_by_name(&name)))?,
+    )?;
+
+    proc_module.set(
+        "list",
+        lua.create_table()?
     )?;
 
     // ====== TIME module ======
@@ -352,5 +405,6 @@ pub fn make_modules(lua: &Lua) -> Result<(Table, Table, Table, Table, Table, Tab
         json_module,
         http_module,
         log_module,
+        proc_module,
     ))
 }

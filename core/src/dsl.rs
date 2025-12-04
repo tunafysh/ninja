@@ -477,7 +477,9 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
             }
 
             Command::Execute(script_path) => {
-                let engine = NinjaEngine::new().map_err(|e| io::Error::other(e.to_string()))?;
+                let engine = NinjaEngine::new()
+                    .await
+                    .map_err(|e| io::Error::other(e.to_string()))?;
                 engine
                     .execute_file(&script_path)
                     .map_err(|e| io::Error::other(e.to_string()))?;
