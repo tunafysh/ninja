@@ -64,11 +64,11 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                 size="icon"
                 variant="ghost"
                 className="hover:bg-accent rounded-lg"
-                onClick={refreshShurikens}
+                onClick={() => refreshShurikens()}
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
-              <Button size="icon" variant={"outline"} onClick={openShurikensFolder}>
+              <Button size="icon" variant={"outline"} onClick={() => openShurikensFolder()}>
                 <FolderOpen />
               </Button>
             </div>
@@ -103,7 +103,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                               : "default"
                             : "outline"
                         }
-                        className="text-xs md:text-sm h-8 px-0 w-[86%]"
+                        className={`text-xs md:text-sm h-8 px-0 ${service.status === "running"? "w-[86%]": "w-full"}`}
                         onClick={() => toggleShuriken(service)}
                       >
                         {service.metadata.type === "daemon"
@@ -112,6 +112,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                             : "Start"
                           : "Manage"}
                       </Button>
+                      {service.status === "running" && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm" className="px-2 h-8">
@@ -127,9 +128,10 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                           >
                             Restart
                           </DropdownMenuItem>
-                          <DropdownMenuItem>Configure</DropdownMenuItem>
+                          <DropdownMenuItem>Lockpick</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                     </CardFooter>
                   </Card>
                 ))}

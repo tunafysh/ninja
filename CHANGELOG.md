@@ -31,3 +31,8 @@
 
 * Added a new tool for reading the cheatsheet because rmcp doesn't support resources yet. And not to confuse the LLM.
 * Overhauled the way Scripted shurikens start and stop by sharing the engine. Thus improving speed and efficiency.
+
+## 1.3.0
+
+* Optimized the shuriken discovery to improve performance by 15 ms.
+* Switched the main directory to user's home directory.

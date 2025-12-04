@@ -272,7 +272,20 @@ impl Shuriken {
 
             Some(ManagementType::Script { script_path }) => {
                 if let Some(engine) = engine {
-                    engine.execute_function("start", script_path).map_err(|e| {
+                    let stem = script_path
+                        .file_stem()
+                        .ok_or_else(|| format!("Failed to get file stem"))?
+                        .to_string_lossy();
+                    
+                    let new_filename = format!("{}.ns", stem);
+                    
+                    let script_path = script_path
+                        .parent()
+                        .ok_or_else(|| format!("Failed to get parent directory."))?
+                        .join(".ninja")
+                        .join(new_filename);
+
+                    engine.execute_function("start", &script_path).map_err(|e| {
                         format!(
                             "Failed to execute function 'start' in script '{}': {}",
                             script_path.display(),
@@ -374,7 +387,20 @@ impl Shuriken {
 
             Some(ManagementType::Script { script_path }) => {
                 if let Some(engine) = engine {
-                    engine.execute_function("stop", script_path).map_err(|e| {
+                    let stem = script_path
+                        .file_stem()
+                        .ok_or_else(|| format!("Failed to get file stem"))?
+                        .to_string_lossy();
+                    
+                    let new_filename = format!("{}.ns", stem);
+                    
+                    let script_path = script_path
+                        .parent()
+                        .ok_or_else(|| format!("Failed to get parent directory."))?
+                        .join(".ninja")
+                        .join(new_filename);
+
+                    engine.execute_function("stop", &script_path).map_err(|e| {
                         format!(
                             "Failed to execute 'stop' in script '{}': {}",
                             script_path.display(),

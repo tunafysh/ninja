@@ -384,10 +384,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(opts) = options {
                 let serialized_options = toml::ser::to_string_pretty(&opts)?;
-
+                fs::write("config.tmpl", "").await?;
                 fs::write("options.toml", serialized_options).await?;
             }
-
+            
             let manifest_path = PathBuf::from("manifest.toml");
             let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
                 eprintln!("Failed to create manifest file for shuriken '{}'", name);

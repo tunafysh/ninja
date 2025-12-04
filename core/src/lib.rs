@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod backup;
 pub mod dsl;
 pub mod error;

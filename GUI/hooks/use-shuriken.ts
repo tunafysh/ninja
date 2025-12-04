@@ -63,6 +63,7 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
     setLoadingDebounced(true)
 
     try {
+      await invoke("refresh_shurikens")
       const data = await invoke<Shuriken[]>("get_all_shurikens")
       set({ allShurikens: data })
     } catch (err) {

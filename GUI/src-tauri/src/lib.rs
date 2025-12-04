@@ -34,6 +34,7 @@ pub fn run() {
                 if !target_path.exists() {
                     fs::create_dir_all(&target_path).expect("Failed to create docs directory");
                     fs::copy(&docs_path, target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
+                    fs::copy(&docs_path, target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
                 }
                 
                 let important_file = resource_dir.join("coconut.jpg");
