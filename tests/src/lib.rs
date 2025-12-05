@@ -43,7 +43,7 @@ mod ninja_runtime_integration_tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "x = 123").unwrap();
 
-        assert!(engine.execute_file(&tmp.path().to_path_buf()).is_ok());
+        assert!(engine.execute_file(&tmp.path().to_path_buf(), None).is_ok());
     }
 
     #[tokio::test]
@@ -56,7 +56,7 @@ mod ninja_runtime_integration_tests {
         let path = tmp.into_temp_path();
         assert!(
             engine
-                .execute_function("greet", &path.to_path_buf())
+                .execute_function("greet", &path.to_path_buf(), None)
                 .is_ok()
         );
     }
@@ -71,7 +71,7 @@ mod ninja_runtime_integration_tests {
         let path = tmp.into_temp_path();
         assert!(
             engine
-                .execute_function("greet", &path.to_path_buf())
+                .execute_function("greet", &path.to_path_buf(), None)
                 .is_ok()
         );
     }
@@ -130,7 +130,7 @@ mod ninja_api_integration_tests {
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
-            processes: Arc::new(RwLock::new(HashMap::new()))
+            processes: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let list = manager.list(false).await.unwrap();

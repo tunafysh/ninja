@@ -103,9 +103,8 @@ where
     // If the `first_after_brace` already contains the closing brace on same line
     let trimmed_after = first_after_brace.trim();
 
-    if trimmed_after.ends_with('}') {
+    if let Some(inner) = trimmed_after.strip_suffix("}") {
         // slice out trailing `}` and return
-        let inner = &trimmed_after[..trimmed_after.len() - 1];
         return Ok(inner.trim().to_string());
     }
 
@@ -119,17 +118,14 @@ where
     // gather until we find a line containing a `}` (allow trailing whitespace)
     for next in lines {
         let stripped = strip_comments(next).trim();
-        if stripped.ends_with('}') {
-            let inner = &stripped[..stripped.len() - 1];
+        if let Some(inner) = stripped.strip_suffix('}') {
             if !inner.trim().is_empty() {
                 collected.push_str(inner.trim());
             }
             return Ok(collected.trim().to_string());
-        } else {
-            if !stripped.is_empty() {
-                collected.push_str(stripped);
-                collected.push('\n');
-            }
+        } else if !stripped.is_empty() {
+            collected.push_str(stripped);
+            collected.push('\n');
         }
     }
 
@@ -163,7 +159,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
                 // split by semicolons or newlines and parse assignments
                 let mut kvs: Vec<(String, FieldValue)> = Vec::new();
 
-                for chunk in block_content.split(|c| c == ';' || c == '\n') {
+                for chunk in block_content.split([';', '\n']) {
                     if let Some((k, v)) = parse_kv(chunk)? {
                         kvs.push((k, v));
                     }
@@ -281,9 +277,9 @@ fn locate_ninja_cli() -> Result<PathBuf> {
 
         Ok(cli_path)
     } else {
-        return Err(Error::msg(
+        Err(Error::msg(
             "No parent directory? where and how did you run this? please email me i'm genuinely curious. -- Hannan \"tunafysh\" Smani",
-        ));
+        ))
     }
 }
 
@@ -366,9 +362,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                             ));
                         }
                     } else {
-                        output.push(format!(
-                            "No selected shuriken or missing config while applying configure block."
-                        ));
+                        output.push("No selected shuriken or missing config while applying configure block.".to_string());
                     }
                 } else {
                     output.push("No shuriken selected — configure block ignored.".into());
@@ -481,7 +475,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     .await
                     .map_err(|e| io::Error::other(e.to_string()))?;
                 engine
-                    .execute_file(&script_path)
+                    .execute_file(&script_path, None)
                     .map_err(|e| io::Error::other(e.to_string()))?;
             }
             Command::Install(file_path) => match ctx.manager.install(file_path).await {

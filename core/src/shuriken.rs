@@ -226,6 +226,22 @@ pub fn get_process_start_time(pid: u32) -> Option<u64> {
     }
 }
 
+async fn atomic_write_json(path: &Path, value: &JsonValue) -> Result<(), String> {
+    use tokio::fs;
+
+    let tmp_path = path.with_extension("tmp");
+
+    let data = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    fs::write(&tmp_path, data)
+        .await
+        .map_err(|e| format!("Failed to write tmp lockfile: {e}"))?;
+
+    // Atomic-ish replace on most platforms
+    std::fs::rename(&tmp_path, path).map_err(|e| format!("Failed to replace lockfile: {e}"))?;
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shuriken {
     #[serde(rename = "shuriken")]
@@ -242,13 +258,11 @@ impl Shuriken {
         shuriken_dir: &Path,
     ) -> Result<(), String> {
         info!("Starting shuriken {}", self.metadata.name);
-        
-        // Ensure lock directory exists
+
         let lock_dir = shuriken_dir.join(".ninja");
-        fs::create_dir_all(&lock_dir)
+        tokio::fs::create_dir_all(&lock_dir)
             .await
             .map_err(|e| format!("Failed to create .ninja directory: {}", e))?;
-        
         let lock_path = lock_dir.join("shuriken.lck");
 
         match &self.metadata.management {
@@ -259,9 +273,7 @@ impl Shuriken {
             }) => {
                 let bin_str = bin_path.get_path();
 
-                // Resolve final working directory:
-                // 1. Use `cwd` if provided (relative to shuriken_dir or absolute)
-                // 2. Otherwise, use shuriken_dir
+                // Resolve working directory
                 let resolved_cwd = if let Some(custom_cwd) = cwd {
                     let p = custom_cwd.get_path();
                     let path = Path::new(p);
@@ -271,7 +283,7 @@ impl Shuriken {
                         shuriken_dir.join(path)
                     }
                 } else {
-                    shuriken_dir.to_path_buf()
+                    shuriken_dir.parent().unwrap_or(shuriken_dir).to_path_buf()
                 };
 
                 let mut cmd = if self.metadata.require_admin {
@@ -292,7 +304,6 @@ impl Shuriken {
                 let pid = process
                     .id()
                     .ok_or_else(|| "Failed to get PID".to_string())?;
-
                 let start_time = get_process_start_time(pid)
                     .ok_or_else(|| "Failed to get start time".to_string())?;
 
@@ -303,34 +314,30 @@ impl Shuriken {
                     "start_time": start_time
                 });
 
-                fs::write(&lock_path, serde_json::to_string(&lockfile_data).unwrap())
-                    .await
-                    .map_err(|e| format!("Failed to write lockfile: {}", e))?;
+                atomic_write_json(&lock_path, &lockfile_data).await?;
 
                 tokio::spawn(async move {
                     let _ = process.wait().await;
                 });
+
                 Ok(())
             }
 
             Some(ManagementType::Script { script_path }) => {
                 if let Some(engine) = engine {
-                    // Execute script relative to shuriken_dir
-                    let full_script_path = if script_path.is_absolute() {
-                        script_path.clone()
-                    } else {
-                        shuriken_dir.join(script_path)
-                    };
+                    // Resolve script path consistently relative to the shuriken root dir
+                    let full_script_path =
+                        self.resolve_script_path(script_path.as_path(), shuriken_dir);
 
                     let stem = full_script_path
                         .file_stem()
                         .ok_or_else(|| "Invalid script path".to_string())?
-                        .to_string_lossy();
-                    let new_filename = format!("{}.ns", stem);
-                    let compiled_path = lock_dir.join(new_filename);
+                        .to_string_lossy()
+                        .to_string();
+                    let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
                     engine
-                        .execute_function("start", &compiled_path)
+                        .execute_function("start", &compiled_path, Some(shuriken_dir))
                         .map_err(|e| format!("Script start failed: {}", e))?;
 
                     let lockfile_data = json!({
@@ -338,9 +345,7 @@ impl Shuriken {
                         "type": "Script",
                     });
 
-                    fs::write(&lock_path, serde_json::to_string(&lockfile_data).unwrap())
-                        .await
-                        .map_err(|e| format!("Failed to write lockfile: {}", e))?;
+                    atomic_write_json(&lock_path, &lockfile_data).await?;
                 }
                 Ok(())
             }
@@ -385,6 +390,14 @@ impl Shuriken {
         Ok(())
     }
 
+    fn resolve_script_path(&self, script_path: &Path, shuriken_dir: &Path) -> PathBuf {
+        if script_path.is_absolute() {
+            script_path.to_path_buf()
+        } else {
+            shuriken_dir.join(script_path)
+        }
+    }
+
     pub async fn stop(
         &self,
         engine: Option<&NinjaEngine>,
@@ -400,10 +413,10 @@ impl Shuriken {
                     return Ok(());
                 }
 
-                let lock_contents = fs::read_to_string(&lock_path)
+                let lock_contents = tokio::fs::read_to_string(&lock_path)
                     .await
                     .map_err(|e| format!("Failed to read lockfile: {}", e))?;
-                
+
                 let lockdata: JsonValue = serde_json::from_str(&lock_contents)
                     .map_err(|e| format!("Invalid lockfile: {}", e))?;
 
@@ -414,17 +427,16 @@ impl Shuriken {
                 let name: String = serde_json::from_value(lockdata["name"].clone())
                     .map_err(|e| format!("Invalid name: {}", e))?;
 
-                if !kill_process_by_name(&name) {
-                    if !kill_process_by_pid_and_start_time(pid, start_time) {
-                        return Err(format!(
-                            "Failed to terminate shuriken {} (PID {}, start_time {})",
-                            name, pid, start_time
-                        ));
-                    }
+                // Only use PID + start_time; don't kill by name to avoid hitting the wrong process.
+                if !kill_process_by_pid_and_start_time(pid, start_time) {
+                    return Err(format!(
+                        "Failed to terminate shuriken {} (PID {}, start_time {})",
+                        name, pid, start_time
+                    ));
                 }
 
                 if lock_path.exists() {
-                    fs::remove_file(&lock_path)
+                    tokio::fs::remove_file(&lock_path)
                         .await
                         .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
                 }
@@ -433,26 +445,23 @@ impl Shuriken {
 
             Some(ManagementType::Script { script_path }) => {
                 if let Some(engine) = engine {
-                    let full_script_path = if script_path.is_absolute() {
-                        script_path.clone()
-                    } else {
-                        shuriken_dir.join(script_path)
-                    };
+                    let full_script_path =
+                        self.resolve_script_path(script_path.as_path(), shuriken_dir);
 
                     let stem = full_script_path
                         .file_stem()
                         .ok_or_else(|| "Invalid script".to_string())?
-                        .to_string_lossy();
-                    let new_filename = format!("{}.ns", stem);
+                        .to_string_lossy()
+                        .to_string();
                     let lock_dir = shuriken_dir.join(".ninja");
-                    let compiled_path = lock_dir.join(new_filename);
+                    let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
                     engine
-                        .execute_function("stop", &compiled_path)
+                        .execute_function("stop", &compiled_path, Some(shuriken_dir))
                         .map_err(|e| format!("Script stop failed: {}", e))?;
 
                     if lock_path.exists() {
-                        fs::remove_file(&lock_path)
+                        tokio::fs::remove_file(&lock_path)
                             .await
                             .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
                     }

@@ -25,7 +25,6 @@ pub fn run() {
                 tauri::async_runtime::block_on(ShurikenManager::new())
                     .expect("Failed to spawn a shuriken manager"),
             );
-            
             app.manage(manager);
             {
                 let resource_dir = app.path().resource_dir()?;
@@ -36,7 +35,6 @@ pub fn run() {
                     fs::copy(&docs_path, target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
                     fs::copy(&docs_path, target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
                 }
-                
                 let important_file = resource_dir.join("coconut.jpg");
                 if !important_file.exists() {
                     app.dialog()
@@ -45,11 +43,7 @@ pub fn run() {
                         .title("Source Engine Error")
                         .blocking_show();
                 }
-                
             }
-            
-            
-
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -74,7 +68,7 @@ pub fn run() {
             // Clone the handle, which is owned
             let app_handle = app.clone();
 
-            if is_url(&argv[1].as_str()) {
+            if is_url(argv[1].as_str()) {
                 tauri::async_runtime::spawn(async move {
                     let manager_state = app_handle.state::<Mutex<ShurikenManager>>().clone();
                     // Now you have `app_handle` too if you need to emit or do things
@@ -82,8 +76,7 @@ pub fn run() {
                 });
             } else {
                 let metadata = open_shuriken(argv[1].to_string().clone()).unwrap();
-                let _ = app
-                    .emit("view_local_shuriken", (metadata, argv[1].to_string()))
+                app.emit("view_local_shuriken", (metadata, argv[1].to_string()))
                     .unwrap();
             }
             if let Some(window) = app.get_webview_window("main") {

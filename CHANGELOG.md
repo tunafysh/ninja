@@ -35,3 +35,6 @@
 ## 1.3.0
 * Optimized the shuriken discovery to improve performance by 15 ms.
 * Switched the main directory to user's home directory.
+
+## 1.4.0
+* Fixed lua working directory errors

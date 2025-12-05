@@ -46,8 +46,7 @@ impl DetachedProcess {
             use nix::sys::signal::{Signal, kill};
             use nix::unistd::Pid;
 
-            kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL).map_err(io::Error::other)
         }
 
         #[cfg(windows)]

@@ -28,7 +28,7 @@ use tokio::{
     sync::RwLock,
 };
 
-const MAGIC: &[u8; 2] = b"HS";
+const MAGIC: &[u8; 4] = b"HSEG";
 
 fn create_tar_gz_bytes(src_dir: &PathBuf) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
@@ -245,7 +245,7 @@ impl ShurikenManager {
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
         drop(shurikens);
-    
+
         let shuriken_dir = self.root_path.join("shurikens").join(name);
         if !shuriken_dir.exists() {
             return Err(anyhow::Error::msg(format!(
@@ -253,14 +253,17 @@ impl ShurikenManager {
                 shuriken_dir.display()
             )));
         }
-    
-        if let Err(e) = shuriken.start(Some(&*self.engine.lock().await), &shuriken_dir).await {
+
+        if let Err(e) = shuriken
+            .start(Some(&*self.engine.lock().await), &shuriken_dir)
+            .await
+        {
             return Err(anyhow::Error::msg(format!(
                 "Failed to start shuriken '{}': {}",
                 name, e
             )));
         }
-    
+
         self.update_state(name, ShurikenState::Running).await;
         Ok(())
     }
@@ -401,22 +404,19 @@ impl ShurikenManager {
         }
 
         // Open the file asynchronously
-        let mut file = tokio::fs::File::open(&path).await.map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to open shuriken file: {}", e),
-            )
-        })?;
+        let mut file = tokio::fs::File::open(&path)
+            .await
+            .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {}", e)))?;
 
         // Read the 8-byte header
         let mut header = [0u8; 8];
         file.read_exact(&mut header).await?;
 
-        if &header[0..2] != MAGIC {
+        if &header[0..4] != MAGIC {
             return Err(anyhow::Error::msg("Invalid shuriken file."));
         }
 
-        let metadata_length = u16::from_le_bytes([header[3], header[4]]) as usize;
+        let metadata_length = u16::from_le_bytes([header[5], header[6]]) as usize;
 
         // Read the metadata
         let mut metadata_buf = vec![0u8; metadata_length];
@@ -447,13 +447,14 @@ impl ShurikenManager {
         let archive_cursor = std::io::Cursor::new(archive_buf);
 
         // Unpack tar.gz archive in a blocking task
-        let root_path = self.root_path.clone();
         let archive_name = metadata.name.clone();
+        let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
+        let root_path = self.root_path.clone().join("shurikens").join(archive_name);
         tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
             let gz_decoder = flate2::read::GzDecoder::new(archive_cursor);
             let mut archive = tar::Archive::new(gz_decoder);
 
-            archive.unpack(root_path.join(archive_name))?;
+            archive.unpack(&unpack_path)?;
             Ok(())
         })
         .await??;
@@ -462,7 +463,7 @@ impl ShurikenManager {
         if let Some(pi_script) = &metadata.postinstall {
             info!("Running postinstall script");
             let engine = &self.engine.lock().await;
-            let _ = engine.execute_file(pi_script)?;
+            engine.execute_file(pi_script, Some(&root_path))?;
         }
 
         Ok(())
@@ -607,7 +608,7 @@ impl Drop for ShurikenManager {
         // Best-effort: if a tokio runtime is active, schedule cleanup. If not, we don't block.
         let manager = self.clone();
         // Spawn an async task; if runtime is not available this will fail silently.
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             manager.cleanup().await;
         });
     }

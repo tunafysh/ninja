@@ -196,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = file_arg.as_str();
             let path = PathBuf::from(content);
             if path.exists() {
-                match manager.engine.lock().await.execute_file(&path) {
+                match manager.engine.lock().await.execute_file(&path, None) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -265,7 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             unix: bin_path_unix,
                         },
                         args,
-                        cwd: None
+                        cwd: None,
                     }
                 }
                 "script" => {
@@ -381,8 +381,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            
-
             env::set_current_dir(format!("shurikens/{}/.ninja", name))?;
 
             if let Some(opts) = options {
@@ -397,17 +395,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let Some(management) = &manifest.metadata.management {
-                if let ManagementType::Script { script_path } = management {
-                    if let Some(parent) = script_path.parent() {
-                        fs::create_dir_all(parent).await?;
-                    }
-                    fs::write(
+            if let Some(management) = &manifest.metadata.management
+                && let ManagementType::Script { script_path } = management
+            {
+                if let Some(parent) = script_path.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+                fs::write(
                         script_path,
                         "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
                     )
                     .await?;
-                }
             }
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
@@ -468,19 +466,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
                     .interact()
-                    .map(|s: String| if s.trim().is_empty() {  return None } else { Some(PathBuf::from(s)) })
+                    .map(|s: String| if s.trim().is_empty() { None } else { Some(PathBuf::from(s)) })
                     .unwrap();
 
                 let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
-                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
+                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
                     .unwrap();
 
                 let synopsis: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)")
                     .interact()
-                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
+                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
                     .unwrap();
 
                 let authors: Option<Vec<String>> =
@@ -496,12 +494,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .map(String::from)
                                 .collect::<Vec<_>>()
                         })
-                        .and_then(|v| if v.is_empty() { return None } else { Some(v) });
+                        .and_then(|v| if v.is_empty() { None } else { Some(v) });
 
                 let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
                     .interact()
-                    .map(|s: String| if s.trim().is_empty() { return None } else { Some(s) })
+                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
                     .unwrap();
 
                 println!("{}", format!("Generating metadata for '{}'", &name).bold());

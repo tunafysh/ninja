@@ -1,4 +1,3 @@
-use cbindgen;
 use std::fs;
 
 fn main() {

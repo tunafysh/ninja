@@ -1,6 +1,5 @@
 use log::{error, info};
 use ninja::backup::{create_backup, restore_backup, CompressionType};
-use serde_cbor;
 use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;

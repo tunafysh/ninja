@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use regex::Regex;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn get_http_port() -> Result<u16> {
     let apache_conf = "shurikens/Apache/conf/httpd.conf";
@@ -42,4 +42,14 @@ fn parse_nginx_port(path: &str) -> Result<u16> {
     Err(anyhow!(
         "Nginx config exists but contains no listen directive"
     ))
+}
+
+pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
+    let p = Path::new(path);
+
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        virtual_cwd.join(p)
+    }
 }

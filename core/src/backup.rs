@@ -146,7 +146,7 @@ pub async fn create_backup(
                 .build()
             {
                 let entry = entry.context("Failed to read directory entry")?;
-                if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                if entry.file_type().is_some_and(|ft| ft.is_file()) {
                     let path = entry.path();
                     let rel_path = path
                         .strip_prefix(&projects_path)

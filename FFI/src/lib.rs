@@ -1,20 +1,15 @@
-use anyhow;
+use anyhow::Result;
 use either::Either;
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_void};
-use std::path::PathBuf;
-use std::ptr;
-use std::sync::Mutex;
-use tokio::fs;
-use tokio::runtime::{Builder, Runtime};
-
-// Adapt this import to match your core crate
-use ninja::{
-    manager::{ArmoryMetadata, ShurikenManager},
-    types::ShurikenState,
+use std::{
+    ffi::{CStr, CString},
+    os::raw::{c_char, c_void},
+    path::PathBuf,
+    ptr,
+    sync::Mutex,
 };
+use tokio::fs;
 
 // ========================
 // Global Tokio runtime
@@ -29,21 +24,18 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 });
 
 // ========================
-// Opaque types for C
+// Opaque types
 // ========================
 #[repr(C)]
 pub struct NinjaManagerOpaque {
     _private: [u8; 0],
 }
 
-// Internal boxed wrapper
 struct ManagerBox(pub Box<ShurikenManager>);
 
 // ========================
-// Global last error
+// Last error tracking
 // ========================
-// store a Rust String here. When C asks for last error, we create a fresh CString and hand it over.
-// C is responsible for freeing that CString with ninja_string_free.
 static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
 fn set_last_error(msg: String) {
@@ -51,40 +43,63 @@ fn set_last_error(msg: String) {
     *lock = Some(msg);
 }
 
+/// Retrieves the last error message recorded by the library.
+///
+/// # Safety
+///
+/// * The caller takes ownership of the returned string pointer and must eventually free it
+///   using `ninja_string_free`.
+/// * If no error has occurred, this returns a null pointer.
 #[no_mangle]
 pub extern "C" fn ninja_last_error() -> *mut c_char {
     let lock = LAST_ERROR.lock().unwrap();
     match &*lock {
-        Some(s) => {
-            // s is a Rust String (no interior nulls). Convert to CString for the caller.
-            match CString::new(s.as_str()) {
-                Ok(c) => c.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
-        }
+        Some(s) => CString::new(s.as_str())
+            .ok()
+            .map_or(ptr::null_mut(), |c| c.into_raw()),
         None => ptr::null_mut(),
     }
 }
 
+/// Frees a string pointer previously allocated by this library.
+///
+/// # Safety
+///
+/// * `s` must be a pointer previously returned by a function in this library (like `ninja_last_error`
+///   or `ninja_list_shurikens_sync`).
+/// * `s` must not be used after this call.
+/// * If `s` is null, this function does nothing.
 #[no_mangle]
-pub extern "C" fn ninja_string_free(s: *mut c_char) {
-    if s.is_null() {
-        return;
-    }
-    // Take ownership and drop - this uses the C allocator agreement.
-    unsafe {
-        let _ = CString::from_raw(s);
+pub unsafe extern "C" fn ninja_string_free(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            let _ = CString::from_raw(s);
+        }
     }
 }
 
 // ========================
-// Helper: C string -> Rust String
+// Helpers
 // ========================
 fn str_from_c(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
     unsafe { CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_string()) }
+}
+
+/// Converts an opaque C pointer back into a mutable Rust reference.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid pointer obtained via `ninja_manager_new`.
+/// * `mgr` must not have been freed yet.
+unsafe fn mgr_from_ptr<'a>(mgr: *mut NinjaManagerOpaque) -> Option<&'a mut ShurikenManager> {
+    if mgr.is_null() {
+        return None;
+    }
+    let b = &mut *(mgr as *mut ManagerBox);
+    Some(b.0.as_mut())
 }
 
 // ========================
@@ -96,299 +111,155 @@ pub extern "C" fn ninja_api_version() -> u32 {
 }
 
 // ========================
-// Create / free manager
+// Manager lifecycle
 // ========================
-#[no_mangle]
-pub extern "C" fn ninja_manager_new(out_err: *mut *mut c_char) -> *mut NinjaManagerOpaque {
-    let res = RUNTIME.block_on(async { ShurikenManager::new().await });
 
+/// Creates a new `ShurikenManager` instance.
+///
+/// # Safety
+///
+/// * The returned pointer is owned by the caller and must be freed using `ninja_manager_free`.
+/// * `out_err` is an optional output parameter. If an error occurs (returning null),
+///   `*out_err` will be set to a newly allocated error string which the caller must free.
+/// * If `out_err` is not null, it must point to valid memory for writing a `*mut c_char`.
+#[no_mangle]
+pub unsafe extern "C" fn ninja_manager_new(out_err: *mut *mut c_char) -> *mut NinjaManagerOpaque {
+    let res = RUNTIME.block_on(async { ShurikenManager::new().await });
     match res {
         Ok(manager) => {
-            let boxed = Box::new(ManagerBox(Box::new(manager)));
-            Box::into_raw(boxed) as *mut NinjaManagerOpaque
+            Box::into_raw(Box::new(ManagerBox(Box::new(manager)))) as *mut NinjaManagerOpaque
         }
         Err(e) => {
             let msg = format!("Failed to create manager: {}", e);
             set_last_error(msg.clone());
             if !out_err.is_null() {
-                unsafe {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             ptr::null_mut()
         }
     }
 }
 
+/// Frees a `ShurikenManager` instance.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid pointer returned by `ninja_manager_new`.
+/// * After calling this, `mgr` is invalid and must not be used again.
+/// * If `mgr` is null, the function does nothing.
 #[no_mangle]
-pub extern "C" fn ninja_manager_free(mgr: *mut NinjaManagerOpaque) {
-    if mgr.is_null() {
-        return;
-    }
-    unsafe {
+pub unsafe extern "C" fn ninja_manager_free(mgr: *mut NinjaManagerOpaque) {
+    if !mgr.is_null() {
         let _ = Box::from_raw(mgr as *mut ManagerBox);
     }
 }
 
 // ========================
-// Helper: convert opaque ptr to &mut manager
+// Shuriken control (sync)
 // ========================
-fn mgr_from_ptr<'a>(mgr: *mut NinjaManagerOpaque) -> Option<&'a mut ShurikenManager> {
-    if mgr.is_null() {
-        return None;
-    }
-    let b = unsafe { &mut *(mgr as *mut ManagerBox) };
-    Some(b.0.as_mut())
-}
 
-// ========================
-// Synchronous Shuriken control
-// ========================
-#[no_mangle]
-pub extern "C" fn ninja_start_shuriken_sync(
+/// Internal helper for synchronous actions.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid manager pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+unsafe fn shuriken_action_sync(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
     out_err: *mut *mut c_char,
+    action: fn(&mut ShurikenManager, &str) -> Result<()>,
 ) -> i32 {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null manager").unwrap().into_raw();
             }
             return -1;
         }
     };
-
-    let res = RUNTIME.block_on(async { manager.start(&name).await });
-
-    match res {
-        Ok(()) => 0,
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            if !out_err.is_null() {
+                *out_err = CString::new("null name").unwrap().into_raw();
+            }
+            return -1;
+        }
+    };
+    match action(manager, &name) {
+        Ok(_) => 0,
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             -1
         }
     }
 }
 
+/// Starts a shuriken synchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string representing the shuriken name.
+/// * `out_err` must be null or a valid pointer to a `*mut c_char` to receive error messages.
 #[no_mangle]
-pub extern "C" fn ninja_stop_shuriken_sync(
+pub unsafe extern "C" fn ninja_start_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-
-    let res = RUNTIME.block_on(async { manager.stop(&name).await });
-
-    match res {
-        Ok(()) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
-            }
-            -1
-        }
-    }
+    shuriken_action_sync(mgr, name, out_err, |m, n| {
+        RUNTIME.block_on(async { m.start(n).await })
+    })
 }
 
-// ========================
-// Synchronous list shurikens (serialize Either properly)
-// ========================
-#[derive(Serialize)]
-struct ShurikenPair {
-    name: String,
-    state: ShurikenState,
-}
-
+/// Stops a shuriken synchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// * `out_err` must be null or a valid pointer to a `*mut c_char`.
 #[no_mangle]
-pub extern "C" fn ninja_list_shurikens_sync(
+pub unsafe extern "C" fn ninja_stop_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
     out_err: *mut *mut c_char,
-) -> *mut c_char {
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return ptr::null_mut();
-        }
-    };
-
-    let res = RUNTIME.block_on(async { manager.list(false).await });
-
-    match res {
-        Ok(list) => {
-            let serializable: Vec<ShurikenPair> = match list {
-                Either::Left(vec) => vec
-                    .into_iter()
-                    .map(|(name, state)| ShurikenPair { name, state })
-                    .collect(),
-                Either::Right(vec) => vec
-                    .into_iter()
-                    .map(|name| ShurikenPair {
-                        name,
-                        state: ShurikenState::Idle,
-                    })
-                    .collect(),
-            };
-            let json = serde_json::to_string(&serializable)
-                .unwrap_or_else(|e| format!("{{\"error\":\"serde error: {}\"}}", e));
-            // Return ownership to C. C must call ninja_string_free().
-            CString::new(json).unwrap().into_raw()
-        }
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
-            }
-            ptr::null_mut()
-        }
-    }
+) -> i32 {
+    shuriken_action_sync(mgr, name, out_err, |m, n| {
+        RUNTIME.block_on(async { m.stop(n).await })
+    })
 }
 
 // ========================
-// Async callbacks (Send-safe)
+// Shuriken control (async with callback)
 // ========================
 #[repr(C)]
 pub struct NinjaCallback(pub extern "C" fn(*mut c_void, *const c_char));
 
-fn call_callback(
-    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
-    userdata: *mut c_void,
-    json: String,
-) {
-    if let Some(cb_fn) = cb {
-        // Create a CString and hand ownership to C via into_raw().
-        // IMPORTANT: Do NOT reconstruct or free it on the Rust side here.
-        // The C side MUST call ninja_string_free(ptr) when done with it.
-        let cstr = CString::new(json).unwrap();
-        let ptr = cstr.into_raw();
-        // call the C callback (C receives ownership of 'ptr' and must free it)
-        cb_fn(userdata, ptr as *const c_char);
-        // DO NOT call CString::from_raw(ptr) here — caller must free.
-    }
-}
+use tokio::runtime::{Builder, Runtime};
 
-#[no_mangle]
-pub extern "C" fn ninja_start_shuriken_async(
-    mgr: *mut NinjaManagerOpaque,
-    name: *const c_char,
-    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
-    userdata: *mut c_void,
-) {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => return,
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => return,
-    };
+// ========================
+// Ninja core imports
+// ========================
+use ninja::{
+    manager::{ArmoryMetadata, ShurikenManager},
+    types::ShurikenState,
+};
 
-    let name_clone = name.clone();
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.start(&name_clone).await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
-        };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn ninja_stop_shuriken_async(
-    mgr: *mut NinjaManagerOpaque,
-    name: *const c_char,
-    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
-    userdata: *mut c_void,
-) {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => return,
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => return,
-    };
-
-    let name_clone = name.clone();
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.stop(&name_clone).await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
-        };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
-    });
-}
-
-// -----------------------------
-// Additional FFI helpers
-// -----------------------------
 fn path_from_c(ptr: *const c_char) -> Option<PathBuf> {
     str_from_c(ptr).map(PathBuf::from)
 }
 
-fn json_result_or_error<T: Serialize>(
-    res: Result<T, anyhow::Error>,
+#[allow(dead_code)]
+unsafe fn json_result_or_error<T: Serialize>(
+    res: Result<T>,
     out_err: *mut *mut c_char,
 ) -> *mut c_char {
     match res {
@@ -397,10 +268,8 @@ fn json_result_or_error<T: Serialize>(
             Err(e) => {
                 let msg = format!("serde_json error: {}", e);
                 set_last_error(msg.clone());
-                unsafe {
-                    if !out_err.is_null() {
-                        *out_err = CString::new(msg).unwrap().into_raw();
-                    }
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
                 }
                 ptr::null_mut()
             }
@@ -408,288 +277,329 @@ fn json_result_or_error<T: Serialize>(
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             ptr::null_mut()
         }
     }
 }
 
-// -----------------------------
-// ninja_refresh_sync
-// -----------------------------
-#[no_mangle]
-pub extern "C" fn ninja_refresh_sync(
-    mgr: *mut NinjaManagerOpaque,
-    out_err: *mut *mut c_char,
-) -> i32 {
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-
-    let res = RUNTIME.block_on(async { manager.refresh().await });
-
-    match res {
-        Ok(()) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
-            }
-            -1
-        }
-    }
-}
-
-// -----------------------------
-// ninja_configure_sync
-// (calls manager.configure(name))
-// -----------------------------
-#[no_mangle]
-pub extern "C" fn ninja_configure_sync(
+/// Internal helper for async actions.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid manager pointer.
+/// * `name` must be a valid C string.
+/// * `cb` must be a valid function pointer if provided.
+/// * `userdata` is passed blindly to the callback; the caller is responsible for its validity and thread safety.
+unsafe fn shuriken_action_async(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
-    out_err: *mut *mut c_char,
-) -> i32 {
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+    action: fn(&mut ShurikenManager, &str) -> Result<()>,
+) {
+    let manager = match mgr_from_ptr(mgr) {
+        Some(m) => m.clone(),
+        None => return,
+    };
     let name = match str_from_c(name) {
         Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
+        None => return,
     };
+
+    let userdata_ptr: *mut c_void = userdata;
+    let userdata_ptr = userdata_ptr as usize; // cast to integer for Send
+    RUNTIME.spawn(async move {
+        let r = action(&mut manager.clone(), &name);
+        let json = match r {
+            Ok(_) => "{\"ok\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        };
+        if let Some(cb_fn) = cb {
+            let userdata_ptr = userdata_ptr as *mut c_void;
+            cb_fn(userdata_ptr, CString::new(json).unwrap().into_raw());
+        }
+    });
+}
+
+/// Starts a shuriken asynchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid C string.
+/// * `cb` is a function pointer invoked upon completion. It receives `userdata` and a JSON result string.
+/// * `userdata` is an opaque pointer passed to the callback. The library does not dereference it.
+#[no_mangle]
+pub unsafe extern "C" fn ninja_start_shuriken_async(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    shuriken_action_async(mgr, name, cb, userdata, |m, n| {
+        RUNTIME.block_on(async { m.start(n).await })
+    })
+}
+
+/// Stops a shuriken asynchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid C string.
+/// * `cb` is a function pointer invoked upon completion.
+/// * `userdata` is passed through to the callback.
+#[no_mangle]
+pub unsafe extern "C" fn ninja_stop_shuriken_async(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
+    userdata: *mut c_void,
+) {
+    shuriken_action_async(mgr, name, cb, userdata, |m, n| {
+        RUNTIME.block_on(async { m.stop(n).await })
+    })
+}
+
+// ========================
+// Shuriken list
+// ========================
+#[derive(Serialize)]
+struct ShurikenPair {
+    name: String,
+    state: ShurikenState,
+}
+
+/// Lists all shurikens managed by the system.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * Returns a JSON string pointer that must be freed via `ninja_string_free`.
+/// * On error, returns NULL and writes to `out_err` if provided.
+#[no_mangle]
+pub unsafe extern "C" fn ninja_list_shurikens_sync(
+    mgr: *mut NinjaManagerOpaque,
+    out_err: *mut *mut c_char,
+) -> *mut c_char {
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null manager").unwrap().into_raw();
             }
-            return -1;
+            return ptr::null_mut();
         }
     };
-
-    let res = RUNTIME.block_on(async { manager.configure(&name).await });
-
+    let res = RUNTIME.block_on(async { manager.list(false).await });
     match res {
-        Ok(()) => 0,
+        Ok(list) => {
+            let serializable: Vec<ShurikenPair> = match list {
+                Either::Left(vec) => vec
+                    .into_iter()
+                    .map(|(n, s)| ShurikenPair { name: n, state: s })
+                    .collect(),
+                Either::Right(vec) => vec
+                    .into_iter()
+                    .map(|n| ShurikenPair {
+                        name: n,
+                        state: ShurikenState::Idle,
+                    })
+                    .collect(),
+            };
+            CString::new(serde_json::to_string(&serializable).unwrap())
+                .unwrap()
+                .into_raw()
+        }
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
-            -1
+            ptr::null_mut()
         }
     }
 }
 
-// -----------------------------
-// ninja_write_options_toml_sync
-// (writes raw TOML string into <root>/shurikens/<name>/.ninja/options.toml)
-// This is a simple alternative to marshalling FieldValue across FFI.
-// -----------------------------
+// ========================
+// Write options TOML
+// ========================
+
+/// Writes a TOML configuration string to the specific shuriken's directory.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// * `toml_str` must be a valid, null-terminated UTF-8 C string containing the TOML data.
 #[no_mangle]
-pub extern "C" fn ninja_write_options_toml_sync(
+pub unsafe extern "C" fn ninja_write_options_toml_sync(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
     toml_str: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-    let toml = match str_from_c(toml_str) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null toml string").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null manager").unwrap().into_raw();
+            }
+            return -1;
+        }
+    };
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => {
+            if !out_err.is_null() {
+                *out_err = CString::new("null name").unwrap().into_raw();
+            }
+            return -1;
+        }
+    };
+    let toml_str = match str_from_c(toml_str) {
+        Some(s) => s,
+        None => {
+            if !out_err.is_null() {
+                *out_err = CString::new("null toml").unwrap().into_raw();
             }
             return -1;
         }
     };
 
-    // Determine path and write
-    let options_path = manager
+    let path = manager
         .root_path
         .join("shurikens")
         .join(&name)
         .join(".ninja")
         .join("options.toml");
-
     let res = RUNTIME.block_on(async {
-        if let Some(parent) = options_path.parent() {
-            fs::create_dir_all(parent).await?;
+        if let Some(p) = path.parent() {
+            fs::create_dir_all(p).await?;
         }
-        fs::write(&options_path, toml).await?;
+        fs::write(&path, toml_str).await?;
         Ok::<(), anyhow::Error>(())
     });
 
     match res {
-        Ok(()) => 0,
+        Ok(_) => 0,
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             -1
         }
     }
 }
 
-// -----------------------------
-// ninja_remove_sync
-// -----------------------------
+// ========================
+// Refresh shuriken
+// ========================
+
+/// Refreshes the state of a shuriken synchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
 #[no_mangle]
-pub extern "C" fn ninja_remove_sync(
+pub unsafe extern "C" fn ninja_refresh_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return -1;
-        }
-    };
-
-    let res = RUNTIME.block_on(async { manager.remove(&name).await });
-
-    match res {
-        Ok(()) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
-            }
-            -1
-        }
-    }
+    shuriken_action_sync(mgr, name, out_err, |m, _| {
+        RUNTIME.block_on(async { m.refresh().await })
+    })
 }
 
-// -----------------------------
-// ninja_install_sync
-// (install from a shuriken package file path)
-// -----------------------------
+// ========================
+// Remove shuriken
+// ========================
+
+/// Removes a shuriken synchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
 #[no_mangle]
-pub extern "C" fn ninja_install_sync(
+pub unsafe extern "C" fn ninja_remove_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
-    package_path: *const c_char,
+    name: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    let path = match path_from_c(package_path) {
+    shuriken_action_sync(mgr, name, out_err, |m, n| {
+        RUNTIME.block_on(async { m.remove(n).await })
+    })
+}
+
+// ========================
+// Install shuriken from path
+// ========================
+
+/// Installs a shuriken from a file system path.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `path_ptr` must be a valid, null-terminated UTF-8 C string representing the file path.
+#[no_mangle]
+pub unsafe extern "C" fn ninja_install_shuriken_sync(
+    mgr: *mut NinjaManagerOpaque,
+    path_ptr: *const c_char,
+    out_err: *mut *mut c_char,
+) -> i32 {
+    let path = match path_from_c(path_ptr) {
         Some(p) => p,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null package path").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null path").unwrap().into_raw();
             }
             return -1;
         }
     };
-
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null manager").unwrap().into_raw();
             }
             return -1;
         }
     };
-
-    let res = RUNTIME.block_on(async { manager.install(path).await });
-
-    match res {
-        Ok(()) => 0,
+    match RUNTIME.block_on(manager.install(path)) {
+        Ok(_) => 0,
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             -1
         }
     }
 }
 
-// -----------------------------
-// ninja_forge_sync
-// (forges a shuriken package; meta is provided as JSON string; src path and output dir path are C strings)
-// meta JSON should map to ArmoryMetadata shape
-// -----------------------------
+// ========================
+// Forge shuriken (metadata + source path)
+// ========================
+
+/// Forges a new shuriken based on provided metadata JSON and a source path.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `meta_json` must be a valid C string containing JSON data that matches `ArmoryMetadata`.
+/// * `src_path` must be a valid C string representing the path.
 #[no_mangle]
-pub extern "C" fn ninja_forge_sync(
+pub unsafe extern "C" fn ninja_forge_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
     meta_json: *const c_char,
     src_path: *const c_char,
@@ -698,278 +608,131 @@ pub extern "C" fn ninja_forge_sync(
     let meta_str = match str_from_c(meta_json) {
         Some(s) => s,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null meta json").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null meta").unwrap().into_raw();
             }
             return -1;
         }
     };
-
     let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
         Ok(m) => m,
         Err(e) => {
-            let msg = format!("meta json parse error: {}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(format!("invalid metadata: {}", e))
+                    .unwrap()
+                    .into_raw();
             }
             return -1;
         }
     };
-
     let src = match path_from_c(src_path) {
         Some(p) => p,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null src path").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null src path").unwrap().into_raw();
             }
             return -1;
         }
     };
-
     let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m.clone(),
+        Some(m) => m,
         None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new("null manager").unwrap().into_raw();
             }
             return -1;
         }
     };
 
-    let res = RUNTIME.block_on(async move { manager.forge(meta, src).await });
-
-    match res {
-        Ok(()) => 0,
+    match RUNTIME.block_on(manager.forge(meta, src)) {
+        Ok(_) => 0,
         Err(e) => {
             let msg = format!("{}", e);
             set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+            if !out_err.is_null() {
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             -1
         }
     }
 }
 
-// -----------------------------
-// ninja_get_projects_sync
-// (returns JSON array of project names, caller must free string)
-// -----------------------------
-#[no_mangle]
-pub extern "C" fn ninja_get_projects_sync(
-    mgr: *mut NinjaManagerOpaque,
-    out_err: *mut *mut c_char,
-) -> *mut c_char {
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return ptr::null_mut();
-        }
-    };
+// ========================
+// Async versions with callback
+// ========================
 
-    let res = RUNTIME.block_on(async { manager.get_projects().await });
-
-    json_result_or_error(res.map(|v| v), out_err)
-}
-
-// -----------------------------
-// ninja_get_shuriken_sync
-// returns the Shuriken manifest (serialized to JSON) for a given name
-// -----------------------------
-#[no_mangle]
-pub extern "C" fn ninja_get_shuriken_sync(
+/// Internal async helper with callback support.
+///
+/// # Safety
+///
+/// * See `shuriken_action_async`.
+unsafe fn shuriken_action_async_cb(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
-    out_err: *mut *mut c_char,
-) -> *mut c_char {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null name").unwrap().into_raw();
-                }
-            }
-            return ptr::null_mut();
-        }
-    };
-
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new("null manager").unwrap().into_raw();
-                }
-            }
-            return ptr::null_mut();
-        }
-    };
-
-    let res = RUNTIME.block_on(async { manager.get(name).await });
-
-    match res {
-        Ok(shuriken) => match serde_json::to_string(&shuriken) {
-            Ok(s) => CString::new(s).unwrap().into_raw(),
-            Err(e) => {
-                let msg = format!("serde_json error: {}", e);
-                set_last_error(msg.clone());
-                unsafe {
-                    if !out_err.is_null() {
-                        *out_err = CString::new(msg).unwrap().into_raw();
-                    }
-                }
-                ptr::null_mut()
-            }
-        },
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            unsafe {
-                if !out_err.is_null() {
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
-            }
-            ptr::null_mut()
-        }
-    }
-}
-
-// -----------------------------
-// Async versions using callbacks (pattern matches your start/stop async)
-// Example: ninja_install_async, ninja_refresh_async, ninja_remove_async, ninja_forge_async
-// Each will call the callback with a JSON string {"ok":true} or {"error":"..."}.
-// -----------------------------
-#[no_mangle]
-pub extern "C" fn ninja_refresh_async(
-    mgr: *mut NinjaManagerOpaque,
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
+    action: fn(&mut ShurikenManager, &str) -> Result<()>,
 ) {
     let manager = match mgr_from_ptr(mgr) {
         Some(m) => m.clone(),
         None => return,
     };
-
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.refresh().await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
+    let userdata = userdata as usize;
+    let name = match str_from_c(name) {
+        Some(s) => s,
+        None => return,
+    };
+    RUNTIME.spawn(async move {
+        let res = action(&mut manager.clone(), name.as_str());
+        let json = match res {
+            Ok(_) => "{\"ok\":true}".to_string(),
             Err(e) => format!("{{\"error\":\"{}\"}}", e),
         };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
+        if let Some(cb_fn) = cb {
+            cb_fn(
+                userdata as *mut c_void,
+                CString::new(json).unwrap().into_raw(),
+            );
+        }
     });
 }
 
+// Examples:
+
+/// Removes a shuriken asynchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid C string.
+/// * `cb` and `userdata`: see `ninja_start_shuriken_async`.
 #[no_mangle]
-pub extern "C" fn ninja_remove_async(
+pub unsafe extern "C" fn ninja_remove_shuriken_async(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
 ) {
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => return,
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m.clone(),
-        None => return,
-    };
-    let name_clone = name.clone();
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.remove(&name_clone).await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
-        };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
-    });
+    shuriken_action_async_cb(mgr, name, cb, userdata, |m, n| {
+        RUNTIME.block_on(async { m.remove(n).await })
+    })
 }
 
+/// Refreshes a shuriken asynchronously.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid C string.
+/// * `cb` and `userdata`: see `ninja_start_shuriken_async`.
 #[no_mangle]
-pub extern "C" fn ninja_install_async(
+pub unsafe extern "C" fn ninja_refresh_shuriken_async(
     mgr: *mut NinjaManagerOpaque,
-    package_path: *const c_char,
+    name: *const c_char,
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
 ) {
-    let package = match path_from_c(package_path) {
-        Some(p) => p,
-        None => return,
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m.clone(),
-        None => return,
-    };
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.install(package).await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
-        };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn ninja_forge_async(
-    mgr: *mut NinjaManagerOpaque,
-    meta_json: *const c_char,
-    src_path: *const c_char,
-    cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
-    userdata: *mut c_void,
-) {
-    let meta_str = match str_from_c(meta_json) {
-        Some(s) => s,
-        None => return,
-    };
-    let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
-        Ok(m) => m,
-        Err(_) => return,
-    };
-    let src = match path_from_c(src_path) {
-        Some(p) => p,
-        None => return,
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m.clone(),
-        None => return,
-    };
-    let userdata_usize = userdata as usize;
-
-    let _handle = RUNTIME.spawn(async move {
-        let r = manager.forge(meta, src).await;
-        let json = match r {
-            Ok(()) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
-        };
-        let userdata_ptr = userdata_usize as *mut c_void;
-        call_callback(cb, userdata_ptr, json);
-    });
+    shuriken_action_async_cb(mgr, name, cb, userdata, |m, _| {
+        RUNTIME.block_on(async { m.refresh().await })
+    })
 }
