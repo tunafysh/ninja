@@ -6,6 +6,8 @@ use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
+#[allow(unused_imports)]
+use runas::Command as AdminCmd;
 
 use std::{
     collections::HashMap,
@@ -350,8 +352,6 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         };
                     
                         let status = std::process::Command::new("pkexec")
-                            .arg("sh")
-                            .arg("-c")
                             .arg(&effective_command)
                             .stdin(Stdio::inherit())
                             .stdout(Stdio::inherit())
