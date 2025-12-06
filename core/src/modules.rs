@@ -13,6 +13,21 @@ use std::{
     time::Duration,
 };
 
+#[cfg(windows)]
+fn strip_windows_prefix(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
+    } else {
+        p.to_path_buf()
+    }
+}
+
+#[cfg(not(windows))]
+fn strip_windows_prefix(p: &Path) -> PathBuf {
+    p.to_path_buf()
+}
+
 fn canonicalize_cwd(base: Option<&Path>) -> Option<PathBuf> {
     base.map(|p| {
         let abs = if p.is_absolute() {
@@ -22,12 +37,13 @@ fn canonicalize_cwd(base: Option<&Path>) -> Option<PathBuf> {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(p)
         };
-        abs.canonicalize().unwrap_or(abs)
+
+        let canon = abs.canonicalize().unwrap_or(abs);
+        strip_windows_prefix(&canon)
     })
 }
 
 fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
-    // Split into first token + rest
     let mut parts_iter = command.split_whitespace();
     let Some(first) = parts_iter.next() else {
         return command.to_string();
@@ -35,7 +51,6 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
 
     let rest: Vec<&str> = parts_iter.collect();
 
-    // Heuristic: treat as a path if it has any slash or starts with ./ or ../
     let is_path_like =
         first.starts_with("./")
         || first.starts_with(".\\")
@@ -44,26 +59,25 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
         || first.contains('/')
         || first.contains('\\');
 
-    // If it's not path-like, keep as-is → PATH lookup etc.
     if !is_path_like {
         return command.to_string();
     }
 
-    // If we don't have a cwd, we can't resolve logically; keep as-is
     let Some(cwd) = cwd else {
         return command.to_string();
     };
 
     let first_path = Path::new(first);
 
-    // Absolute path? Just use it directly.
     let abs = if first_path.is_absolute() {
         first_path.to_path_buf()
     } else {
-        // Use relative-path to apply ../, ./ relative to cwd logically
         let rel = RelativePath::new(first);
         rel.to_logical_path(cwd)
     };
+
+    // 🔑 Normalize the path for Windows:
+    let abs = strip_windows_prefix(&abs);
 
     let mut cmd = abs.to_string_lossy().to_string();
     if !rest.is_empty() {
@@ -73,6 +87,7 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
 
     cmd
 }
+
 
 // ========================= FS MODULE =========================
 
