@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
+use crate::util::kill_process_by_pid;
 use tokio::{fs, process::Command};
 
 pub fn make_admin_command(bin: &str, args: Option<&[String]>, cwd: Option<&Path>) -> Command {
@@ -124,18 +124,6 @@ pub struct LogsConfig {
     pub log_path: PathBuf,
 }
 
-pub fn kill_process_by_name(name: &str) -> bool {
-    let mut sys = System::new_all();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-
-    for process in sys.processes().values() {
-        if process.name() == name && process.kill_with(Signal::Kill).unwrap_or(false) {
-            return true;
-        }
-    }
-    false
-}
-
 fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> bool {
     if let Some(actual_start_time) = get_process_start_time(pid)
         && actual_start_time == expected_start_time
@@ -143,18 +131,6 @@ fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> boo
         return kill_process_by_pid(pid);
     }
     false
-}
-
-pub fn kill_process_by_pid(pid_num: u32) -> bool {
-    let pid = Pid::from_u32(pid_num);
-    let mut sys = System::new_all();
-    sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-
-    if let Some(process) = sys.process(pid) {
-        process.kill_with(Signal::Kill).unwrap_or(false)
-    } else {
-        false
-    }
 }
 
 pub fn get_process_start_time(pid: u32) -> Option<u64> {

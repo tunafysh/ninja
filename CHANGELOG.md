@@ -38,3 +38,6 @@
 
 ## 1.4.0
 * Fixed lua working directory errors
+
+## 1.4.1
+* Reworked the whole process spawning and shell exec functions in the lua stdlib

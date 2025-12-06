@@ -197,7 +197,7 @@ impl ShurikenManager {
         Ok((shurikens, states))
     }
 
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self> {        
         let exe_dir = dirs::home_dir()
             .ok_or_else(|| Error::msg("Could not find home directory"))?
             .join(".ninja");

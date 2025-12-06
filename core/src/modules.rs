@@ -1,27 +1,81 @@
-use crate::{
-    shuriken::{kill_process_by_name, kill_process_by_pid},
-    util::resolve_path,
-};
+use crate::util::{kill_process_by_name, kill_process_by_pid, resolve_path};
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
 use serde_json::Value;
-#[allow(unused_imports)]
-use runas::Command as AdminCmd;
+use relative_path::RelativePath;
 
 use std::{
-    collections::HashMap,
     env, fs,
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
-    sync::Mutex,
+    result::Result as StdResult,
     time::Duration,
 };
 
-lazy_static::lazy_static! {
-    static ref DETACHED_PROCS: Mutex<HashMap<u32, std::process::Child>> = Mutex::new(HashMap::new());
+fn canonicalize_cwd(base: Option<&Path>) -> Option<PathBuf> {
+    base.map(|p| {
+        let abs = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(p)
+        };
+        abs.canonicalize().unwrap_or(abs)
+    })
 }
+
+fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
+    // Split into first token + rest
+    let mut parts_iter = command.split_whitespace();
+    let Some(first) = parts_iter.next() else {
+        return command.to_string();
+    };
+
+    let rest: Vec<&str> = parts_iter.collect();
+
+    // Heuristic: treat as a path if it has any slash or starts with ./ or ../
+    let is_path_like =
+        first.starts_with("./")
+        || first.starts_with(".\\")
+        || first.starts_with("../")
+        || first.starts_with("..\\")
+        || first.contains('/')
+        || first.contains('\\');
+
+    // If it's not path-like, keep as-is → PATH lookup etc.
+    if !is_path_like {
+        return command.to_string();
+    }
+
+    // If we don't have a cwd, we can't resolve logically; keep as-is
+    let Some(cwd) = cwd else {
+        return command.to_string();
+    };
+
+    let first_path = Path::new(first);
+
+    // Absolute path? Just use it directly.
+    let abs = if first_path.is_absolute() {
+        first_path.to_path_buf()
+    } else {
+        // Use relative-path to apply ../, ./ relative to cwd logically
+        let rel = RelativePath::new(first);
+        rel.to_logical_path(cwd)
+    };
+
+    let mut cmd = abs.to_string_lossy().to_string();
+    if !rest.is_empty() {
+        cmd.push(' ');
+        cmd.push_str(&rest.join(" "));
+    }
+
+    cmd
+}
+
+// ========================= FS MODULE =========================
 
 pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
     let fs_module = lua.create_table()?;
@@ -170,10 +224,11 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
     Ok(fs_module)
 }
 
+// ========================= ENV MODULE =========================
+
 pub fn make_env_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     let env_module = lua.create_table()?;
 
-    // ====== ENV module ======
     env_module.set("os", env::consts::OS)?;
     env_module.set("arch", env::consts::ARCH)?;
     env_module.set(
@@ -204,21 +259,24 @@ pub fn make_env_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
             Ok(table)
         })?,
     )?;
-    {
-        let cwd_string = base_cwd
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
 
-        env_module.set(
-            "cwd",
-            lua.create_function(move |_, _: ()| Ok(cwd_string.clone()))?,
-        )?;
-    }
+    // Canonicalized cwd string (if provided)
+    let cwd_string = canonicalize_cwd(base_cwd)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    env_module.set(
+        "cwd",
+        lua.create_function(move |_, _: ()| Ok(cwd_string.clone()))?,
+    )?;
+
     Ok(env_module)
 }
 
+// ========================= SHELL HELPERS =========================
+
 #[cfg(windows)]
-fn run_windows_command(command: &str, cwd: Option<&Path>) -> Result<Output> {
+fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Output> {
     let mut cmd = Command::new("powershell.exe");
     cmd.arg("-NoProfile")
         .arg("-WindowStyle")
@@ -233,14 +291,32 @@ fn run_windows_command(command: &str, cwd: Option<&Path>) -> Result<Output> {
         cmd.current_dir(cwd);
     }
 
+    // NOTE: This keeps your previous semantic (attempting elevation) even though
+    //       "powershell.exe -Verb RunAs" is not really correct. You can replace
+    //       this later with a proper runas/AdminCmd approach.
+    if admin {
+        cmd.arg("-Verb").arg("RunAs");
+    }
+
     cmd.output().map_err(mlua::Error::external)
 }
 
 #[cfg(unix)]
-fn run_unix_command(command: &str, cwd: Option<&Path>) -> Result<Output> {
+fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Output> {
     let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-    let mut cmd = Command::new(shell);
-    cmd.args(["-c", command])
+
+    // If admin: pkexec <shell> -c "command"
+    let mut cmd = if admin {
+        let mut c = Command::new("pkexec");
+        c.arg("--keep-cwd");
+        c.arg(&shell);
+        c
+    } else {
+        Command::new(shell)
+    };
+
+    cmd.arg("-c")
+        .arg(command)
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -252,184 +328,56 @@ fn run_unix_command(command: &str, cwd: Option<&Path>) -> Result<Output> {
     cmd.output().map_err(mlua::Error::external)
 }
 
+// ========================= SHELL MODULE =========================
+//
+// shell.exec(command: string, admin?: boolean) -> { code, stdout, stderr }
+// Always synchronous. For detached processes, use proc.spawn.
+//
+
 pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     let shell_module = lua.create_table()?;
 
     // Capture cwd as owned PathBuf so we can move it into the closure
-    let cwd_buf: Option<PathBuf> = base_cwd.map(|p| p.to_path_buf());
+    // and make sure it's absolute & canonicalized when possible.
+    let cwd_buf: Option<PathBuf> = canonicalize_cwd(base_cwd);
 
     shell_module.set(
         "exec",
         lua.create_function(
-            move |lua, (command, detached, admin): (String, Option<bool>, Option<bool>)| {
-                let detached = detached.unwrap_or(false);
+            move |lua, (command, admin): (String, Option<bool>)| {
                 let admin = admin.unwrap_or(false);
                 let result_table = lua.create_table()?;
 
                 let cwd_opt = cwd_buf.as_deref();
 
-                if detached {
-                    // ---------- DETACHED ----------
+                // ---------- ALWAYS FOREGROUND / BLOCKING ----------
+                let output: Result<Output> = {
                     #[cfg(windows)]
                     {
-                        use std::os::windows::process::CommandExt;
-
-                        let mut cmd = Command::new("powershell.exe");
-                        cmd.arg("-NoProfile")
-                            .arg("-WindowStyle")
-                            .arg("Hidden")
-                            .arg("-Command")
-                            .arg(&command)
-                            .stdin(Stdio::inherit())
-                            .stdout(Stdio::inherit())
-                            .stderr(Stdio::inherit())
-                            .creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-                        if let Some(cwd) = cwd_opt {
-                            cmd.current_dir(cwd);
-                        }
-
-                        let child = cmd.spawn().map_err(mlua::Error::external)?;
-                        let pid = child.id();
-                        DETACHED_PROCS.lock().unwrap().insert(pid, child);
-                        result_table.set("pid", pid)?;
+                        run_windows_command(&command, cwd_opt, admin)
                     }
-
                     #[cfg(unix)]
                     {
-                        let mut cmd = Command::new("sh");
-                        cmd.arg("-c")
-                            .arg(&command)
-                            .stdin(Stdio::inherit())
-                            .stdout(Stdio::inherit())
-                            .stderr(Stdio::inherit());
-
-                        if let Some(cwd) = cwd_opt {
-                            cmd.current_dir(cwd);
-                        }
-
-                        let child = cmd.spawn().map_err(mlua::Error::external)?;
-                        let pid = child.id();
-                        DETACHED_PROCS.lock().unwrap().insert(pid, child);
-                        result_table.set("pid", pid)?;
+                        run_unix_command(&command, cwd_opt, admin)
                     }
-                } else if admin {
-                    // ---------- ADMIN ----------
-                    // AdminCmd doesn't support current_dir(),
-                    // so we inject a `cd` / `Set-Location` into the command string instead.
+                };
 
-                    #[cfg(windows)]
-                    {
-                        let effective_command = if let Some(cwd) = cwd_opt {
-                            // NOTE: naive quoting; good enough for most paths
-                            format!("Set-Location '{}'; {}", cwd.display(), command)
-                        } else {
-                            command.clone()
-                        };
-
-                        let status = AdminCmd::new("powershell.exe")
-                            .arg("-NoProfile")
-                            .arg("-WindowStyle")
-                            .arg("Hidden")
-                            .arg("-Command")
-                            .arg(&effective_command)
-                            .show(false)
-                            .status()
-                            .map_err(mlua::Error::external)?;
-
-                        if let Some(code) = status.code() {
-                            result_table.set("code", code)?;
-                        }
+                match output {
+                    Ok(cmd_output) => {
+                        result_table.set("code", cmd_output.status.code().unwrap_or(-1))?;
+                        result_table.set(
+                            "stdout",
+                            String::from_utf8_lossy(&cmd_output.stdout).to_string(),
+                        )?;
+                        result_table.set(
+                            "stderr",
+                            String::from_utf8_lossy(&cmd_output.stderr).to_string(),
+                        )?;
                     }
-
-                    // Linux: use pkexec
-                    #[cfg(target_os = "linux")]
-                    {
-                        let effective_command = if let Some(cwd) = cwd_opt {
-                            format!("cd '{}'; {}", cwd.display(), command)
-                        } else {
-                            command.clone()
-                        };
-                    
-                        let status = std::process::Command::new("pkexec")
-                            .arg(&effective_command)
-                            .stdin(Stdio::inherit())
-                            .stdout(Stdio::inherit())
-                            .stderr(Stdio::inherit())
-                            .status()
-                            .map_err(mlua::Error::external)?;
-                    
-                        if let Some(code) = status.code() {
-                            result_table.set("code", code)?;
-                        }
-                    }
-                    
-                    // macOS: use osascript
-                    #[cfg(target_os = "macos")]
-                    {
-                        // cd into cwd if provided
-                        let shell_cmd = if let Some(cwd) = cwd_opt {
-                            format!("cd '{}'; {}", cwd.display(), command)
-                        } else {
-                            command.clone()
-                        };
-                    
-                        // Very simple escaping for AppleScript string
-                        fn escape_for_osascript(s: &str) -> String {
-                            s.replace('\\', "\\\\").replace('"', "\\\"")
-                        }
-                    
-                        let escaped = escape_for_osascript(&shell_cmd);
-                    
-                        // AppleScript: do shell script "..." with administrator privileges
-                        let applescript = format!(
-                            "do shell script \"{}\" with administrator privileges",
-                            escaped
-                        );
-                    
-                        let status = std::process::Command::new("osascript")
-                            .arg("-e")
-                            .arg(&applescript)
-                            .stdin(Stdio::inherit())
-                            .stdout(Stdio::inherit())
-                            .stderr(Stdio::inherit())
-                            .status()
-                            .map_err(mlua::Error::external)?;
-                    
-                        if let Some(code) = status.code() {
-                            result_table.set("code", code)?;
-                        }
-                    }
-                } else {
-                    // ---------- NORMAL FOREGROUND ----------
-                    let output: Result<Output> = {
-                        #[cfg(windows)]
-                        {
-                            run_windows_command(&command, cwd_opt)
-                        }
-                        #[cfg(unix)]
-                        {
-                            run_unix_command(&command, cwd_opt)
-                        }
-                    };
-
-                    match output {
-                        Ok(cmd_output) => {
-                            result_table.set("code", cmd_output.status.code().unwrap_or(-1))?;
-                            result_table.set(
-                                "stdout",
-                                String::from_utf8_lossy(&cmd_output.stdout).to_string(),
-                            )?;
-                            result_table.set(
-                                "stderr",
-                                String::from_utf8_lossy(&cmd_output.stderr).to_string(),
-                            )?;
-                        }
-                        Err(e) => {
-                            result_table.set("code", -1)?;
-                            result_table.set("stdout", "")?;
-                            result_table.set("stderr", format!("Failed: {}", e))?;
-                        }
+                    Err(e) => {
+                        result_table.set("code", -1)?;
+                        result_table.set("stdout", "")?;
+                        result_table.set("stderr", format!("Failed: {}", e))?;
                     }
                 }
 
@@ -440,6 +388,8 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
     Ok(shell_module)
 }
+
+// ========================= MODULE FACTORY =========================
 
 pub async fn make_modules(
     lua: &Lua,
@@ -454,67 +404,174 @@ pub async fn make_modules(
     let log_module = lua.create_table()?;
     let proc_module = lua.create_table()?;
 
-    // ====== PROC module ======
+    let proc_cwd: Option<PathBuf> = canonicalize_cwd(cwd);
+
+    // ==================== PROC MODULE ====================
+    //
+    // proc.spawn(cmd: string) -> { pid }
+    //   - Windows: CreateProcessW (no shell)
+    //   - Unix: fork + execve/execvp (no shell)
+    // proc.kill_pid(pid: number) -> boolean
+    // proc.kill_name(name: string) -> boolean
+    //
+
     proc_module.set(
         "spawn",
-        lua.create_function(|lua, command: String| {
-            let result_table = lua.create_table()?;
+        lua.create_function({
+            let proc_cwd = proc_cwd.clone();
+            move |lua, command: String| {
+                let result_table = lua.create_table()?;
 
-            #[cfg(windows)]
-            use std::os::windows::process::CommandExt;
-            #[cfg(windows)]
-            let child = Command::new("powershell.exe")
-                .arg("-NoProfile")
-                .arg("-WindowStyle")
-                .arg("Hidden")
-                .arg("-Command")
-                .arg(&command)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .spawn()
-                .map_err(mlua::Error::external)?;
+                // Resolve ./foo, ../bar, scripts/run.sh, etc. against cwd
+                let cwd_opt = proc_cwd.as_deref();
+                let resolved = resolve_spawn_command(&command, cwd_opt);
 
-            #[cfg(unix)]
-            let child = Command::new("sh")
-                .arg("-c")
-                .arg(&command)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .map_err(mlua::Error::external)?;
+                // ---------- WINDOWS IMPLEMENTATION ----------
+                #[cfg(windows)]
+                {
+                    use windows::core::PCWSTR;
+                    use windows::Win32::Foundation::{CloseHandle, GetLastError};
+                    use windows::Win32::System::Threading::{
+                        CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW, CREATE_NO_WINDOW,
+                    };
 
-            let pid = child.id();
-            DETACHED_PROCS.lock().unwrap().insert(pid, child);
-            result_table.set("pid", pid)?;
+                    // Windows requires a mutable, null-terminated UTF-16 buffer
+                    let mut cmd_w: Vec<u16> = resolved
+                        .encode_utf16()
+                        .chain(std::iter::once(0))
+                        .collect();
 
-            Ok(result_table)
-        })?,
-    )?;
+                    let mut si: STARTUPINFOW = STARTUPINFOW::default();
+                    si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
 
-    proc_module.set(
-        "kill_pid",
-        lua.create_function(|_, pid: u32| {
-            if let Some(mut child) = DETACHED_PROCS.lock().unwrap().remove(&pid) {
-                child.kill().map_err(mlua::Error::external)?;
-                Ok(true)
-            } else {
-                // Try system kill if not in our tracking
-                Ok(kill_process_by_pid(pid))
+                    let mut pi: PROCESS_INFORMATION = PROCESS_INFORMATION::default();
+
+                    let ok = unsafe {
+                        CreateProcessW(
+                            PCWSTR::null(),     // lpApplicationName (let Windows parse cmd)
+                            cmd_w.as_mut_ptr(), // lpCommandLine (mutable buffer)
+                            std::ptr::null(),   // lpProcessAttributes
+                            std::ptr::null(),   // lpThreadAttributes
+                            false.into(),       // bInheritHandles
+                            CREATE_NO_WINDOW.0, // dwCreationFlags
+                            std::ptr::null(),   // lpEnvironment
+                            PCWSTR::null(),     // lpCurrentDirectory
+                            &si,                // lpStartupInfo
+                            &mut pi,            // lpProcessInformation
+                        )
+                    };
+
+                    if !ok.as_bool() {
+                        let err = unsafe { GetLastError().0 };
+                        return Err(mlua::Error::external(format!(
+                            "CreateProcessW failed with error code {err}"
+                        )));
+                    }
+
+                    let pid = pi.dwProcessId;
+                    unsafe {
+                        CloseHandle(pi.hThread);
+                        CloseHandle(pi.hProcess);
+                    }
+
+                    result_table.set("pid", pid)?;
+                    return Ok(result_table);
+                }
+
+                // ---------- UNIX (LINUX + MACOS) IMPLEMENTATION ----------
+                #[cfg(unix)]
+                {
+                    use nix::unistd::{execve, execvp, fork, ForkResult};
+                    use std::ffi::{CStr, CString, NulError};
+
+                    // Split resolved command
+                    let parts: Vec<&str> = resolved.split_whitespace().collect();
+                    if parts.is_empty() {
+                        return Err(mlua::Error::external("spawn: empty command string"));
+                    }
+
+                    // Convert to CStrings
+                    let cstrings: Vec<CString> = parts
+                        .iter()
+                        .map(|s| CString::new(*s))
+                        .collect::<StdResult<Vec<CString>, NulError>>()
+                        .map_err(mlua::Error::external)?;
+
+                    let prog = &cstrings[0];
+                    let argv: Vec<&CStr> = cstrings.iter().map(|s| s.as_c_str()).collect();
+
+                    // Decide: path-like → execve; bare name → execvp
+                    let prog_str = prog.to_string_lossy();
+                    let is_path_like =
+                        prog_str.starts_with("./")
+                        || prog_str.starts_with("../")
+                        || prog_str.contains('/')
+                        || prog_str.starts_with(".\\")
+                        || prog_str.starts_with("..\\")
+                        || prog_str.contains('\\');
+
+                    match unsafe { fork() } {
+                        Ok(ForkResult::Parent { child }) => {
+                            let pid: i32 = child.as_raw();
+                            result_table.set("pid", pid)?;
+                            Ok(result_table)
+                        }
+                        Ok(ForkResult::Child) => {
+                            if is_path_like {
+                                // Build envp from current env (or a filtered one)
+                                let env_cstrings: Vec<CString> = std::env::vars_os()
+                                    .filter_map(|(k, v)| {
+                                        let mut kv = k.into_string().ok()?;
+                                        kv.push('=');
+                                        kv.push_str(&v.into_string().ok()?);
+                                        CString::new(kv).ok()
+                                    })
+                                    .collect();
+                                let envp: Vec<&CStr> =
+                                    env_cstrings.iter().map(|s| s.as_c_str()).collect();
+
+                                match execve(prog, &argv, &envp) {
+                                    Err(e) => {
+                                        eprintln!("execve failed for '{}': {e}", resolved);
+                                        std::process::exit(127);
+                                    }
+                                    Ok(_) => {}
+                                }
+
+                            } else {
+                                match execvp(prog, &argv) {
+                                    Err(e) => {
+                                        eprintln!("execvp failed for '{}': {e}", resolved);
+                                        std::process::exit(127);
+                                    }
+                                }
+                            }
+                            unreachable!("execve/execvp should not return on success");
+                        }
+                        Err(e) => Err(mlua::Error::external(format!("fork failed: {e}"))),
+                    }
+                }
             }
         })?,
     )?;
 
+    // We now rely only on your platform helpers for kill by PID
+    proc_module.set(
+        "kill_pid",
+        lua.create_function(|_, pid: u32| Ok(kill_process_by_pid(pid)))?,
+    )?;
+
+    // Name-based kill: same as before, just uses your helper
     proc_module.set(
         "kill_name",
         lua.create_function(|_, name: String| Ok(kill_process_by_name(&name)))?,
     )?;
 
+    // list is still a stub for now
     proc_module.set("list", lua.create_table()?)?;
 
-    // ====== TIME module ======
+    // ==================== TIME MODULE ====================
+
     time_module.set(
         "year",
         lua.create_function(|_, _: ()| Ok(Utc::now().year()))?,
@@ -556,7 +613,8 @@ pub async fn make_modules(
         })?,
     )?;
 
-    // ====== JSON module ======
+    // ==================== JSON MODULE ====================
+
     json_module.set(
         "encode",
         lua.create_function(|_, table: Table| {
@@ -577,7 +635,8 @@ pub async fn make_modules(
         })?,
     )?;
 
-    // ====== LOG module ======
+    // ==================== LOG MODULE ====================
+
     log_module.set(
         "info",
         lua.create_function(|_, s: String| {
