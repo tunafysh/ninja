@@ -10,7 +10,6 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
-    result::Result as StdResult,
     time::Duration,
 };
 
@@ -429,7 +428,7 @@ pub async fn make_modules(
                 // ---------- WINDOWS IMPLEMENTATION ----------
                 #[cfg(windows)]
                 {
-                    use windows::core::PCWSTR;
+                    use windows::core::{PCWSTR, PWSTR};
                     use windows::Win32::Foundation::{CloseHandle, GetLastError};
                     use windows::Win32::System::Threading::{
                         CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW, CREATE_NO_WINDOW,
@@ -441,27 +440,26 @@ pub async fn make_modules(
                         .chain(std::iter::once(0))
                         .collect();
 
-                    let mut si: STARTUPINFOW = STARTUPINFOW::default();
-                    si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+                    let si: STARTUPINFOW = STARTUPINFOW::default();
 
                     let mut pi: PROCESS_INFORMATION = PROCESS_INFORMATION::default();
 
                     let ok = unsafe {
                         CreateProcessW(
                             PCWSTR::null(),     // lpApplicationName (let Windows parse cmd)
-                            cmd_w.as_mut_ptr(), // lpCommandLine (mutable buffer)
-                            std::ptr::null(),   // lpProcessAttributes
-                            std::ptr::null(),   // lpThreadAttributes
-                            false.into(),       // bInheritHandles
-                            CREATE_NO_WINDOW.0, // dwCreationFlags
-                            std::ptr::null(),   // lpEnvironment
+                            Some(PWSTR(cmd_w.as_mut_ptr())), // lpCommandLine (mutable buffer)
+                            Some(std::ptr::null()),   // lpProcessAttributes
+                            Some(std::ptr::null()),   // lpThreadAttributes
+                            false,       // bInheritHandles
+                            CREATE_NO_WINDOW, // dwCreationFlags
+                            Some(std::ptr::null()),   // lpEnvironment
                             PCWSTR::null(),     // lpCurrentDirectory
                             &si,                // lpStartupInfo
                             &mut pi,            // lpProcessInformation
                         )
                     };
 
-                    if !ok.as_bool() {
+                    if ok.is_err() {
                         let err = unsafe { GetLastError().0 };
                         return Err(mlua::Error::external(format!(
                             "CreateProcessW failed with error code {err}"
@@ -470,19 +468,19 @@ pub async fn make_modules(
 
                     let pid = pi.dwProcessId;
                     unsafe {
-                        CloseHandle(pi.hThread);
-                        CloseHandle(pi.hProcess);
+                        CloseHandle(pi.hThread).map_err(mlua::Error::external)?;
+                        CloseHandle(pi.hProcess).map_err(mlua::Error::external)?;
                     }
 
                     result_table.set("pid", pid)?;
-                    return Ok(result_table);
+                    Ok(result_table)
                 }
 
                 // ---------- UNIX (LINUX + MACOS) IMPLEMENTATION ----------
                 #[cfg(unix)]
                 {
                     use nix::unistd::{execve, execvp, fork, ForkResult};
-                    use std::ffi::{CStr, CString, NulError};
+                    use std::{ffi::{CStr, CString, NulError}, result::Result as StdResult};
 
                     // Split resolved command
                     let parts: Vec<&str> = resolved.split_whitespace().collect();

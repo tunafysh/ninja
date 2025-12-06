@@ -61,10 +61,9 @@ pub fn make_admin_command(bin: &str, args: Option<&[String]>, cwd: Option<&Path>
             script.push_str(&format!(" -ArgumentList @('{}')", joined));
         }
 
-        if let Some(c) = cwd {
-            if let Some(cwd_str) = c.to_str() {
+        if let Some(c) = cwd
+            && let Some(cwd_str) = c.to_str() {
                 script.push_str(&format!(" -WorkingDirectory '{}'", cwd_str));
-            }
         }
 
         script.push_str(").Id"); // return PID
@@ -124,13 +123,13 @@ pub struct LogsConfig {
     pub log_path: PathBuf,
 }
 
-fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> bool {
+fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> Result<bool> {
     if let Some(actual_start_time) = get_process_start_time(pid)
         && actual_start_time == expected_start_time
     {
         return kill_process_by_pid(pid);
     }
-    false
+    Ok(false)
 }
 
 pub fn get_process_start_time(pid: u32) -> Option<u64> {
@@ -404,7 +403,7 @@ impl Shuriken {
                     .map_err(|e| format!("Invalid name: {}", e))?;
 
                 // Only use PID + start_time; don't kill by name to avoid hitting the wrong process.
-                if !kill_process_by_pid_and_start_time(pid, start_time) {
+                if !kill_process_by_pid_and_start_time(pid, start_time).map_err(|e| e.to_string())? {
                     return Err(format!(
                         "Failed to terminate shuriken {} (PID {}, start_time {})",
                         name, pid, start_time

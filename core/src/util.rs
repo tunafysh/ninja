@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, Error, anyhow};
 use regex::Regex;
 use std::{fs, path::{Path, PathBuf}};
 
@@ -54,7 +54,7 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 }
 
 #[cfg(windows)]
-pub fn kill_process_by_pid(pid: u32) -> bool {
+pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
         OpenProcess, TerminateProcess, PROCESS_TERMINATE,
@@ -62,19 +62,18 @@ pub fn kill_process_by_pid(pid: u32) -> bool {
 
     unsafe {
         // Open with terminate rights
-        let handle = OpenProcess(PROCESS_TERMINATE, false, pid);
+        let handle = OpenProcess(PROCESS_TERMINATE, false, pid)?;
         if handle.is_invalid() {
-            return false;
+            return Ok(false);
         }
 
-        let ok: BOOL = TerminateProcess(handle, 1);
-        CloseHandle(handle);
-
-        ok.as_bool()
+        TerminateProcess(handle, 1).map_err(|e| Error::msg(e.message()))?;
+        CloseHandle(handle)?;
+        Ok(true)
     }
 }
 #[cfg(windows)]
-pub fn kill_process_by_name(name: &str) -> bool {
+pub fn kill_process_by_name(name: &str) -> Result<bool> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
 
@@ -87,17 +86,16 @@ pub fn kill_process_by_name(name: &str) -> bool {
     let target = name.to_ascii_lowercase();
 
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
         if snapshot.is_invalid() {
-            return false;
+            return Ok(false);
         }
 
         let mut entry = PROCESSENTRY32W::default();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
         let mut any_killed = false;
 
-        if Process32FirstW(snapshot, &mut entry).as_bool() {
+        if Process32FirstW(snapshot, &mut entry).map_err(|e| Error::msg(e.message())).is_ok() {
             loop {
                 // exe file name is in szExeFile (null-terminated UTF-16)
                 let len = entry
@@ -111,19 +109,19 @@ pub fn kill_process_by_name(name: &str) -> bool {
 
                 if exe.to_ascii_lowercase() == target {
                     let pid = entry.th32ProcessID;
-                    if kill_process_by_pid(pid) {
+                    if kill_process_by_pid(pid)? {
                         any_killed = true;
                     }
                 }
 
-                if !Process32NextW(snapshot, &mut entry).as_bool() {
+                if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
                 }
             }
         }
 
-        CloseHandle(HANDLE(snapshot.0));
-        any_killed
+        CloseHandle(HANDLE(snapshot.0))?;
+        Ok(any_killed)
     }
 }
 

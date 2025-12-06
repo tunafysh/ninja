@@ -36,7 +36,7 @@ pub fn install_backup_schedule(frequency: BackupFrequency) -> std::io::Result<()
         };
 
         Command::new("schtasks")
-            .args(&[
+            .args([
                 "/Create",
                 "/TN",
                 "NinjaBackup",
@@ -80,7 +80,7 @@ pub fn uninstall_backup_schedule() -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
         Command::new("schtasks")
-            .args(&["/Delete", "/TN", "NinjaBackup", "/F"])
+            .args(["/Delete", "/TN", "NinjaBackup", "/F"])
             .status()?;
     }
 
