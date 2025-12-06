@@ -55,14 +55,14 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 
 #[cfg(windows)]
 pub fn kill_process_by_pid(pid: u32) -> bool {
-    use windows::Win32::Foundation::{CloseHandle, BOOL};
+    use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
         OpenProcess, TerminateProcess, PROCESS_TERMINATE,
     };
 
     unsafe {
         // Open with terminate rights
-        let handle = OpenProcess(PROCESS_TERMINATE, false.into(), pid);
+        let handle = OpenProcess(PROCESS_TERMINATE, false, pid);
         if handle.is_invalid() {
             return false;
         }
