@@ -59,6 +59,7 @@ pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
     use windows::Win32::System::Threading::{
         OpenProcess, TerminateProcess, PROCESS_TERMINATE,
     };
+    use anyhow::Error;
 
     unsafe {
         // Open with terminate rights

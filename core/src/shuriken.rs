@@ -127,7 +127,10 @@ fn kill_process_by_pid_and_start_time(pid: u32, expected_start_time: u64) -> Res
     if let Some(actual_start_time) = get_process_start_time(pid)
         && actual_start_time == expected_start_time
     {
+        #[cfg(not(windows))]
         return Ok(kill_process_by_pid(pid));
+        #[cfg(windows)]
+        return kill_process_by_pid(pid);
     }
     Ok(false)
 }
