@@ -1,4 +1,4 @@
-use anyhow::{Result, Error, anyhow};
+use anyhow::{Result, anyhow};
 use regex::Regex;
 use std::{fs, path::{Path, PathBuf}};
 
@@ -76,7 +76,7 @@ pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
 pub fn kill_process_by_name(name: &str) -> Result<bool> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-
+    use anyhow::Error;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,

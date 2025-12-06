@@ -144,7 +144,10 @@ mod ninja_api_integration_tests {
     #[tokio::test]
     async fn test_kill_process_by_pid_invalid() {
         // 999999 should not exist
+        #[cfg(windows)]
         let success = kill_process_by_pid(999999).unwrap();
+        #[cfg(not(windows))]
+        let success = kill_process_by_pid(999999);
         assert!(!success);
     }
 
