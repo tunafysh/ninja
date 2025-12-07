@@ -469,7 +469,7 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
     let mut cmd = Command::new("powershell.exe");
     cmd.arg("-NoProfile")
         .arg("-WindowStyle")
-        .arg("Hidden")
+        .arg("Hidden");
 
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
@@ -625,9 +625,7 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
 #[cfg(windows)]
 fn format_win32_error(code: u32) -> String {
-    use windows::Win32::Foundation::{
-        FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
-    };
+    use windows::Win32::System::Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS};
     use windows::core::PWSTR;
 
     let mut buf: [u16; 512] = [0; 512];
