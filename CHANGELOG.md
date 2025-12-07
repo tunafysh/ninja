@@ -41,3 +41,6 @@
 
 ## 1.4.1
 * Reworked the whole process spawning and shell exec functions in the lua stdlib
+
+## 1.5.0
+* Separated the proc module to include cwd.

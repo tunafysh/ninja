@@ -3559,7 +3559,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "ninja"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "chrono",
  "dirs-next",
@@ -3584,7 +3584,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-api"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -3596,7 +3596,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-cli"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3619,7 +3619,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-core"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3650,7 +3650,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-ffi"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "cbindgen",
@@ -3664,7 +3664,7 @@ dependencies = [
 
 [[package]]
 name = "ninja-mcp"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "dirs-next",
  "log",
