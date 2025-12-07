@@ -884,20 +884,42 @@ pub async fn make_modules(
     proc_module.set(
         "kill_pid",
         lua.create_function(|_, pid: u32| {
-            debug!("proc.kill_pid: pid={}", pid);
-            let result = kill_process_by_pid(pid);
-            debug!("proc.kill_pid: result={} for pid={}", result, pid);
-            Ok(result)
+            #[cfg(windows)]
+            {
+                debug!("proc.kill_pid: pid={}", pid);
+                let result = kill_process_by_pid(pid)?;
+                debug!("proc.kill_pid: result={} for pid={}", result, pid);
+                Ok(result)
+            }
+            
+            #[cfg(not(windows))]
+            {
+                debug!("proc.kill_pid: pid={}", pid);
+                let result = kill_process_by_pid(pid);
+                debug!("proc.kill_pid: result={} for pid={}", result, pid);
+                Ok(result)
+            }
         })?,
     )?;
 
     proc_module.set(
         "kill_name",
         lua.create_function(|_, name: String| {
-            debug!("proc.kill_name: name='{}'", name);
-            let result = kill_process_by_name(&name);
-            debug!("proc.kill_name: result={} for name='{}'", result, name);
-            Ok(result)
+            #[cfg(windows)]
+            {
+                debug!("proc.kill_name: name='{}'", name);
+                let result = kill_process_by_name(&name)?;
+                debug!("proc.kill_name: result={} for name='{}'", result, name);
+                Ok(result)
+            }
+            
+            #[cfg(not(windows))]
+            {
+                debug!("proc.kill_name: name='{}'", name);
+                let result = kill_process_by_name(&name);
+                debug!("proc.kill_name: result={} for name='{}'", result, name);
+                Ok(result)
+            }
         })?,
     )?;
 
