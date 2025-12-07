@@ -38,7 +38,7 @@ impl Templater {
         mut context: HashMap<String, FieldValue>,
         root_path: PathBuf,
     ) -> Result<Self, TemplateError> {
-        debug!("Initializing Templater at root: {}", root_path.display());
+        debug!("Templater::new: root = {}", root_path.display());
 
         // Inject default keys
         context
@@ -48,11 +48,32 @@ impl Templater {
             .entry("root".to_string())
             .or_insert_with(|| FieldValue::String(root_path.display().to_string()));
 
+        debug!(
+            "Templater::new: context size after injection = {}",
+            context.len()
+        );
+
         let pattern = root_path.join(".ninja").join("**/*.tmpl");
         let pattern_str = pattern.to_string_lossy();
 
-        let tera = Tera::new(&pattern_str)
-            .map_err(|e| TemplateError::Internal(format!("Failed to compile templates: {}", e)))?;
+        info!(
+            "Templater::new: compiling Tera templates with pattern '{}'",
+            pattern_str
+        );
+
+        let tera = Tera::new(&pattern_str).map_err(|e| {
+            error!(
+                "Templater::new: failed to compile templates (pattern '{}'): {}",
+                pattern_str, e
+            );
+            TemplateError::Internal(format!("Failed to compile templates: {}", e))
+        })?;
+
+        info!(
+            "Templater::new: initialized successfully (root = {}, pattern = {})",
+            root_path.display(),
+            pattern_str
+        );
 
         Ok(Self {
             context,
@@ -74,67 +95,132 @@ impl Templater {
         name: &str,
         template: &str,
     ) -> Result<String, TemplateError> {
+        debug!(
+            "Templater::render_with_diagnostics: rendering template '{}' (len = {})",
+            name,
+            template.len()
+        );
+
         let ctx = self.to_tera_context();
-        self.tera
-            .write()
-            .await
-            .render_str(template, &ctx)
-            .map_err(|err| Self::diagnose_tera_error(err, name))
+        let mut tera_guard = self.tera.write().await;
+
+        match tera_guard.render_str(template, &ctx) {
+            Ok(output) => {
+                debug!(
+                    "Templater::render_with_diagnostics: rendered '{}' (output len = {})",
+                    name,
+                    output.len()
+                );
+                Ok(output)
+            }
+            Err(err) => {
+                error!(
+                    "Templater::render_with_diagnostics: error rendering '{}': {}",
+                    name, err
+                );
+                Err(Self::diagnose_tera_error(err, name))
+            }
+        }
     }
 
     fn diagnose_tera_error(err: TeraError, name: &str) -> TemplateError {
-        // Base message: include template name and the Tera-formatted message
+        // Base message
         let mut msg = format!("Error rendering template '{}': {}", name, err);
 
-        // Special-case known error kinds
         match &err.kind {
             ErrorKind::TemplateNotFound(tmpl) => {
-                // Template not found: return NotFound immediately
+                error!(
+                    "Templater::diagnose_tera_error: template '{}' not found (referenced as '{}')",
+                    tmpl, name
+                );
                 return TemplateError::NotFound(tmpl.clone());
             }
-            // We keep other kinds for context; append the kind's debug form
             other => {
                 msg.push_str(&format!(" ({:?})", other));
             }
         }
 
-        // Walk the source chain (if any) to give more context about underlying causes
+        // Collect cause chain for context
         let mut source_opt = err.source();
+        let mut depth = 0usize;
         while let Some(source) = source_opt {
-            // `source` implements Display, so include its message
-            msg.push_str(&format!(" | cause: {}", source));
+            depth += 1;
+            msg.push_str(&format!(" | cause[{depth}]: {}", source));
             source_opt = source.source();
         }
 
-        // Log the diagnostic for easier debugging in logs
-        error!("{}", msg);
-
+        error!("Templater::diagnose_tera_error: {}", msg);
         TemplateError::Internal(msg)
     }
 
     pub async fn parse_template(&self, template: &str) -> Result<String, TemplateError> {
-        debug!("Rendering inline template...");
-        self.render_with_diagnostics("<inline>", template).await
+        debug!(
+            "Templater::parse_template: inline template (len = {})",
+            template.len()
+        );
+        let result = self.render_with_diagnostics("<inline>", template).await;
+
+        if let Err(err) = &result {
+            error!("Templater::parse_template: error: {}", err);
+        }
+
+        result
     }
 
     pub async fn generate_config(&self, config_path: PathBuf) -> Result<(), TemplateError> {
+        debug!(
+            "Templater::generate_config: target config path = {}",
+            config_path.display()
+        );
+
         let template_path = self.root.join(".ninja").join("config.tmpl");
-        debug!("Reading template: {}", template_path.display());
+        debug!(
+            "Templater::generate_config: template path = {}",
+            template_path.display()
+        );
 
         let template_content = fs::read_to_string(&template_path)
             .await
-            .map_err(|_| TemplateError::PathNotFound(template_path.clone()))?;
+            .map_err(|e| {
+                error!(
+                    "Templater::generate_config: failed to read template '{}': {}",
+                    template_path.display(),
+                    e
+                );
+                TemplateError::PathNotFound(template_path.clone())
+            })?;
+
+        debug!(
+            "Templater::generate_config: read template (len = {}) from '{}'",
+            template_content.len(),
+            template_path.display()
+        );
 
         let rendered = self
             .render_with_diagnostics("config.tmpl", &template_content)
             .await?;
-        debug!("Writing rendered template to {}", config_path.display());
+
+        debug!(
+            "Templater::generate_config: writing rendered config (len = {}) to '{}'",
+            rendered.len(),
+            config_path.display()
+        );
 
         fs::write(&config_path, rendered)
             .await
-            .map_err(|_| TemplateError::PathNotFound(config_path.clone()))?;
+            .map_err(|e| {
+                error!(
+                    "Templater::generate_config: failed to write config '{}': {}",
+                    config_path.display(),
+                    e
+                );
+                TemplateError::PathNotFound(config_path.clone())
+            })?;
 
-        info!("Config generated successfully at {}", config_path.display());
+        info!(
+            "Templater::generate_config: config generated at '{}'",
+            config_path.display()
+        );
         Ok(())
     }
 }
