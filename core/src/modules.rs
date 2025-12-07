@@ -650,34 +650,21 @@ fn format_win32_error(code: u32) -> String {
     }
 }
 
-// ========================= MODULE FACTORY =========================
-
-pub async fn make_modules(
-    lua: &Lua,
-    cwd: Option<&Path>,
-) -> Result<(Table, Table, Table, Table, Table, Table, Table, Table)> {
+pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     debug!(
-        "make_modules: cwd = {:?}",
-        cwd.map(|p| p.display().to_string())
+        "make_proc_module: base_cwd = {:?}",
+        base_cwd.map(|p| p.display().to_string())
     );
 
-    let fs_module = make_fs_module(lua, cwd)?;
-    let env_module = make_env_module(lua, cwd)?;
-    let shell_module = make_shell_module(lua, cwd)?;
-    let time_module = lua.create_table()?;
-    let json_module = lua.create_table()?;
-    let http_module = lua.create_table()?;
-    let log_module = lua.create_table()?;
     let proc_module = lua.create_table()?;
 
-    let proc_cwd: Option<PathBuf> = canonicalize_cwd(cwd);
+    let proc_cwd: Option<PathBuf> = canonicalize_cwd(base_cwd);
     debug!(
-        "make_modules: proc_cwd = {:?}",
+        "make_proc_module: proc_cwd = {:?}",
         proc_cwd.as_ref().map(|p| p.display().to_string())
     );
 
-    // ==================== PROC MODULE ====================
-
+    // =============== proc.spawn ===============
     proc_module.set(
         "spawn",
         lua.create_function({
@@ -855,9 +842,8 @@ pub async fn make_modules(
                                         std::process::exit(127);
                                     }
                                 }
-                            } else 
-                            {
-                                match execvp(prog, &argv){
+                            } else {
+                                match execvp(prog, &argv) {
                                     Ok(_) => {}
                                     Err(e) => {
                                         eprintln!("execvp failed for '{}': {e}", resolved);
@@ -881,6 +867,7 @@ pub async fn make_modules(
         })?,
     )?;
 
+    // =============== proc.kill_pid ===============
     proc_module.set(
         "kill_pid",
         lua.create_function(|_, pid: u32| {
@@ -891,7 +878,7 @@ pub async fn make_modules(
                 debug!("proc.kill_pid: result={} for pid={}", result, pid);
                 Ok(result)
             }
-            
+
             #[cfg(not(windows))]
             {
                 debug!("proc.kill_pid: pid={}", pid);
@@ -902,6 +889,7 @@ pub async fn make_modules(
         })?,
     )?;
 
+    // =============== proc.kill_name ===============
     proc_module.set(
         "kill_name",
         lua.create_function(|_, name: String| {
@@ -912,7 +900,7 @@ pub async fn make_modules(
                 debug!("proc.kill_name: result={} for name='{}'", result, name);
                 Ok(result)
             }
-            
+
             #[cfg(not(windows))]
             {
                 debug!("proc.kill_name: name='{}'", name);
@@ -923,7 +911,33 @@ pub async fn make_modules(
         })?,
     )?;
 
+    // =============== proc.list (currently empty) ===============
     proc_module.set("list", lua.create_table()?)?;
+
+    debug!("make_proc_module: done");
+    Ok(proc_module)
+}
+
+
+// ========================= MODULE FACTORY =========================
+
+pub async fn make_modules(
+    lua: &Lua,
+    cwd: Option<&Path>,
+) -> Result<(Table, Table, Table, Table, Table, Table, Table, Table)> {
+    debug!(
+        "make_modules: cwd = {:?}",
+        cwd.map(|p| p.display().to_string())
+    );
+
+    let fs_module = make_fs_module(lua, cwd)?;
+    let env_module = make_env_module(lua, cwd)?;
+    let shell_module = make_shell_module(lua, cwd)?;
+    let time_module = lua.create_table()?;
+    let json_module = lua.create_table()?;
+    let http_module = lua.create_table()?;
+    let log_module = lua.create_table()?;
+    let proc_module = make_proc_module(lua, cwd)?;
 
     // ==================== TIME MODULE ====================
 

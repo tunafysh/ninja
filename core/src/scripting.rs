@@ -1,5 +1,4 @@
-use super::modules::make_modules;
-use crate::{modules::{make_env_module, make_fs_module, make_shell_module}, util::resolve_path};
+use crate::{modules::{make_env_module, make_fs_module, make_shell_module, make_proc_module, make_modules}, util::resolve_path};
 use log::info;
 use mlua::{Error as LuaError, Lua};
 use std::{
@@ -52,9 +51,11 @@ impl NinjaEngine {
             let fs = make_fs_module(&self.lua, Some(cwd))?;
             let env = make_env_module(&self.lua, Some(cwd))?;
             let shell = make_shell_module(&self.lua, Some(cwd))?;
+            let proc = make_proc_module(&self.lua, Some(cwd))?;
             globals.set("fs", fs)?;
             globals.set("env", env)?;
             globals.set("shell", shell)?;
+            globals.set("proc", proc)?;
             fs::read_to_string(resolve_path(cwd, path))?
         } else {
             fs::read_to_string(path)?
@@ -80,9 +81,11 @@ impl NinjaEngine {
             let fs = make_fs_module(&self.lua, Some(cwd))?;
             let env = make_env_module(&self.lua, Some(cwd))?;
             let shell = make_shell_module(&self.lua, Some(cwd))?;
+            let proc = make_proc_module(&self.lua, Some(cwd))?;
             globals.set("fs", fs)?;
             globals.set("env", env)?;
             globals.set("shell", shell)?;
+            globals.set("proc", proc)?;
             fs::read_to_string(resolve_path(cwd, path))?
         } else {
             fs::read_to_string(path)?
