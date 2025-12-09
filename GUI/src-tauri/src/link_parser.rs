@@ -29,7 +29,7 @@ pub async fn handle_shurikenctl(url: &str, manager: State<'_, Mutex<ShurikenMana
         "install" => {
             if let Some(pkg) = query.get("pkg") {
                 info!("Installing Shuriken: {}", pkg);
-                if let Err(e) = manager.install(PathBuf::from(pkg)).await {
+                if let Err(e) = manager.install(&PathBuf::from(pkg)).await {
                     error!("Failed to install '{}': {}", pkg, e);
                 }
             } else {

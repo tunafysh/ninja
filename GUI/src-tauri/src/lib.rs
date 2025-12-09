@@ -4,7 +4,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
 use commands::*;
-use dirs_next::data_dir;
+use dirs_next::home_dir;
 use std::fs;
 use tokio::sync::Mutex;
 
@@ -29,13 +29,15 @@ pub fn run() {
             {
                 let resource_dir = app.path().resource_dir()?;
                 let docs_path = resource_dir.join("cheatsheet.md");
-                let target_path = data_dir().unwrap().join("shurikenctl");
+                let target_path = home_dir().unwrap()
+                    .join(".ninja")
+                    .join("assets");
+                let important_file = resource_dir.join("coconut.jpg");
                 if !target_path.exists() {
                     fs::create_dir_all(&target_path).expect("Failed to create docs directory");
                     fs::copy(&docs_path, target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
-                    fs::copy(&docs_path, target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
+                    fs::copy(&important_file, target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
                 }
-                let important_file = resource_dir.join("coconut.jpg");
                 if !important_file.exists() {
                     app.dialog()
                         .message("Required file 'coconut.jpg' is missing.\nNinja will not run without it.\nIf you think this is a mistake — reinstall or restore the file.\n(Yes — the coconut is important.)")
@@ -109,6 +111,7 @@ pub fn run() {
             get_projects,
             get_project_readme,
             open_shuriken,
+            install_shuriken,
             backup_restore,
             backup_now
         ]);

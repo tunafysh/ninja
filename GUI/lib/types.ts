@@ -68,3 +68,15 @@ export type Project = {
   name: string;
   readme?: string; // optional snippet or full README content
 };
+
+export interface ArmoryMetadata {
+  name: string;
+  id: string;
+  platform: string;
+  version: string;
+  synopsis?: string | null;
+  postinstall?: string | null;   // PathBuf → string
+  description?: string | null;
+  authors?: string[] | null;
+  license?: string | null;
+}

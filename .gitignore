@@ -18,5 +18,4 @@ pnpm-lock.yaml
 GUI/src-tauri/binaries
 GUI/src-tauri/shurikenctl*
 include
-sdk
 dist

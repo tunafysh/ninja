@@ -574,7 +574,7 @@ pub unsafe extern "C" fn ninja_install_shuriken_sync(
             return -1;
         }
     };
-    match RUNTIME.block_on(manager.install(path)) {
+    match RUNTIME.block_on(manager.install(&path)) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("{}", e);

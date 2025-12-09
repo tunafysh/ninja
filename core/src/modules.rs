@@ -2,8 +2,8 @@ use crate::util::{kill_process_by_name, kill_process_by_pid, resolve_path};
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
-use serde_json::Value;
 use relative_path::RelativePath;
+use serde_json::Value;
 
 use std::{
     env, fs,
@@ -77,10 +77,7 @@ fn canonicalize_cwd(base: Option<&Path>) -> Option<PathBuf> {
         });
 
         let stripped = strip_windows_prefix(&canon);
-        debug!(
-            "canonicalize_cwd: final result = '{}'",
-            stripped.display()
-        );
+        debug!("canonicalize_cwd: final result = '{}'", stripped.display());
         stripped
     });
 
@@ -122,9 +119,7 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
     }
 
     let Some(cwd) = cwd else {
-        debug!(
-            "resolve_spawn_command: path-like but no cwd, using original command"
-        );
+        debug!("resolve_spawn_command: path-like but no cwd, using original command");
         return command.to_string();
     };
 
@@ -152,13 +147,9 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
         cmd.push_str(&rest.join(" "));
     }
 
-    debug!(
-        "resolve_spawn_command: resolved command='{}'",
-        cmd
-    );
+    debug!("resolve_spawn_command: resolved command='{}'", cmd);
     cmd
 }
-
 
 // ========================= FS MODULE =========================
 
@@ -213,11 +204,7 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
             "write",
             lua.create_function(move |_, (path, content): (PathBuf, String)| {
                 let resolved = resolve_with_cwd(&fs_cwd, &path);
-                debug!(
-                    "fs.write: '{}' (len={})",
-                    resolved.display(),
-                    content.len()
-                );
+                debug!("fs.write: '{}' (len={})", resolved.display(), content.len());
                 fs::write(&resolved, content).map_err(|e| {
                     error!("fs.write: failed for '{}': {}", resolved.display(), e);
                     mlua::Error::external(e)
@@ -243,11 +230,7 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
                     .append(true)
                     .open(&resolved)
                     .map_err(|e| {
-                        error!(
-                            "fs.append: failed to open '{}': {}",
-                            resolved.display(),
-                            e
-                        );
+                        error!("fs.append: failed to open '{}': {}", resolved.display(), e);
                         mlua::Error::external(e)
                     })?;
                 file.write_all(content.as_bytes()).map_err(|e| {
@@ -272,11 +255,7 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
                 let resolved = resolve_with_cwd(&fs_cwd, &path);
                 debug!("fs.remove: '{}'", resolved.display());
                 fs::remove_file(&resolved).map_err(|e| {
-                    error!(
-                        "fs.remove: failed for '{}': {}",
-                        resolved.display(),
-                        e
-                    );
+                    error!("fs.remove: failed for '{}': {}", resolved.display(), e);
                     mlua::Error::external(e)
                 })?;
                 Ok(())
@@ -293,11 +272,7 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
                 let resolved = resolve_with_cwd(&fs_cwd, &path);
                 debug!("fs.create_dir: '{}'", resolved.display());
                 fs::create_dir_all(&resolved).map_err(|e| {
-                    error!(
-                        "fs.create_dir: failed for '{}': {}",
-                        resolved.display(),
-                        e
-                    );
+                    error!("fs.create_dir: failed for '{}': {}", resolved.display(), e);
                     mlua::Error::external(e)
                 })?;
                 Ok(())
@@ -314,11 +289,7 @@ pub fn make_fs_module(lua: &Lua, cwd: Option<&Path>) -> Result<Table> {
                 let resolved = resolve_with_cwd(&fs_cwd, &path);
                 debug!("fs.read_dir: '{}'", resolved.display());
                 let entries = fs::read_dir(&resolved).map_err(|e| {
-                    error!(
-                        "fs.read_dir: failed for '{}': {}",
-                        resolved.display(),
-                        e
-                    );
+                    error!("fs.read_dir: failed for '{}': {}", resolved.display(), e);
                     mlua::Error::external(e)
                 })?;
 
@@ -467,9 +438,7 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
     );
 
     let mut cmd = Command::new("powershell.exe");
-    cmd.arg("-NoProfile")
-        .arg("-WindowStyle")
-        .arg("Hidden");
+    cmd.arg("-NoProfile").arg("-WindowStyle").arg("Hidden");
 
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
@@ -483,10 +452,10 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
 
     {
         cmd.arg("-Command")
-           .arg(command)
-           .stdin(Stdio::inherit())
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+            .arg(command)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
     }
     let out = cmd.output().map_err(|e| {
         error!("run_windows_command: failed to execute: {}", e);
@@ -565,58 +534,56 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
     shell_module.set(
         "exec",
-        lua.create_function(
-            move |lua, (command, admin): (String, Option<bool>)| {
-                let admin = admin.unwrap_or(false);
-                debug!(
-                    "shell.exec: command='{}', admin={}, cwd={:?}",
-                    command,
-                    admin,
-                    cwd_buf.as_ref().map(|p| p.display().to_string())
-                );
-                let result_table = lua.create_table()?;
+        lua.create_function(move |lua, (command, admin): (String, Option<bool>)| {
+            let admin = admin.unwrap_or(false);
+            debug!(
+                "shell.exec: command='{}', admin={}, cwd={:?}",
+                command,
+                admin,
+                cwd_buf.as_ref().map(|p| p.display().to_string())
+            );
+            let result_table = lua.create_table()?;
 
-                let cwd_opt = cwd_buf.as_deref();
+            let cwd_opt = cwd_buf.as_deref();
 
-                let output: Result<Output> = {
-                    #[cfg(windows)]
-                    {
-                        run_windows_command(&command, cwd_opt, admin)
-                    }
-                    #[cfg(unix)]
-                    {
-                        run_unix_command(&command, cwd_opt, admin)
-                    }
-                };
-
-                match output {
-                    Ok(cmd_output) => {
-                        let code = cmd_output.status.code().unwrap_or(-1);
-                        let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
-                        let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
-
-                        debug!(
-                            "shell.exec: exit_code={}, stdout_len={}, stderr_len={}",
-                            code,
-                            stdout.len(),
-                            stderr.len()
-                        );
-
-                        result_table.set("code", code)?;
-                        result_table.set("stdout", stdout)?;
-                        result_table.set("stderr", stderr)?;
-                    }
-                    Err(e) => {
-                        error!("shell.exec: failed to execute '{}': {}", command, e);
-                        result_table.set("code", -1)?;
-                        result_table.set("stdout", "")?;
-                        result_table.set("stderr", format!("Failed: {}", e))?;
-                    }
+            let output: Result<Output> = {
+                #[cfg(windows)]
+                {
+                    run_windows_command(&command, cwd_opt, admin)
                 }
+                #[cfg(unix)]
+                {
+                    run_unix_command(&command, cwd_opt, admin)
+                }
+            };
 
-                Ok(result_table)
-            },
-        )?,
+            match output {
+                Ok(cmd_output) => {
+                    let code = cmd_output.status.code().unwrap_or(-1);
+                    let stdout = String::from_utf8_lossy(&cmd_output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&cmd_output.stderr).to_string();
+
+                    debug!(
+                        "shell.exec: exit_code={}, stdout_len={}, stderr_len={}",
+                        code,
+                        stdout.len(),
+                        stderr.len()
+                    );
+
+                    result_table.set("code", code)?;
+                    result_table.set("stdout", stdout)?;
+                    result_table.set("stderr", stderr)?;
+                }
+                Err(e) => {
+                    error!("shell.exec: failed to execute '{}': {}", command, e);
+                    result_table.set("code", -1)?;
+                    result_table.set("stdout", "")?;
+                    result_table.set("stderr", format!("Failed: {}", e))?;
+                }
+            }
+
+            Ok(result_table)
+        })?,
     )?;
 
     debug!("make_shell_module: done");
@@ -625,7 +592,9 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
 #[cfg(windows)]
 fn format_win32_error(code: u32) -> String {
-    use windows::Win32::System::Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS};
+    use windows::Win32::System::Diagnostics::Debug::{
+        FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
+    };
     use windows::core::PWSTR;
 
     let mut buf: [u16; 512] = [0; 512];
@@ -917,7 +886,6 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     debug!("make_proc_module: done");
     Ok(proc_module)
 }
-
 
 // ========================= MODULE FACTORY =========================
 

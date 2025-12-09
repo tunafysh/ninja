@@ -1,3 +1,4 @@
+use crate::util::kill_process_by_pid;
 use crate::{
     scripting::NinjaEngine,
     templater::Templater,
@@ -11,7 +12,6 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use crate::util::kill_process_by_pid;
 use tokio::{fs, process::Command};
 
 pub fn make_admin_command(bin: &str, args: Option<&[String]>, cwd: Option<&Path>) -> Command {
@@ -62,8 +62,9 @@ pub fn make_admin_command(bin: &str, args: Option<&[String]>, cwd: Option<&Path>
         }
 
         if let Some(c) = cwd
-            && let Some(cwd_str) = c.to_str() {
-                script.push_str(&format!(" -WorkingDirectory '{}'", cwd_str));
+            && let Some(cwd_str) = c.to_str()
+        {
+            script.push_str(&format!(" -WorkingDirectory '{}'", cwd_str));
         }
 
         script.push_str(").Id"); // return PID
@@ -406,7 +407,9 @@ impl Shuriken {
                     .map_err(|e| format!("Invalid name: {}", e))?;
 
                 // Only use PID + start_time; don't kill by name to avoid hitting the wrong process.
-                if !kill_process_by_pid_and_start_time(pid, start_time).map_err(|e| e.to_string())? {
+                if !kill_process_by_pid_and_start_time(pid, start_time)
+                    .map_err(|e| e.to_string())?
+                {
                     return Err(format!(
                         "Failed to terminate shuriken {} (PID {}, start_time {})",
                         name, pid, start_time

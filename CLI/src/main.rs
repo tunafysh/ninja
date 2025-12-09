@@ -11,7 +11,6 @@ use ninja::{
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
-use serde_json::from_str;
 use std::{
     collections::HashMap,
     env,
@@ -428,79 +427,115 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Install(args)) => {
             info!("Installing a shuriken");
-            manager.install(args.path).await?;
+            manager.install(&args.path).await?;
         }
         Some(Commands::Forge(args)) => {
+            use dialoguer::{Input, theme::ColorfulTheme};
+            use serde_json::from_str;
+            use tokio::fs;
+
             if let Some(config_path) = args.options {
-                let serialized_metadata = fs::read_to_string(config_path).await?;
+                // --- Load metadata from config file ---
+                let serialized_metadata = fs::read_to_string(&config_path).await?;
                 let metadata: ArmoryMetadata = from_str(&serialized_metadata)?;
 
                 println!("{}", "Creating shuriken...".bold());
-                if !PathBuf::from("blacksmith/").exists() {
-                    fs::create_dir("blacksmith").await?;
-                }
 
+                // No need to manually create "blacksmith" here,
+                // `forge` already ensures the directory exists.
                 manager.forge(metadata, args.path).await?;
             } else {
                 let theme = ColorfulTheme::default();
+
                 let name: String = Input::with_theme(&theme)
                     .with_prompt("Enter the name of the shuriken")
-                    .interact_text()
-                    .unwrap();
+                    .interact_text()?;
 
                 let id: String = Input::with_theme(&theme)
                     .with_prompt("Enter the id for this shuriken (Apache -> httpd)")
-                    .interact_text()
-                    .unwrap();
+                    .interact_text()?;
 
                 let platform: String = Input::with_theme(&theme)
-                    .with_prompt("Enter the platform this shuriken was designed for (target triple is preferred but something like windows-x86_64 is allowed)")
-                    .interact_text()
-                    .unwrap();
+                    .with_prompt(
+                        "Enter the platform this shuriken was designed for \
+                             (target triple is preferred but something like \
+                             windows-x86_64 is allowed)",
+                    )
+                    .interact_text()?;
 
                 let version: String = Input::with_theme(&theme)
-                    .with_prompt("Enter the version for this shuriken (semver is preferred but anything with numbers will suffice)")
-                    .interact_text()
-                    .unwrap();
+                    .with_prompt(
+                        "Enter the version for this shuriken \
+                             (semver is preferred but anything with numbers will suffice)",
+                    )
+                    .interact_text()?;
 
-                let postinstall: Option<PathBuf> = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Path for postinstall script (starts from the path you provided as argument, optional)")
-                    .interact()
-                    .map(|s: String| if s.trim().is_empty() { None } else { Some(PathBuf::from(s)) })
-                    .unwrap();
-
-                let description: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Description for the shuriken (will be displayed on the install menu, optional)")
-                    .interact()
-                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
-                    .unwrap();
-
-                let synopsis: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)")
-                    .interact()
-                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
-                    .unwrap();
-
-                let authors: Option<Vec<String>> =
-                    Input::<String>::with_theme(&ColorfulTheme::default())
-                        .with_prompt("Authors of this shuriken (optional, comma‑separated)")
+                let postinstall: Option<PathBuf> = Input::<String>::with_theme(&theme)
+                        .with_prompt(
+                            "Path for postinstall script (starts from the path you provided as argument, optional)",
+                        )
                         .allow_empty(true)
                         .interact_text()
                         .ok()
-                        .map(|s| {
-                            s.split(',')
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .map(String::from)
-                                .collect::<Vec<_>>()
-                        })
-                        .and_then(|v| if v.is_empty() { None } else { Some(v) });
+                        .and_then(|s| {
+                            let s = s.trim();
+                            if s.is_empty() {
+                                None
+                            } else {
+                                Some(PathBuf::from(s))
+                            }
+                        });
 
-                let license: Option<String> = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("The license or licenses the software in this shuriken use (GPL, MIT or anything similar, optional)")
-                    .interact()
-                    .map(|s: String| if s.trim().is_empty() { None } else { Some(s) })
-                    .unwrap();
+                let description: Option<String> = Input::<String>::with_theme(&theme)
+                        .with_prompt(
+                            "Description for the shuriken (will be displayed on the install menu, optional)",
+                        )
+                        .allow_empty(true)
+                        .interact_text()
+                        .ok()
+                        .and_then(|s| {
+                            let s = s.trim().to_string();
+                            if s.is_empty() { None } else { Some(s) }
+                        });
+
+                let synopsis: Option<String> = Input::<String>::with_theme(&theme)
+                        .with_prompt(
+                            "Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)",
+                        )
+                        .allow_empty(true)
+                        .interact_text()
+                        .ok()
+                        .and_then(|s| {
+                            let s = s.trim().to_string();
+                            if s.is_empty() { None } else { Some(s) }
+                        });
+
+                let authors: Option<Vec<String>> = Input::<String>::with_theme(&theme)
+                    .with_prompt("Authors of this shuriken (optional, comma-separated)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .ok()
+                    .map(|s| {
+                        s.split(',')
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(String::from)
+                            .collect::<Vec<_>>()
+                    })
+                    .and_then(|v| if v.is_empty() { None } else { Some(v) });
+
+                let license: Option<String> = Input::<String>::with_theme(&theme)
+                    .with_prompt(
+                        "The license or licenses the software in this shuriken use \
+                             (GPL, MIT or anything similar, optional)",
+                    )
+                    .allow_empty(true)
+                    .interact_text()
+                    .ok()
+                    .and_then(|s| {
+                        let s = s.trim().to_string();
+                        if s.is_empty() { None } else { Some(s) }
+                    });
 
                 println!("{}", format!("Generating metadata for '{}'", &name).bold());
 
@@ -517,7 +552,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 println!("{}", "Creating shuriken...".bold());
-
                 manager.forge(metadata, args.path).await?;
             }
         }

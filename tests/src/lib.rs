@@ -83,10 +83,8 @@ mod ninja_api_integration_tests {
     use ninja::{
         manager::ShurikenManager,
         scripting::NinjaEngine,
-        shuriken::{
-            ManagementType, Shuriken, ShurikenMetadata, get_process_start_time,
-        },
-        util::kill_process_by_pid
+        shuriken::{ManagementType, Shuriken, ShurikenMetadata, get_process_start_time},
+        util::kill_process_by_pid,
     };
     use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;

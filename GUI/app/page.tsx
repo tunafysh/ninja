@@ -149,10 +149,10 @@ export default function Page() {
                   style={{ ...hoverStyle, opacity: hoveredIndex !== null ? 1 : 0 }}
                 />
                 <div
-                  className="absolute bottom-[-6px] h-[2px] bg-[#0e0f11] dark:bg-white transition-all duration-300 ease-out"
+                  className="absolute -bottom-1.5 h-0.5 bg-[#0e0f11] dark:bg-white transition-all duration-300 ease-out"
                   style={activeStyle}
                 />
-                <div className="relative flex space-x-[6px] items-center">
+                <div className="relative flex space-x-1.5 items-center">
                   {tabs.map((tab, index) => (
                     <div
                       key={index}
@@ -164,7 +164,7 @@ export default function Page() {
                       onMouseLeave={() => setHoveredIndex(null)}
                       onClick={() => setActiveIndex(index)}
                     >
-                      <div className="text-sm font-[var(--www-mattmannucci-me-geist-regular-font-family)] leading-5 whitespace-nowrap flex items-center justify-center h-full">
+                      <div className="text-sm font-(--www-mattmannucci-me-geist-regular-font-family) leading-5 whitespace-nowrap flex items-center justify-center h-full">
                         {tabsIcons[index]}
                         {tab}
                       </div>

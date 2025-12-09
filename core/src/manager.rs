@@ -4,14 +4,14 @@ use crate::{
     shuriken::{Shuriken, ShurikenConfig},
     types::{FieldValue, ShurikenState},
 };
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
 use flate2::{Compression, write::GzEncoder};
-use globwalk::GlobWalkerBuilder;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_cbor::to_vec;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     env, io,
@@ -23,37 +23,35 @@ use tar::Builder as TarBuilder;
 use tokio::process::{Child, Command};
 use tokio::{
     fs::{self, File},
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     sync::Mutex,
     sync::RwLock,
 };
 
-const MAGIC: &[u8; 4] = b"HSEG";
+const MAGIC: &[u8; 6] = b"HSRZEG";
 
-fn create_tar_gz_bytes(src_dir: &PathBuf) -> Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    let enc = GzEncoder::new(&mut buf, Compression::default());
-    let mut tar = TarBuilder::new(enc);
-
-    // Iterate files using globwalk
-    let walker = GlobWalkerBuilder::from_patterns(src_dir, &["**/*"])
-        .build()
-        .map_err(|e| Error::msg(e.to_string()))?;
-
-    for entry in walker.filter_map(Result::ok) {
-        let path = entry.path();
-        let rel_path = path.strip_prefix(src_dir).unwrap();
-
-        if path.is_dir() {
-            tar.append_dir(rel_path, path)?;
-        } else if path.is_file() {
-            tar.append_path_with_name(path, rel_path)?;
-        }
+fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
+    if !src_dir.is_dir() {
+        return Err(anyhow::Error::msg(format!(
+            "Source directory does not exist or is not a directory: {}",
+            src_dir.display()
+        )));
     }
 
-    // Finish tar and gzip streams
-    tar.finish()?;
-    tar.into_inner()?.finish()?;
+    let mut buf = Vec::new();
+
+    {
+        // Gzip wraps the in-memory buffer
+        let enc = GzEncoder::new(&mut buf, Compression::default());
+        let mut tar = TarBuilder::new(enc);
+
+        // This recursively adds `src_dir` contents under "." in the archive
+        tar.append_dir_all(".", src_dir)?;
+
+        // Finish tar, then finish gzip
+        let enc = tar.into_inner()?; // GzEncoder
+        enc.finish()?;               // flush into buf
+    }
 
     Ok(buf)
 }
@@ -197,14 +195,12 @@ impl ShurikenManager {
         Ok((shurikens, states))
     }
 
-    pub async fn new() -> Result<Self> {        
+    pub async fn new() -> Result<Self> {
         let exe_dir = dirs::home_dir()
             .ok_or_else(|| Error::msg("Could not find home directory"))?
             .join(".ninja");
 
         fs::create_dir_all(&exe_dir).await?;
-
-        env::set_current_dir(&exe_dir)?;
 
         let shurikens_dir = exe_dir.join("shurikens");
         let projects_dir = exe_dir.join("projects");
@@ -395,65 +391,89 @@ impl ShurikenManager {
         }
     }
 
-    pub async fn install(&self, path: PathBuf) -> Result<()> {
-        use tokio::io::AsyncReadExt;
-
+    pub async fn install(&self, path: &Path) -> Result<(), anyhow::Error> {
         info!("Starting installation");
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
         }
 
-        // Open the file asynchronously
         let mut file = tokio::fs::File::open(&path)
             .await
-            .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {}", e)))?;
+            .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {e}")))?;
 
-        // Read the 8-byte header
-        let mut header = [0u8; 8];
-        file.read_exact(&mut header).await?;
-
-        if &header[0..4] != MAGIC {
-            return Err(anyhow::Error::msg("Invalid shuriken file."));
+        // 1) MAGIC (6 bytes)
+        let mut magic_buf = [0u8; 6];
+        file.read_exact(&mut magic_buf).await?;
+        if &magic_buf != MAGIC {
+            return Err(anyhow::Error::msg("Invalid shuriken file (bad MAGIC)."));
         }
 
-        let metadata_length = u16::from_le_bytes([header[5], header[6]]) as usize;
+        // 2) metadata_length (u16 LE)
+        let mut meta_len_buf = [0u8; 2];
+        file.read_exact(&mut meta_len_buf).await?;
+        let metadata_length = u16::from_le_bytes(meta_len_buf) as usize;
 
-        // Read the metadata
+        // 3) metadata (CBOR)
         let mut metadata_buf = vec![0u8; metadata_length];
         file.read_exact(&mut metadata_buf).await?;
-        let metadata: ArmoryMetadata = serde_cbor::de::from_mut_slice(&mut metadata_buf)?;
+        let metadata: ArmoryMetadata =
+            serde_cbor::from_slice(&metadata_buf).context("Failed to parse metadata CBOR")?;
 
         info!("Metadata parsing complete");
 
-        #[cfg(debug_assertions)]
         {
-            debug!("{:#?}", header);
-            debug!("{:#?}", metadata_length);
-            debug!("{:#?}", &metadata);
+            debug!("MAGIC:     {:?}", magic_buf);
+            debug!("meta_len:  {}", metadata_length);
+            debug!("metadata:  {:#?}", metadata);
         }
 
-        // Platform check
+        // 4) archive_length (u32 LE)
+        let mut archive_len_buf = [0u8; 4];
+        file.read_exact(&mut archive_len_buf).await?;
+        let archive_length = u32::from_le_bytes(archive_len_buf) as usize;
+
+        // 5) archive (exactly archive_length bytes)
+        let mut archive_buf = vec![0u8; archive_length];
+        file.read_exact(&mut archive_buf).await?;
+
+        // 6) signature (rest of the file)
+        let mut signature = Vec::new();
+        file.read_to_end(&mut signature).await?;
+        if signature.len() != 32 {
+            return Err(anyhow::Error::msg(
+                "Invalid shuriken file: signature must be 32 bytes (SHA-256).",
+            ));
+        }
+
+        // Verify signature = SHA-256(archive)
+        let mut hasher = Sha256::new();
+        hasher.update(&archive_buf);
+        let digest = hasher.finalize();
+
+        if digest.as_slice() != signature.as_slice() {
+            return Err(anyhow::Error::msg(
+                "Shuriken file signature mismatch (archive corrupted or tampered).",
+            ));
+        }
+
+        // Platform check (same logic you had)
         if !metadata.platform.contains(env::consts::OS)
             && !metadata.platform.contains(env::consts::ARCH)
         {
             return Err(Error::msg(
-                "Unsupported platform. Current platform is not the same with the shuriken's destined platform.",
+                "Unsupported platform. Current platform is not the same as the shuriken's destined platform.",
             ));
         }
 
-        // Read the rest of the file into memory (archive)
-        let mut archive_buf = Vec::new();
-        file.read_to_end(&mut archive_buf).await?;
+        // Unpack archive in blocking task
         let archive_cursor = std::io::Cursor::new(archive_buf);
-
-        // Unpack tar.gz archive in a blocking task
         let archive_name = metadata.name.clone();
         let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
         let root_path = self.root_path.clone().join("shurikens").join(archive_name);
+
         tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
             let gz_decoder = flate2::read::GzDecoder::new(archive_cursor);
             let mut archive = tar::Archive::new(gz_decoder);
-
             archive.unpack(&unpack_path)?;
             Ok(())
         })
@@ -470,23 +490,72 @@ impl ShurikenManager {
     }
 
     pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf) -> Result<()> {
-        let output = &self.root_path.join("blacksmith");
+        let output = self.root_path.join("blacksmith");
         if !output.exists() {
-            fs::create_dir_all(output).await?;
+            fs::create_dir_all(&output).await?;
         }
-
-        let mut file =
-            File::create(output.join(format!("{}-{}.shuriken", meta.id, meta.platform))).await?;
+        let path = &self.root_path.join("shurikens").join(path);
+    
+        let shuriken_path = output.join(format!("{}-{}.shuriken", meta.id, meta.platform));
+        let mut file = File::create(shuriken_path).await?;
+    
+        // ---- 1) Serialize metadata ----
+        
         let serialized_metadata = to_vec(&meta)?;
-
-        let archive = create_tar_gz_bytes(&path)?;
-
+    
+        if serialized_metadata.len() > u16::MAX as usize {
+            return Err(anyhow::Error::msg(
+                "Metadata too large to fit in u16 length field",
+            ));
+        }
+    
+        // ---- 2) Build archive bytes (tar.gz) in a blocking thread ----
+        let archive = {
+            let path_clone = path.clone();
+            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone))
+                .await??
+        };
+        let archive_len = archive.len();
+    
+        if archive_len > u32::MAX as usize {
+            return Err(anyhow::Error::msg(
+                "Archive too large to fit in u32 length field",
+            ));
+        }
+    
+        // ---- 3) Compute signature = SHA256(archive) ----
+        let mut hasher = Sha256::new();
+        hasher.update(&archive);
+        let signature = hasher.finalize(); // 32 bytes
+    
+        // ---- 4) Write in correct order ----
+        // [MAGIC]                 // 4 bytes
+        // [metadata_length]       // u16 LE
+        // [metadata]              // CBOR
+        // [archive_length]        // u32 LE
+        // [archive]               // tar.gz
+        // [signature]             // 32 bytes SHA-256(archive)
+    
+        // MAGIC
         file.write_all(MAGIC).await?;
-        file.write_all(&(serialized_metadata.len() as u16).to_le_bytes())
-            .await?;
+    
+        // metadata_length (u16 LE)
+        let meta_len_le = (serialized_metadata.len() as u16).to_le_bytes();
+        file.write_all(&meta_len_le).await?;
+    
+        // metadata
         file.write_all(&serialized_metadata).await?;
+    
+        // archive_length (u32 LE)
+        let archive_len_le = (archive_len as u32).to_le_bytes();
+        file.write_all(&archive_len_le).await?;
+    
+        // archive
         file.write_all(&archive).await?;
-
+    
+        // signature
+        file.write_all(&signature).await?;
+    
         Ok(())
     }
 
@@ -600,16 +669,5 @@ impl ShurikenManager {
         for k in keys {
             let _ = self.stop_process(&k).await;
         }
-    }
-}
-
-impl Drop for ShurikenManager {
-    fn drop(&mut self) {
-        // Best-effort: if a tokio runtime is active, schedule cleanup. If not, we don't block.
-        let manager = self.clone();
-        // Spawn an async task; if runtime is not available this will fail silently.
-        tokio::spawn(async move {
-            manager.cleanup().await;
-        });
     }
 }

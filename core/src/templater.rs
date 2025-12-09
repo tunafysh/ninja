@@ -179,16 +179,14 @@ impl Templater {
             template_path.display()
         );
 
-        let template_content = fs::read_to_string(&template_path)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Templater::generate_config: failed to read template '{}': {}",
-                    template_path.display(),
-                    e
-                );
-                TemplateError::PathNotFound(template_path.clone())
-            })?;
+        let template_content = fs::read_to_string(&template_path).await.map_err(|e| {
+            error!(
+                "Templater::generate_config: failed to read template '{}': {}",
+                template_path.display(),
+                e
+            );
+            TemplateError::PathNotFound(template_path.clone())
+        })?;
 
         debug!(
             "Templater::generate_config: read template (len = {}) from '{}'",
@@ -206,16 +204,14 @@ impl Templater {
             config_path.display()
         );
 
-        fs::write(&config_path, rendered)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Templater::generate_config: failed to write config '{}': {}",
-                    config_path.display(),
-                    e
-                );
-                TemplateError::PathNotFound(config_path.clone())
-            })?;
+        fs::write(&config_path, rendered).await.map_err(|e| {
+            error!(
+                "Templater::generate_config: failed to write config '{}': {}",
+                config_path.display(),
+                e
+            );
+            TemplateError::PathNotFound(config_path.clone())
+        })?;
 
         info!(
             "Templater::generate_config: config generated at '{}'",

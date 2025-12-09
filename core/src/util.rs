@@ -1,6 +1,9 @@
 use anyhow::{Result, anyhow};
 use regex::Regex;
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub fn get_http_port() -> Result<u16> {
     let apache_conf = "shurikens/Apache/conf/httpd.conf";
@@ -55,11 +58,9 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 
 #[cfg(windows)]
 pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, PROCESS_TERMINATE,
-    };
     use anyhow::Error;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
 
     unsafe {
         // Open with terminate rights
@@ -75,12 +76,12 @@ pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
 }
 #[cfg(windows)]
 pub fn kill_process_by_name(name: &str) -> Result<bool> {
+    use anyhow::Error;
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use anyhow::Error;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
@@ -96,7 +97,10 @@ pub fn kill_process_by_name(name: &str) -> Result<bool> {
 
         let mut any_killed = false;
 
-        if Process32FirstW(snapshot, &mut entry).map_err(|e| Error::msg(e.message())).is_ok() {
+        if Process32FirstW(snapshot, &mut entry)
+            .map_err(|e| Error::msg(e.message()))
+            .is_ok()
+        {
             loop {
                 // exe file name is in szExeFile (null-terminated UTF-16)
                 let len = entry
@@ -128,7 +132,7 @@ pub fn kill_process_by_name(name: &str) -> Result<bool> {
 
 #[cfg(unix)]
 pub fn kill_process_by_pid(pid: u32) -> bool {
-    use nix::sys::signal::{kill, Signal};
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let pid = Pid::from_raw(pid as i32);
@@ -143,7 +147,6 @@ pub fn kill_process_by_pid(pid: u32) -> bool {
         }
     }
 }
-
 
 #[cfg(unix)]
 pub fn kill_process_by_name(name: &str) -> bool {
@@ -241,4 +244,3 @@ pub fn kill_process_by_name(name: &str) -> bool {
         any_killed
     }
 }
-

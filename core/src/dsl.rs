@@ -2,6 +2,7 @@ use super::scripting::NinjaEngine;
 use crate::{manager::ShurikenManager, types::FieldValue};
 use anyhow::{Error, Result, bail};
 use either::Either;
+use log::debug;
 use shlex::split;
 use std::env;
 use std::sync::Arc;
@@ -320,6 +321,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
 
             // Select shuriken
             Command::Select(name) => {
+                debug!("Shurikens: {:#?}", ctx.manager.shurikens.read().await);
                 if ctx.manager.shurikens.read().await.contains_key(&name) {
                     *ctx.selected.write().await = Some(name.clone());
                     output.push(format!("Selected shuriken '{}'", name));
@@ -478,7 +480,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     .execute_file(&script_path, None)
                     .map_err(|e| io::Error::other(e.to_string()))?;
             }
-            Command::Install(file_path) => match ctx.manager.install(file_path).await {
+            Command::Install(file_path) => match ctx.manager.install(&file_path).await {
                 Ok(_) => output.push("Installed successfully".into()),
                 Err(e) => output.push(format!("Install failed: {}", e)),
             },

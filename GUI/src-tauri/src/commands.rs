@@ -231,11 +231,11 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
     let mut header = [0u8; 8];
     file.read_exact(&mut header).map_err(|e| e.to_string())?;
 
-    if &header[0..2] != b"HS" {
+    if &header[0..6] != b"HSRZEG" {
         return Err("Invalid shuriken file".into());
     }
 
-    let metadata_len = u16::from_le_bytes([header[3], header[4]]);
+    let metadata_len = u16::from_le_bytes([header[6], header[7]]);
     let mut metadata_buf = vec![0u8; metadata_len.into()];
     file.read_exact(&mut metadata_buf)
         .map_err(|e| e.to_string())?;
@@ -244,6 +244,13 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
         serde_cbor::from_slice(&metadata_buf).map_err(|e| e.to_string())?;
 
     Ok(metadata)
+}
+
+#[tauri::command]
+pub async fn install_shuriken(manager: State<'_, Mutex<ShurikenManager>>, path: String) -> Result<(), String> {
+    let manager = manager.lock().await;
+    manager.install(&PathBuf::from(path)).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

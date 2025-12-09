@@ -44,3 +44,7 @@
 
 ## 1.5.0
 * Separated the proc module to include cwd.
+
+## 1.6.0
+* Added a custom file format for installing shurikens. For details on how it works, see the shuriken.hexpat file in the sdk folder.
+* Added GUI support for installing shurikens.
