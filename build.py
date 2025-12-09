@@ -293,6 +293,7 @@ def export_dist():
         "**/*.rpm",
         "**/*.zip",
         "**/*.gz",
+        "**/*.sig"
     ]
 
     found_artifacts = []
