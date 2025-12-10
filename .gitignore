@@ -19,3 +19,4 @@ GUI/src-tauri/binaries
 GUI/src-tauri/shurikenctl*
 include
 dist
+Cargo.lock
