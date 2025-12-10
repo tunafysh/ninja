@@ -1,83 +1,344 @@
-### fs module — Filesystem operations
-| Function                   | Args             | Returns   | Description                                   |
-| -------------------------- | ---------------- | --------- | --------------------------------------------- |
-| `fs.read(path)`            | `string`         | `string`  | Read the contents of a file.                  |
-| `fs.write(path, content)`  | `string, string` | `nil`     | Overwrite a file with content.                |
-| `fs.append(path, content)` | `string, string` | `nil`     | Append content to a file.                     |
-| `fs.remove(path)`          | `string`         | `nil`     | Delete a file.                                |
-| `fs.create_dir(path)`      | `string`         | `nil`     | Create a directory.                           |
-| `fs.read_dir(path)`        | `string`         | `table`   | Returns a table of file names in a directory. |
-| `fs.exists(path)`          | `string`         | `boolean` | Check if a path exists.                       |
-| `fs.is_dir(path)`          | `string`         | `boolean` | Check if path is a directory.                 |
-| `fs.is_file(path)`         | `string`         | `boolean` | Check if path is a file.                      |
+# Ninja Lua API & DSL Cheatsheet
+
+## Lua API Reference
+
+### fs (Filesystem Module)
+
+```lua
+-- Read file contents
+content = fs.read(path)
+
+-- Write content to file
+fs.write(path, content)
+
+-- Append content to file
+fs.append(path, content)
+
+-- Remove a file
+fs.remove(path)
+
+-- Create directory (recursive)
+fs.create_dir(path)
+
+-- List directory contents
+entries = fs.read_dir(path)  -- returns array of filenames
+
+-- Check if path exists
+exists = fs.exists(path)  -- returns boolean
+
+-- Check if path is directory
+is_dir = fs.is_dir(path)  -- returns boolean
+
+-- Check if path is file
+is_file = fs.is_file(path)  -- returns boolean
+```
+
+### env (Environment Module)
+
+```lua
+-- System information
+os = env.os      -- Operating system (e.g., "windows", "linux", "macos")
+arch = env.arch  -- Architecture (e.g., "x86_64", "aarch64")
+
+-- Get environment variable
+value = env.get(key)  -- returns string or nil
+
+-- Set environment variable (unsafe)
+env.set(key, value)
+
+-- Remove environment variable (unsafe)
+env.remove(key)
+
+-- Get all environment variables
+vars = env.vars()  -- returns table
+
+-- Get current working directory
+cwd = env.cwd()  -- returns string
+```
+
+### shell (Shell Module)
+
+```lua
+-- Execute shell command
+result = shell.exec(command, admin)
+-- command: string - shell command to execute
+-- admin: boolean (optional) - run with elevated privileges
+
+-- Returns table with:
+-- result.code   - exit code (number)
+-- result.stdout - standard output (string)
+-- result.stderr - standard error (string)
+```
+
+### proc (Process Module)
+
+```lua
+-- Spawn a new process
+result = proc.spawn(command)
+-- Returns table with:
+-- result.pid - process ID (number)
+
+-- Kill process by PID
+success = proc.kill_pid(pid)  -- returns boolean
+
+-- Kill process by name
+success = proc.kill_name(name)  -- returns boolean
+
+-- Process list (currently empty)
+processes = proc.list
+```
+
+### time (Time Module)
+
+```lua
+-- Get current year
+year = time.year()
+
+-- Get current month (1-12)
+month = time.month()
+
+-- Get current day (1-31)
+day = time.day()
+
+-- Get current hour
+hour = time.hour(false)  -- 24-hour format, returns number
+hour, period = time.hour(true)  -- 12-hour format, returns (number, "AM"/"PM")
+
+-- Get current minute (0-59)
+minute = time.minute()
+
+-- Get current second (0-59)
+second = time.second()
+
+-- Get formatted timestamp
+timestamp = time.now(format)
+-- format: string - chrono format string
+-- Example: time.now("%Y-%m-%d %H:%M:%S")
+
+-- Sleep for specified seconds
+time.sleep(seconds)  -- seconds: number (supports decimals)
+```
+
+### json (JSON Module)
+
+```lua
+-- Encode table to JSON string
+json_string = json.encode(table)
+
+-- Decode JSON string to table
+table = json.decode(json_string)
+```
+
+### log (Logging Module)
+
+```lua
+-- Log at different levels
+log.info(message)
+log.warn(message)
+log.error(message)
+log.debug(message)
+```
 
 ---
 
-### env module — Environment variables & system info
+## DSL Reference
 
-| Property / Function   | Args             | Returns         | Description                                           |
-| --------------------- | ---------------- | --------------- | ----------------------------------------------------- |
-| `env.os`              | —                | `string`        | Operating system (`"windows"`, `"linux"`, `"macos"`). |
-| `env.arch`            | —                | `string`        | CPU architecture.                                     |
-| `env.get(key)`        | `string`         | `string or nil` | Get env variable.                                     |
-| `env.set(key, value)` | `string, string` | `nil`           | Set env variable.                                     |
-| `env.remove(key)`     | `string`         | `nil`           | Remove env variable.                                  |
-| `env.vars()`          | —                | `table`         | Table of all env variables.                           |
-| `env.cwd()`           | —                | `string`        | Current working directory.                            |
-| `env.kill_pid(pid)`   | `number`         | `boolean`       | Kill process by PID.                                  |
-| `env.kill_name(name)` | `string`         | `boolean`       | Kill process by name.                                 |
+### Shuriken Management Commands
+
+```bash
+# List all shurikens
+list
+
+# List shurikens with their states
+list state
+
+# Select a shuriken for operations
+select <name>
+
+# Start the selected shuriken
+start
+
+# Stop the selected shuriken
+stop
+
+# Install a new shuriken from file
+install <path>
+
+# Deselect current shuriken
+exit
+```
+
+### Configuration Commands
+
+```bash
+# Generate configuration for selected shuriken
+configure
+
+# Configure with inline assignments
+configure {
+  key1 = value1
+  key2 = "string value"
+  key3 = 123
+  key4 = true
+}
+
+# Configure multiline block
+configure {
+  option1 = value1;
+  option2 = value2;
+  option3 = value3
+}
+
+# Set a single configuration value
+set <key> <value>
+
+# Get a configuration value
+get <key>
+
+# Toggle a boolean configuration value
+toggle <key>
+```
+
+### Script Execution
+
+```bash
+# Execute a Ninja script file
+execute <script_path>
+```
+
+### HTTP Server
+
+```bash
+# Start HTTP API server
+http <port>
+# Example: http 8080
+```
+
+### Help
+
+```bash
+# Display help message
+help
+```
 
 ---
 
-### shell module — Command execution
+## Configuration Value Types
 
-| Function                                 | Args                         | Returns   | Description                                                   |
-| ---------------------------------------- | ---------------------------- | --------- | ------------------------------------------------------------- |
-| `shell.exec(command, detached?, admin?)` | `string, boolean?, boolean?` | `table`   | Execute a shell command. Returns `{code, stdout, stderr}`.    |
-| `shell.kill_pid(pid)`                    | `number`                     | `boolean` | Kill a detached process started with `shell.exec(..., true)`. |
+The DSL automatically detects value types:
 
->Notes:
-> * `detached = true` → process runs in background, returns {pid = number}.
-> * `admin = true` → run as administrator/root.
+```bash
+# String (with quotes)
+set name "value"
+set path 'another value'
 
----
+# String (without quotes)
+set name value
 
-### time module — Date/time utilities
+# Boolean
+set enabled true
+set disabled false
 
-| Function              | Args      | Returns                                 | Description                                                           |
-| --------------------- | --------- | --------------------------------------- | --------------------------------------------------------------------- |
-| `time.year()`         | —         | `number`                                | Current year (UTC).                                                   |
-| `time.month()`        | —         | `number`                                | Current month (1–12).                                                 |
-| `time.day()`          | —         | `number`                                | Current day of month.                                                 |
-| `time.hour(format?)`  | `boolean` | `(number, "AM"/"PM")` or `(number, "")` | Current hour, optionally 12-hour format.                              |
-| `time.minute()`       | —         | `number`                                | Current minute.                                                       |
-| `time.second()`       | —         | `number`                                | Current second.                                                       |
-| `time.now(fmt)`       | `string`  | `string`                                | Formatted current UTC time. Example: `time.now("%Y-%m-%d %H:%M:%S")`. |
-| `time.sleep(seconds)` | `number`  | `nil`                                   | Sleep for given seconds (supports fractions).                         |
+# Number (integer)
+set port 8080
+set count 42
+```
 
 ---
 
-### json module — JSON encode/decode
+## Comments
 
-| Function                   | Args     | Returns  | Description                       |
-| -------------------------- | -------- | -------- | --------------------------------- |
-| `json.encode(table)`       | `table`  | `string` | Convert Lua table to JSON string. |
-| `json.decode(json_string)` | `string` | `table`  | Parse JSON string into Lua table. |
+Both single-line comment styles are supported:
 
+```bash
+# This is a comment
+// This is also a comment
 
----
-
-### log module — Logging
-
-| Function         | Args     | Description            |
-| ---------------- | -------- | ---------------------- |
-| `log.info(msg)`  | `string` | Info-level logging.    |
-| `log.warn(msg)`  | `string` | Warning-level logging. |
-| `log.error(msg)` | `string` | Error-level logging.   |
-| `log.debug(msg)` | `string` | Debug-level logging.   |
+configure {
+  option1 = value1  # inline comment
+  option2 = value2  // also inline
+}
+```
 
 ---
 
-### http module — (Stub/empty)
+## Example Scripts
 
-Currently empty, reserved for future HTTP functions.
+### Lua Script Example
+
+```lua
+-- Create a directory and write a file
+fs.create_dir("logs")
+local timestamp = time.now("%Y-%m-%d_%H-%M-%S")
+local logfile = "logs/app_" .. timestamp .. ".log"
+
+fs.write(logfile, "Application started\n")
+log.info("Log file created: " .. logfile)
+
+-- Execute system command
+local result = shell.exec("echo Hello from shell")
+if result.code == 0 then
+    log.info("Command output: " .. result.stdout)
+end
+
+-- Check environment
+local os_name = env.os
+log.info("Running on: " .. os_name)
+```
+
+### DSL Script Example
+
+```bash
+# Install and configure a shuriken
+install ./my-shuriken-linux-x86_64.shuriken
+
+select my-shuriken
+
+configure {
+  port = 8080
+  host = "localhost"
+  debug = true
+  workers = 4
+}
+
+# Or set individual values
+set timeout 30
+set log_level "info"
+
+# Start the shuriken
+start
+
+# Check status
+list state
+```
+
+### Combined Example
+
+```bash
+# Main configuration
+select webserver
+
+configure {
+  port = 8080
+  ssl = true
+  workers = 4
+}
+
+# Execute custom Lua setup script
+execute ./setup.ns
+
+# Start the server
+start
+```
+
+---
+
+## Notes
+
+- All filesystem paths are resolved relative to the configured working directory
+- Path-like commands in `proc.spawn` are resolved properly on both Windows and Unix
+- Windows: Uses PowerShell for shell commands
+- Unix/Linux: Uses `$SHELL` or defaults to `sh`
+- Admin/elevated privileges:
+  - Windows: Uses `-Verb RunAs` (PowerShell)
+  - Unix: Uses `pkexec` with `--keep-cwd`

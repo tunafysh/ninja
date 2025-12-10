@@ -1,16 +1,13 @@
-use dirs_next::home_dir;
 use ninja::{
     dsl::{DslContext, execute_commands},
     manager::ShurikenManager,
 };
 use rmcp::{
     ErrorData as McpError,
-    RoleServer,
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*, // <-- brings in CallToolResult, Content, ServerCapabilities, ServerInfo, Resource, RawResource, etc.
     schemars,
-    service::RequestContext,
     tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
@@ -168,23 +165,33 @@ impl Manager {
         )]))
     }
 
-    // ⛔️ Old tool version of cheatsheet – you can delete this now that we use resources.
-    // #[tool(
-    //     description = "Tool for reading the cheatsheet because rmcp doesn't support resources yet."
-    // )]
-    // pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
-    //     if let Some(data_dir) = data_dir() {
-    //         let cheatsheet_path = data_dir.join("shurikenctl").join("cheatsheet.md");
-    //         let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
-    //             McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
-    //         })?;
-    //         Ok(CallToolResult::success(vec![Content::text(
-    //             cheatsheet_content.as_str(),
-    //         )]))
-    //     } else {
-    //         Err(McpError::internal_error("Data directory not found", None))
-    //     }
-    // }
+    #[tool(
+        description = "Tool for reading the cheatsheet because Resources aren't supported everywhere yet."
+    )]
+    pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
+            
+            let cheatsheet_path = &self.manager.root_path.join("docs").join("cheatsheet.md");
+            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+            })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                cheatsheet_content.as_str(),
+            )]))
+    }
+    
+    #[tool(
+        description = "Tool for reading the docs because Resources aren't supported everywhere yet."
+    )]
+    pub fn read_docs(&self) -> Result<CallToolResult, McpError> {
+            let home_dir = &self.manager.root_path;
+            let cheatsheet_path = home_dir.join("docs").join("cheatsheet.md");
+            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+            })?;
+            Ok(CallToolResult::success(vec![Content::text(
+                cheatsheet_content.as_str(),
+            )]))
+    }
 }
 
 #[tool_handler]
@@ -202,58 +209,8 @@ impl ServerHandler for Manager {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_logging()
-                .enable_resources()
                 .build(),
             ..Default::default()
-        }
-    }
-
-    /// Advertise available resources (right now: just the cheatsheet)
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParam>,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, McpError> {
-        Ok(ListResourcesResult {
-            resources: vec![self._create_resource_text(
-                "ninja://cheatsheet",
-                "Ninja / shurikenctl cheatsheet",
-            )],
-            next_cursor: None,
-        })
-    }
-
-    /// Resolve a resource URI into actual content
-    async fn read_resource(
-        &self,
-        ReadResourceRequestParam { uri }: ReadResourceRequestParam,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
-        match uri.as_str() {
-            "ninja://cheatsheet" => {
-                let contents = if let Some(dir) = home_dir() {
-                    let cheatsheet_path = dir.join(".ninja").join("docs").join("cheatsheet.md");
-                    fs::read_to_string(cheatsheet_path).map_err(|e| {
-                        McpError::internal_error(
-                            format!("Failed to read cheatsheet: {e}"),
-                            None,
-                        )
-                    })?
-                } else {
-                    return Err(McpError::internal_error(
-                        "Data directory not found",
-                        None,
-                    ));
-                };
-
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(contents, uri)],
-                })
-            }
-            _ => Err(McpError::resource_not_found(
-                "resource_not_found",
-                None,
-            )),
         }
     }
 }
