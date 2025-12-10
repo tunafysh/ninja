@@ -48,3 +48,7 @@
 ## 1.6.0
 * Added a custom file format for installing shurikens. For details on how it works, see the shuriken.hexpat file in the sdk folder.
 * Added GUI support for installing shurikens.
+
+## 1.7.0
+* Switched the docs and cheatsheet from Resource to tools (read_cheatsheet, read_docs).
+* Added the docs.
