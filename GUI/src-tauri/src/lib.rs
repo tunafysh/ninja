@@ -28,15 +28,23 @@ pub fn run() {
             app.manage(manager);
             {
                 let resource_dir = app.path().resource_dir()?;
-                let docs_path = resource_dir.join("cheatsheet.md");
-                let target_path = home_dir().unwrap()
+                let cheatsheet = resource_dir.join("cheatsheet.md");
+                let docs = resource_dir.join("docs.md");
+                let important_target_path = home_dir().unwrap()
                     .join(".ninja")
                     .join("assets");
+                let docs_target_path = home_dir().unwrap()
+                    .join(".ninja")
+                    .join("docs");
                 let important_file = resource_dir.join("coconut.jpg");
-                if !target_path.exists() {
-                    fs::create_dir_all(&target_path).expect("Failed to create docs directory");
-                    fs::copy(&docs_path, target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
-                    fs::copy(&important_file, target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
+                if !important_target_path.exists() {
+                    fs::create_dir_all(&important_target_path).expect("Failed to create docs directory");
+                    fs::copy(&important_file, important_target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
+                }
+                if !docs_target_path.exists() {
+                    fs::create_dir_all(&docs_target_path).expect("Failed to create docs directory");
+                    fs::copy(&docs, docs_target_path.join("docs.md")).expect("Failed to copy cheatsheet.md");
+                    fs::copy(&cheatsheet, docs_target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
                 }
                 if !important_file.exists() {
                     app.dialog()
