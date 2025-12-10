@@ -1,13 +1,17 @@
-use dirs_next::data_dir;
+use dirs_next::home_dir;
 use ninja::{
     dsl::{DslContext, execute_commands},
     manager::ShurikenManager,
 };
 use rmcp::{
-    ErrorData as McpError, ServerHandler,
+    ErrorData as McpError,
+    RoleServer,
+    ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    model::*, // <-- brings in CallToolResult, Content, ServerCapabilities, ServerInfo, Resource, RawResource, etc.
+    schemars,
+    service::RequestContext,
+    tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -54,6 +58,11 @@ impl Manager {
             manager,
             tool_router: Self::tool_router(),
         }
+    }
+
+    // Small helper for creating text resources (like the SPARQL example)
+    fn _create_resource_text(&self, uri: &str, name: &str) -> Resource {
+        RawResource::new(uri, name.to_string()).no_annotation()
     }
 
     #[tool(description = "Start the corresponding shuriken")]
@@ -159,22 +168,23 @@ impl Manager {
         )]))
     }
 
-    #[tool(
-        description = "Tool for reading the cheatsheet because rmcp doesn't support resources yet."
-    )]
-    pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
-        if let Some(data_dir) = data_dir() {
-            let cheatsheet_path = data_dir.join("shurikenctl").join("cheatsheet.md");
-            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
-                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
-            })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                cheatsheet_content.as_str(),
-            )]))
-        } else {
-            Err(McpError::internal_error("Data directory not found", None))
-        }
-    }
+    // ⛔️ Old tool version of cheatsheet – you can delete this now that we use resources.
+    // #[tool(
+    //     description = "Tool for reading the cheatsheet because rmcp doesn't support resources yet."
+    // )]
+    // pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
+    //     if let Some(data_dir) = data_dir() {
+    //         let cheatsheet_path = data_dir.join("shurikenctl").join("cheatsheet.md");
+    //         let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+    //             McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+    //         })?;
+    //         Ok(CallToolResult::success(vec![Content::text(
+    //             cheatsheet_content.as_str(),
+    //         )]))
+    //     } else {
+    //         Err(McpError::internal_error("Data directory not found", None))
+    //     }
+    // }
 }
 
 #[tool_handler]
@@ -183,12 +193,67 @@ impl ServerHandler for Manager {
         ServerInfo {
             instructions: Some(
                 r#"This server provides resources and mostly tools
-             for managing shurikens(arbitrary units of other dev software e.g Apache)
-              which are: start_shuriken, stop_shuriken, restart_shuriken and shuriken_status"#
+                for managing shurikens (arbitrary units of other dev software e.g Apache)
+                which are: start_shuriken, stop_shuriken, restart_shuriken, shuriken_status and provides tools 
+                to execute ninjascript (Luau with a few built-in libraries) and Ninja DSL (a domain-specific language for managing shurikens and interacting with them).
+                The cheatsheet for the ninjascript can be found as a resource."#
                     .into(),
             ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_logging()
+                .enable_resources()
+                .build(),
             ..Default::default()
+        }
+    }
+
+    /// Advertise available resources (right now: just the cheatsheet)
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        Ok(ListResourcesResult {
+            resources: vec![self._create_resource_text(
+                "ninja://cheatsheet",
+                "Ninja / shurikenctl cheatsheet",
+            )],
+            next_cursor: None,
+        })
+    }
+
+    /// Resolve a resource URI into actual content
+    async fn read_resource(
+        &self,
+        ReadResourceRequestParam { uri }: ReadResourceRequestParam,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        match uri.as_str() {
+            "ninja://cheatsheet" => {
+                let contents = if let Some(dir) = home_dir() {
+                    let cheatsheet_path = dir.join(".ninja").join("docs").join("cheatsheet.md");
+                    fs::read_to_string(cheatsheet_path).map_err(|e| {
+                        McpError::internal_error(
+                            format!("Failed to read cheatsheet: {e}"),
+                            None,
+                        )
+                    })?
+                } else {
+                    return Err(McpError::internal_error(
+                        "Data directory not found",
+                        None,
+                    ));
+                };
+
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(contents, uri)],
+                })
+            }
+            _ => Err(McpError::resource_not_found(
+                "resource_not_found",
+                None,
+            )),
         }
     }
 }
