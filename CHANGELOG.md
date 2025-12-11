@@ -52,3 +52,6 @@
 ## 1.7.0
 * Switched the docs and cheatsheet from Resource to tools (read_cheatsheet, read_docs).
 * Added the docs.
+
+## 1.8.0 
+* Added cwd to running scripts.

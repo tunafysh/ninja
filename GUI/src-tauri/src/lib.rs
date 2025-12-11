@@ -36,7 +36,7 @@ pub fn run() {
                 let docs_target_path = home_dir().unwrap()
                     .join(".ninja")
                     .join("docs");
-                let important_file = resource_dir.join("coconut.jpg");
+                let important_file = important_target_path.join("coconut.jpg");
                 if !important_target_path.exists() {
                     fs::create_dir_all(&important_target_path).expect("Failed to create docs directory");
                     fs::copy(&important_file, important_target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");

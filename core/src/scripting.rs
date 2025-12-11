@@ -40,7 +40,17 @@ impl NinjaEngine {
     }
 
     /// Execute a raw Lua script in the global environment.
-    pub fn execute(&self, script: &str) -> Result<(), LuaError> {
+    pub fn execute(&self, script: &str, cwd: Option<&Path>) -> Result<(), LuaError> {
+        let globals = self.lua.globals();
+        let fs = make_fs_module(&self.lua, cwd)?;
+        let env = make_env_module(&self.lua, cwd)?;
+        let shell = make_shell_module(&self.lua, cwd)?;
+        let proc = make_proc_module(&self.lua, cwd)?;
+        globals.set("fs", fs)?;
+        globals.set("env", env)?;
+        globals.set("shell", shell)?;
+        globals.set("proc", proc)?;
+        
         info!("Executing lua script.");
         self.lua.load(script).exec()
     }

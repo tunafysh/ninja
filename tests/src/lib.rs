@@ -32,8 +32,8 @@ mod ninja_runtime_integration_tests {
     #[tokio::test]
     async fn test_execute_inline_script() {
         let engine = NinjaEngine::new().await.unwrap();
-        assert!(engine.execute("x = 2 + 2").is_ok());
-        assert!(engine.execute("error('fail')").is_err());
+        assert!(engine.execute("x = 2 + 2", None).is_ok());
+        assert!(engine.execute("error('fail')", None).is_err());
     }
 
     #[tokio::test]

@@ -200,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => eprintln!("Error: {}", e),
                 }
             } else {
-                match manager.engine.lock().await.execute(content) {
+                match manager.engine.lock().await.execute(content, Some(&manager.root_path)) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }

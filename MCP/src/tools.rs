@@ -158,7 +158,7 @@ impl Manager {
             .engine
             .lock()
             .await
-            .execute(&script)
+            .execute(&script, Some(&self.manager.root_path))
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Script executed successfully",
