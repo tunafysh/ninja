@@ -67,6 +67,9 @@ impl Templater {
             .entry("ninja_root".into())
             .or_insert_with(|| FieldValue::String(ninja_root.display().to_string()));
 
+        context
+            .entry("user".into())
+            .or_insert_with(|| FieldValue::String(whoami::username()));
         
         debug!(
             "Templater::new: context size after injection = {}",
