@@ -48,6 +48,26 @@ impl Templater {
             .entry("root".to_string())
             .or_insert_with(|| FieldValue::String(root_path.display().to_string()));
 
+        context
+            .entry("arch".into())
+            .or_insert_with(|| FieldValue::String(env::consts::ARCH.to_string()));
+        
+        let ninja_root = root_path
+            .parent()
+            .and_then(|p| p.parent())
+            .ok_or_else(|| {
+                TemplateError::InvalidConfig(format!(
+                    "Failed to resolve ninja_root from root_path: {}",
+                    root_path.display()
+                ))
+            })?
+            .to_path_buf();
+        
+        context
+            .entry("ninja_root".into())
+            .or_insert_with(|| FieldValue::String(ninja_root.display().to_string()));
+
+        
         debug!(
             "Templater::new: context size after injection = {}",
             context.len()

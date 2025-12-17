@@ -55,3 +55,6 @@
 
 ## 1.8.0 
 * Added cwd to running scripts.
+
+## 1.9.0
+* Added ninja_root and arch to templater.

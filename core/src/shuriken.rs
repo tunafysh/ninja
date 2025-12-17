@@ -342,6 +342,8 @@ impl Shuriken {
                     fields.insert(name, value);
                 }
             }
+            
+            
 
             // Construct full path to the shuriken folder
             let shuriken_path = root_path.join("shurikens").join(&self.metadata.name);
