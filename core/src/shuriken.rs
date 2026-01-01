@@ -333,7 +333,17 @@ impl Shuriken {
         }
     }
 
-    pub async fn configure(&self, root_path: PathBuf) -> anyhow::Result<()> {
+    pub async fn lockpick(&self, root_path: &PathBuf) -> anyhow::Result<()> {
+        let root_path = root_path.join("shurikens").join(&self.metadata.name).join(".ninja");
+        
+        if root_path.join("shuriken.lck").exists() {
+            fs::remove_file(root_path.join("shuriken.lck")).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn configure(&self, root_path: &PathBuf) -> anyhow::Result<()> {
         if let Some(ctx) = &self.config {
             let shuriken_fields = ctx.options.clone();
             let mut fields = HashMap::new();

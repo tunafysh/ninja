@@ -128,7 +128,11 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
                           >
                             Restart
                           </DropdownMenuItem>
-                          <DropdownMenuItem>Lockpick</DropdownMenuItem>
+                          <DropdownMenuItem
+                          onClick={async () => {
+                            await invoke("lockpick_shuriken", { shuriken: service.metadata.name })
+                          }}
+                          >Lockpick</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                       )}

@@ -58,3 +58,6 @@
 
 ## 1.9.0
 * Added ninja_root and arch to templater.
+
+## 1.10.0
+* Bugfixes and improvements.

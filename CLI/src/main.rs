@@ -58,6 +58,10 @@ enum Commands {
     List,
     /// Generate a new shuriken with specified manifest
     New,
+    /// Configure a shuriken
+    Configure(ConfigureArgs),
+    /// Lockpick a shuriken (remove the .lck file, dangerous/use with caution)
+    Lockpick(LockpickArgs),
     /// Start up the HTTP API with a specified port (optional but recommended).
     Api(ApiArgs),
     /// Install a shuriken
@@ -83,6 +87,18 @@ pub struct StartArgs {
 #[derive(Args)]
 pub struct StopArgs {
     /// The name of the shuriken to stop
+    pub shuriken: String,
+}
+
+#[derive(Args)]
+pub struct ConfigureArgs {
+    /// The name of the shuriken to configure
+    pub shuriken: String,
+}
+
+#[derive(Args)]
+pub struct LockpickArgs {
+    /// The name of the shuriken to lockpick
     pub shuriken: String,
 }
 
@@ -421,6 +437,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Manifest for '{}' generated successfully!", name);
         }
+        Some(Commands::Configure(args)) => {
+            info!("Configuring shuriken {}", args.shuriken);
+            manager.configure(&args.shuriken).await?;
+        }
+        Some(Commands::Lockpick(args)) => {
+            info!("Lockpicking shuriken {}", args.shuriken);
+            manager.lockpick(&args.shuriken).await?;
+        }
+
         Some(Commands::Api(args)) => {
             info!("Starting API endpoint with port {}", args.port);
             server(args.port).await?;

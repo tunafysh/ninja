@@ -277,3 +277,10 @@ pub async fn backup_restore(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn lockpick_shuriken(manager: State<'_, Mutex<ShurikenManager>>, shuriken: String) -> Result<(), String> {
+    let manager = manager.lock().await;
+    manager.lockpick(&shuriken).await.map_err(|e| e.to_string())?; 
+    Ok(())
+}  

@@ -278,7 +278,18 @@ impl ShurikenManager {
 
         if let Some(shuriken) = shuriken {
             let path = &self.root_path;
-            shuriken.configure(path.clone()).await?;
+            shuriken.configure(path).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn lockpick(&self, name: &str) -> Result<()> {
+        let partial_shuriken = &self.shurikens.write().await;
+        let shuriken = partial_shuriken.get(name);
+
+        if let Some(shuriken) = shuriken {
+            let path = &self.root_path;
+            shuriken.lockpick(path).await?;
         }
         Ok(())
     }
@@ -392,6 +403,9 @@ impl ShurikenManager {
     }
 
     pub async fn install(&self, path: &Path) -> Result<(), anyhow::Error> {
+        use sha2::{Digest, Sha256};
+        use std::io::Cursor;
+
         info!("Starting installation");
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
@@ -413,6 +427,11 @@ impl ShurikenManager {
         file.read_exact(&mut meta_len_buf).await?;
         let metadata_length = u16::from_le_bytes(meta_len_buf) as usize;
 
+        const MAX_METADATA: usize = 64 * 1024; // 64 KB
+        if metadata_length > MAX_METADATA {
+            return Err(anyhow::Error::msg("Metadata too large"));
+        }
+
         // 3) metadata (CBOR)
         let mut metadata_buf = vec![0u8; metadata_length];
         file.read_exact(&mut metadata_buf).await?;
@@ -421,52 +440,54 @@ impl ShurikenManager {
 
         info!("Metadata parsing complete");
 
-        {
-            debug!("MAGIC:     {:?}", magic_buf);
-            debug!("meta_len:  {}", metadata_length);
-            debug!("metadata:  {:#?}", metadata);
-        }
+        debug!("MAGIC:     {:?}", magic_buf);
+        debug!("meta_len:  {}", metadata_length);
+        debug!("metadata:  {:#?}", metadata);
 
         // 4) archive_length (u32 LE)
         let mut archive_len_buf = [0u8; 4];
         file.read_exact(&mut archive_len_buf).await?;
         let archive_length = u32::from_le_bytes(archive_len_buf) as usize;
 
+        const MAX_ARCHIVE: usize = 1024 * 1024 * 1024; // 1 GB
+        if archive_length > MAX_ARCHIVE {
+            return Err(anyhow::Error::msg("Archive too large"));
+        }
+
         // 5) archive (exactly archive_length bytes)
         let mut archive_buf = vec![0u8; archive_length];
         file.read_exact(&mut archive_buf).await?;
 
         // 6) signature (rest of the file)
-        let mut signature = Vec::new();
-        file.read_to_end(&mut signature).await?;
-        if signature.len() != 32 {
-            return Err(anyhow::Error::msg(
-                "Invalid shuriken file: signature must be 32 bytes (SHA-256).",
-            ));
-        }
+        let mut signature = [0u8; 32];
+        file.read_exact(&mut signature).await?;
 
-        // Verify signature = SHA-256(archive)
+        // Verify checksum = SHA256(MAGIC + metadata_len + metadata + archive_len + archive)
         let mut hasher = Sha256::new();
+        hasher.update(&magic_buf);
+        hasher.update(&meta_len_buf);
+        hasher.update(&metadata_buf);
+        hasher.update(&archive_len_buf);
         hasher.update(&archive_buf);
         let digest = hasher.finalize();
 
-        if digest.as_slice() != signature.as_slice() {
+        if digest.as_slice() != signature {
             return Err(anyhow::Error::msg(
                 "Shuriken file signature mismatch (archive corrupted or tampered).",
             ));
         }
 
-        // Platform check (same logic you had)
+        // Platform check
         if !metadata.platform.contains(env::consts::OS)
             && !metadata.platform.contains(env::consts::ARCH)
         {
-            return Err(Error::msg(
+            return Err(anyhow::Error::msg(
                 "Unsupported platform. Current platform is not the same as the shuriken's destined platform.",
             ));
         }
 
         // Unpack archive in blocking task
-        let archive_cursor = std::io::Cursor::new(archive_buf);
+        let archive_cursor = Cursor::new(archive_buf);
         let archive_name = metadata.name.clone();
         let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
         let root_path = self.root_path.clone().join("shurikens").join(archive_name);
@@ -477,7 +498,7 @@ impl ShurikenManager {
             archive.unpack(&unpack_path)?;
             Ok(())
         })
-        .await??;
+            .await??;
 
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {

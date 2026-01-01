@@ -5,7 +5,7 @@ use url::Url;
 mod commands;
 use commands::*;
 use dirs_next::home_dir;
-use std::fs;
+use std::{fs, path::Path};
 use tokio::sync::Mutex;
 
 mod link_parser;
@@ -14,50 +14,75 @@ fn is_url(s: &str) -> bool {
     Url::parse(s).is_ok()
 }
 
+fn ensure_assets_exist(resource_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let important_target_path = home_dir.join(".ninja/assets");
+    let docs_target_path = home_dir.join(".ninja/docs");
+
+    // Try creating directories
+    if let Err(e) = fs::create_dir_all(&important_target_path) {
+        log::warn!("Could not create assets directory: {e}");
+    }
+    if let Err(e) = fs::create_dir_all(&docs_target_path) {
+        log::warn!("Could not create docs directory: {e}");
+    }
+
+    // Copy critical file safely
+    let coconut_file = resource_dir.join("coconut.jpg");
+    let target_coconut = important_target_path.join("coconut.jpg");
+    if !target_coconut.exists() {
+        if coconut_file.exists() {
+            if let Err(e) = fs::copy(&coconut_file, &target_coconut) {
+                log::warn!("Failed to copy coconut.jpg: {e}");
+            }
+        } else {
+            log::error!("Critical file 'coconut.jpg' is missing in resources");
+        }
+    }
+
+    // Copy docs files
+    for (src, dst_name) in &[
+        (resource_dir.join("docs.md"), "docs.md"),
+        (resource_dir.join("cheatsheet.md"), "cheatsheet.md"),
+    ] {
+        let dst = docs_target_path.join(dst_name);
+        if !dst.exists() && src.exists() {
+            if let Err(e) = fs::copy(&src, &dst) {
+                log::warn!("Failed to copy {dst_name}: {e}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
 
     let mut builder = tauri::Builder::default()
         .setup(|app| {
-            // Initialize ShurikenManager
             let manager = Mutex::new(
                 tauri::async_runtime::block_on(ShurikenManager::new())
                     .expect("Failed to spawn a shuriken manager"),
             );
             app.manage(manager);
-            {
-                let resource_dir = app.path().resource_dir()?;
-                let cheatsheet = resource_dir.join("cheatsheet.md");
-                let docs = resource_dir.join("docs.md");
-                let important_target_path = home_dir().unwrap()
-                    .join(".ninja")
-                    .join("assets");
-                let docs_target_path = home_dir().unwrap()
-                    .join(".ninja")
-                    .join("docs");
-                let important_file = important_target_path.join("coconut.jpg");
-                if !important_target_path.exists() {
-                    fs::create_dir_all(&important_target_path).expect("Failed to create docs directory");
-                    fs::copy(&important_file, important_target_path.join("coconut.jpg")).expect("Failed to copy coconut.jpg");
-                }
-                if !docs_target_path.exists() {
-                    fs::create_dir_all(&docs_target_path).expect("Failed to create docs directory");
-                    fs::copy(&docs, docs_target_path.join("docs.md")).expect("Failed to copy cheatsheet.md");
-                    fs::copy(&cheatsheet, docs_target_path.join("cheatsheet.md")).expect("Failed to copy cheatsheet.md");
-                }
-                if !important_file.exists() {
-                    app.dialog()
-                        .message("Required file 'coconut.jpg' is missing.\nNinja will not run without it.\nIf you think this is a mistake — reinstall or restore the file.\n(Yes — the coconut is important.)")
-                        .kind(MessageDialogKind::Error)
-                        .title("Source Engine Error")
-                        .blocking_show();
-                }
+
+            let resource_dir = app.path().resource_dir()?;
+            let home = home_dir().ok_or("Cannot determine home directory")?;
+
+            if let Err(e) = ensure_assets_exist(&resource_dir, &home) {
+                app.dialog()
+                    .message(format!("{e}\nReinstall or restore the file."))
+                    .kind(MessageDialogKind::Error)
+                    .title("Source Engine Error")
+                    .blocking_show();
             }
+
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-
                 app.deep_link().register_all()?;
             }
 
@@ -121,7 +146,8 @@ pub fn run() {
             open_shuriken,
             install_shuriken,
             backup_restore,
-            backup_now
+            backup_now,
+            lockpick_shuriken
         ]);
 
     builder

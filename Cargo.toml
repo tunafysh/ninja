@@ -9,7 +9,7 @@ members = [
     "tests",
     "FFI"]
 
-package.version = "1.9.0"
+package.version = "1.10.0"
 package.edition = "2021"
 
 [profile.release]
