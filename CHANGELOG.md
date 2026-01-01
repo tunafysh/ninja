@@ -62,3 +62,6 @@
 ## 1.10.0
 * Bugfixes and improvements.
 * Fixed assets not loading
+
+## 1.11.0 
+* Fixes for the building pipeline
