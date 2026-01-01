@@ -34,11 +34,11 @@ def get_changelog_for_version(version: str, changelog_file="CHANGELOG.md") -> st
         content = f.read()
 
     pattern = rf"""
-        ##\s*\[?{re.escape(version)}\]?
+        \#\#\s*\[?{re.escape(version)}\]?
         (?:\s*-\s*\d{{4}}-\d{{2}}-\d{{2}})?
         \s*\n
         (.*?)
-        (?=\n##\s|\Z)
+        (?=\n\#\#\s|\Z)
     """
     match = re.search(pattern, content, re.DOTALL | re.VERBOSE)
     return match.group(1).strip() if match else ""
@@ -82,7 +82,7 @@ root = {
                 f"Ninja_{version}_x64-setup.exe", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_x64-setup.exe", ARTIFS_DIR
+                f"Ninja_{version}_x64-setup.exe", ARTIFACTS_DIR
             ),
         },
         "darwin-aarch64": {
