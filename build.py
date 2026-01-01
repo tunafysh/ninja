@@ -288,9 +288,9 @@ def export_dist():
         "**/*.exe",
         "**/*.dmg",
         "**/*.app",
-        "**/*.AppImage",
+        "**/*.AppImage*",
         "**/*.deb",
-        "**/*.rpm",
+        "**/*.rpm*",
         "**/*.zip",
         "**/*.gz",
         "**/*.sig"
