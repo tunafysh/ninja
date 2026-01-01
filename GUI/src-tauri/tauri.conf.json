@@ -32,7 +32,7 @@
   },
   "bundle": {
     "resources": {
-      "assets/": "../../assets/"
+      "../../assets/": "assets/"
     },
     "createUpdaterArtifacts": true,
     "active": true,

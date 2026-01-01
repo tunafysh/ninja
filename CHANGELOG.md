@@ -61,3 +61,4 @@
 
 ## 1.10.0
 * Bugfixes and improvements.
+* Fixed assets not loading
