@@ -265,6 +265,9 @@ def clean():
             p.unlink()
             print_status("Rm", f"GUI binary {p}")
 
+import shutil
+from pathlib import Path
+
 def export_dist():
     """
     Create a top-level dist/ folder and copy final Tauri bundle
@@ -273,52 +276,57 @@ def export_dist():
     root = Path(__file__).parent.resolve()
     dist_dir = root / "dist"
 
-    # Clean existing dist folder
+    # Clean dist/
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
-    dist_dir.mkdir(exist_ok=True)
+    dist_dir.mkdir()
 
     # -----------------------
     # 1. Collect Tauri bundles
     # -----------------------
-    tauri_root = root / "target" / "release"
+    bundle_root = root / "target" / "release" / "bundle"
 
-    patterns = [
-        "**/*.msi",
-        "**/*.exe",
-        "**/*.dmg",
-        "**/*.app",
-        "**/*.AppImage*",
-        "**/*.deb",
-        "**/*.rpm*",
-        "**/*.zip",
-        "**/*.gz",
-        "**/*.sig"
-    ]
+    if not bundle_root.exists():
+        print_status("Error", "Tauri bundle directory not found")
+        return
 
-    found_artifacts = []
-    for pattern in patterns:
-        found_artifacts.extend(tauri_root.glob(pattern))
+    allowed_exts = {
+        ".msi",
+        ".exe",
+        ".dmg",
+        ".app",
+        ".AppImage",
+        ".deb",
+        ".rpm",
+        ".zip",
+        ".gz",
+        ".sig",
+        ".json",
+    }
 
-    # Copy Tauri outputs
-    # Copy Tauri outputs
-    for f in found_artifacts:
-        # --- Skip unwanted Debian internals ---
-        if f.name in ("control.tar.gz", "data.tar.gz"):
+    for path in bundle_root.rglob("*"):
+        # Skip directories unless it's a macOS .app bundle
+        if path.is_dir() and path.suffix != ".app":
             continue
 
-        dest = dist_dir / f.name
-        if f.is_dir():
-            shutil.copytree(f, dest)
-        else:
-            shutil.copy2(f, dest)
-        print_status("Info", f"Copied {f} → dist/{f.name}")
+        # Allow .app bundles
+        if path.is_dir() and path.suffix == ".app":
+            dest = dist_dir / path.name
+            shutil.copytree(path, dest)
+            print_status("Info", f"Copied {path} → dist/{path.name}")
+            continue
+
+        # Allow files by extension
+        if path.is_file() and path.suffix in allowed_exts:
+            dest = dist_dir / path.name
+            shutil.copy2(path, dest)
+            print_status("Info", f"Copied {path} → dist/{path.name}")
 
     # ----------------------------------------
     # 2. Add shurikenctl Linux binary only
     # ----------------------------------------
     shuri = root / "target" / "release" / "shurikenctl"
-    if shuri.exists():
+    if shuri.exists() and shuri.is_file():
         shutil.copy2(shuri, dist_dir / "shurikenctl")
         print_status("Info", "Included Linux shurikenctl → dist/shurikenctl")
     else:
