@@ -63,18 +63,18 @@ root = {
     "platforms": {
         "linux-x86_64": {
             "url": make_asset_url(
-                f"Ninja_{version}_amd64.AppImage.tar.gz", version
+                f"Ninja_{version}_amd64.AppImage", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_amd64.AppImage.tar.gz", ARTIFACTS_DIR
+                f"Ninja_{version}_amd64.AppImage", ARTIFACTS_DIR
             ),
         },
         "linux-aarch64": {
             "url": make_asset_url(
-                f"Ninja_{version}_aarch64.AppImage.tar.gz", version
+                f"Ninja_{version}_aarch64.AppImage", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_aarch64.AppImage.tar.gz", ARTIFACTS_DIR
+                f"Ninja_{version}_aarch64.AppImage", ARTIFACTS_DIR
             ),
         },
         "windows-x86_64": {
@@ -87,10 +87,10 @@ root = {
         },
         "darwin-aarch64": {
             "url": make_asset_url(
-                f"Ninja_{version}_aarch64.dmg", version
+                f"Ninja.app.tar.gz", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_aarch64.dmg", ARTIFACTS_DIR
+                f"Ninja.app.tar.gz", ARTIFACTS_DIR
             ),
         },
     },
