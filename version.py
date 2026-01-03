@@ -74,7 +74,7 @@ root = {
                 f"Ninja_{version}_aarch64.AppImage.tar.gz", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_aarch64.AppImage", ARTIFACTS_DIR
+                f"Ninja_{version}_aarch64.AppImage.tar.gz", ARTIFACTS_DIR
             ),
         },
         "windows-x86_64": {
