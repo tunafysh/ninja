@@ -179,6 +179,7 @@ jobs:
             artifacts/**/Ninja*.deb
             artifacts/**/Ninja*.rpm
             artifacts/**/Ninja*.tar.gz
+            artifacts/**/Ninja*.AppImage
             artifacts/**/*.sig
             **/latest.json
         env:
