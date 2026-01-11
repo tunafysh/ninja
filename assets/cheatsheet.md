@@ -152,7 +152,7 @@ list
 # List shurikens with their states
 list state
 
-# Select a shuriken for operations
+# Select a shuriken for operations (case sensitive)
 select <name>
 
 # Start the selected shuriken
@@ -324,8 +324,8 @@ configure {
   workers = 4
 }
 
-# Execute custom Lua setup script
-execute ./setup.ns
+# Execute custom Lua script
+execute ./script.ns
 
 # Start the server
 start
@@ -335,7 +335,7 @@ start
 
 ## Notes
 
-- All filesystem paths are resolved relative to the configured working directory
+- All filesystem paths are resolved relative to the configured working directory (~/.ninja in every OS even windows)
 - Path-like commands in `proc.spawn` are resolved properly on both Windows and Unix
 - Windows: Uses PowerShell for shell commands
 - Unix/Linux: Uses `$SHELL` or defaults to `sh`

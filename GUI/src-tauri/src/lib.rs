@@ -14,7 +14,10 @@ fn is_url(s: &str) -> bool {
     Url::parse(s).is_ok()
 }
 
-fn ensure_assets_exist(resource_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_assets_exist(
+    resource_dir: &Path,
+    home_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let important_target_path = home_dir.join(".ninja/assets");
     let docs_target_path = home_dir.join(".ninja/docs");
 
@@ -55,13 +58,12 @@ fn ensure_assets_exist(resource_dir: &Path, home_dir: &Path) -> Result<(), Box<d
     Ok(())
 }
 
-
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::info!("Starting Tauri application...");
 
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let manager = Mutex::new(
                 tauri::async_runtime::block_on(ShurikenManager::new())

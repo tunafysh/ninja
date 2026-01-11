@@ -70,24 +70,12 @@ The `manifest.toml` file defines a shuriken. It must be located at `.ninja/manif
 name = "example-service"
 id = "com.example.service"
 version = "1.0.0"
-type = "service"              # or "application", "tool", etc.
-require-admin = false         # Whether elevated privileges are needed
+type = "daemon"              # or "executable"
+require-admin = false        # Whether elevated privileges are needed
 
 [shuriken.management]
-type = "native"               # or "script"
-
-# For native management:
-[shuriken.management.bin-path]
-linux = "/usr/bin/example"
-windows = "C:\\Program Files\\Example\\example.exe"
-macos = "/usr/local/bin/example"
-
-args = ["--daemon", "--config", "config.ini"]
-
-[shuriken.management.cwd]
-linux = "/var/lib/example"
-windows = "C:\\ProgramData\\Example"
-macos = "/usr/local/var/example"
+type = "script"              # or "script"
+script-path = "manage.ns"    # Script is recommended since native will be phased out. 
 
 # Configuration (optional)
 [config]
@@ -106,7 +94,7 @@ description = "Create a backup of the service data"
 
 ### Management Types
 
-#### 1. Native Management
+#### 1. Native Management (will be deprecated.)
 
 For services that are managed by spawning a native binary:
 
@@ -137,13 +125,13 @@ For services that require custom start/stop logic:
 ```toml
 [shuriken.management]
 type = "script"
-script-path = "scripts/management.lua"
+script-path = "scripts/management.ns"
 ```
 
 The management script must define `start()` and `stop()` functions:
 
 ```lua
--- scripts/management.lua
+-- scripts/management.ns
 
 function start()
     log.info("Starting service...")
@@ -170,7 +158,7 @@ function stop()
 end
 ```
 
-**Note**: Ninja stores Lua scripts with the `.ns` extension (Ninja Script) in the `.ninja/` directory, but they're standard Lua scripts.
+**Note**: Ninja stores Lua scripts with the `.ns` extension (Ninja Script) in the shuriken directory, but they're standard Lua scripts.
 
 ---
 
@@ -191,17 +179,17 @@ A `.shuriken` file is a custom binary package format:
 
 The CBOR-encoded metadata contains:
 
-```rust
+```json
 {
     "name": "example-service",
-    "id": "com.example.service",
+    "id": "service", // like apache's id is httpd
     "platform": "linux-x86_64",  // or "windows-x86_64", "macos-aarch64", "any"
     "version": "1.0.0",
     "synopsis": "A short description",
     "description": "Longer description...",
     "authors": ["Author Name"],
     "license": "MIT",
-    "postinstall": "scripts/postinstall.lua"  // Optional
+    "postinstall": "scripts/postinstall.ns"  // Optional
 }
 ```
 
@@ -273,7 +261,7 @@ When `configure` is called, Ninja:
 
 ## State Management
 
-### Shuriken States
+### Shuriken States 
 
 - **Idle**: Not running
 - **Running**: Currently active
@@ -329,11 +317,11 @@ script = "scripts/backup.lua"
 description = "Backup application data"
 ```
 
-Tools are Lua scripts with access to the full Ninja API and can be executed via the DSL or API.
+Tools are Lua scripts with access to the full Ninja API and can be executed via the DSL, API or explicitly by the GUI under the `Tools` tab. 
 
 ---
 
-## Platform Paths
+## Platform Paths (might be depracated)
 
 The `PlatformPath` type allows platform-specific paths:
 
@@ -363,15 +351,15 @@ When `require-admin = true`:
 ### Directory Structure
 
 ```
-my-web-server/
+~/.ninja/shurikens/my-web-server/
 ├── .ninja/
 │   ├── manifest.toml
 │   ├── config.tmpl
 │   └── scripts/
 │       └── postinstall.lua
 ├── bin/
-│   ├── server
-│   └── server.exe
+│   ├── server     - for linux or macos
+│   └── server.exe - for windows
 ├── data/
 └── README.md
 ```
@@ -387,19 +375,8 @@ type = "service"
 require-admin = false
 
 [shuriken.management]
-type = "native"
-
-[shuriken.management.bin-path]
-linux = "./bin/server"
-windows = ".\\bin\\server.exe"
-macos = "./bin/server"
-
-args = ["--config", "server.conf"]
-
-[shuriken.management.cwd]
-linux = "."
-windows = "."
-macos = "."
+type = "script"
+script-path = "manage.ns"
 
 [config]
 config-path = "server.conf"
@@ -412,6 +389,26 @@ name = "status"
 script = "scripts/status.lua"
 description = "Check server status"
 ```
+
+### manage.ns
+
+```lua
+function start()
+    if env.os == "windows" then
+        local result = proc.spawn("bin\\server.exe")
+        fs.write("server.pid", result.pid)
+        return
+    end
+    local result = proc.spawn("bin/server")
+    fs.write("server.pid", result.pid)
+end
+
+function stop()
+    local pid = fs.read("server.pid")
+    proc.kill_pid(pid)
+end
+```
+
 
 ### config.tmpl
 
@@ -472,6 +469,12 @@ let metadata = ArmoryMetadata {
 manager.forge(metadata, PathBuf::from("my-web-server")).await?;
 ```
 
+:::note
+
+You can also use the forge command to provide these values interactively or with a forge.json file containing these fields for CI.
+
+:::
+
 This creates: `blacksmith/com.mycompany.webserver-linux-x86_64.shuriken`
 
 ---
@@ -490,7 +493,7 @@ linux = "./bin/server"
 linux = "/absolute/path/server"
 ```
 
-### 2. Provide Platform-Specific Configurations
+### 2. Provide Platform-Specific Configurations (this will be ruled out)
 
 ```toml
 [shuriken.management.bin-path]
@@ -519,7 +522,7 @@ Use post-install scripts to:
 
 ### 5. Version Your Shurikens
 
-Always include a version in metadata and consider semantic versioning.
+Always include a version in metadata and consider semantic versioning. This might be optional for local development but mandatory for publishing in the armory.
 
 ---
 
@@ -531,6 +534,12 @@ Always include a version in metadata and consider semantic versioning.
 2. Verify binary permissions (Unix): `ls -l bin/server`
 3. Check logs if configured
 4. Test binary manually: `./bin/server --config config.ini`
+
+::: note
+
+It is recommended for scriptable shurikens to log their actions in a file during the start sequence and remove said file in the stop sequence.
+
+:::
 
 ### Configuration Not Generated
 
@@ -544,6 +553,12 @@ Always include a version in metadata and consider semantic versioning.
 If "Failed to terminate shuriken" error occurs:
 - Process may have crashed
 - PID reused by another process
-- Lock file out of sync
+- Lock file out of sync 
+
+:::warning
+
+If the lockfile does exist but the state of the shuriken is stopped, it is recommended to use the lockpick action. But this must be used carefully and ethically since misusing this function might result in race conditions and confusing the Ninja runtime.
+
+:::
 
 **Solution**: Manually remove `.ninja/shuriken.lck` and check actual processes

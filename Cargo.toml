@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-    "API",
+    "HTTP",
     "CLI",
     "core",
     "MCP",

@@ -247,9 +247,15 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
 }
 
 #[tauri::command]
-pub async fn install_shuriken(manager: State<'_, Mutex<ShurikenManager>>, path: String) -> Result<(), String> {
+pub async fn install_shuriken(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    path: String,
+) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager.install(&PathBuf::from(path)).await.map_err(|e| e.to_string())?;
+    manager
+        .install(&PathBuf::from(path))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -279,8 +285,14 @@ pub async fn backup_restore(
 }
 
 #[tauri::command]
-pub async fn lockpick_shuriken(manager: State<'_, Mutex<ShurikenManager>>, shuriken: String) -> Result<(), String> {
+pub async fn lockpick_shuriken(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    shuriken: String,
+) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager.lockpick(&shuriken).await.map_err(|e| e.to_string())?; 
+    manager
+        .lockpick(&shuriken)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
-}  
+}

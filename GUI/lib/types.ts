@@ -2,12 +2,18 @@ export type Shuriken = {
     metadata: ShurikenMetadata
     config?: ShurikenConfig
     logs?: LogsConfig
+    tools?: Tool[]
     status: "running" | "stopped"
 }
 
 export type ShurikenConfig = {
     "config-path": String
     options?: Map<string, Value>
+}
+
+export type Tool = {
+    name: string
+    path: string
 }
 
 export type ShurikenMetadata = {
@@ -80,3 +86,11 @@ export interface ArmoryMetadata {
   authors?: string[] | null;
   license?: string | null;
 }
+
+
+export type UpdateInfo = {
+  version: string
+  date: string | undefined
+  downloadAndInstall: () => void
+  body?: string
+} | null

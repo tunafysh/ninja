@@ -30,7 +30,7 @@ export function ApplicationMenubar({ platform, gridView, setGridView, activeTab,
 
   return (
     <div 
-      className={`fixed flex z-[999] ${platform === "mac" ? "h-8" : "h-10"} justify-between items-center border-b bg-background drag w-full`} 
+      className={`fixed flex z-999 ${platform === "mac" ? "h-8" : "h-10"} justify-between items-center border-b bg-background drag w-full`} 
       style={{ 
         borderTopLeftRadius: '7px', 
         borderTopRightRadius: '7px' 

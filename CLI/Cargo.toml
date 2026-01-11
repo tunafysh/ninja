@@ -21,7 +21,7 @@ clap-verbosity-flag = { version = "3.0.3", default-features = true }
 serde = { version = "1.0.219", default-features = false }
 toml = { version = "0.9.4", default-features = false, features = ["display", "serde"] }
 dialoguer = { version = "0.11.0", default-features = false }
-ninja-api = { path = "../API"}
+ninja-api = { path = "../HTTP"}
 serde_json = "1.0.145"
 anyhow = "1.0.100"
 dirs-next = "2.0.0"

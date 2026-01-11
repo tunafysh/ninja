@@ -77,7 +77,7 @@ pub fn make_admin_command(bin: &str, args: Option<&[String]>, cwd: Option<&Path>
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Tool {
     pub name: String,
-    pub script: String,
+    pub script: PathBuf,
     pub description: Option<String>,
 }
 

@@ -1,5 +1,5 @@
-// this file is for use with ImHex. idk about any other applicationthat supports this format so i take no responsibility for anything going wrong :D
-#pragma author Hannan Smani
+// this file is for use with ImHex. idk about any other application that supports this format so i take no responsibility for anything going wrong :D
+#pragma author tunafysh
 #pragma magic [48 53 52 5A 45 47]
 #pragma endian little
 #pragma MIME application/x-shuriken
