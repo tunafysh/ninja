@@ -1,7 +1,5 @@
 "use client"
 
-const TESTING_FLAG = true;
-
 import { ApplicationMenubar } from "@/components/ui/application-menubar"
 import { Card, CardContent } from "@/components/ui/card"
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -19,16 +17,6 @@ import { useKonami } from "react-konami-code"
 import Backup from "@/components/pages/backup"
 import Tools from "@/components/pages/tools"
 import { UpdateInfo } from "@/lib/types";
-// `Button` and `ReactMarkdown` moved into `UpdateDialog`
-
-const mockUpdate = {
-  version: "1.12.0",
-  date: "2024-10-01",
-  downloadAndInstall: () => {
-    console.log("Downloading and installing update...")
-  },
-  body: "• Improved Shuriken startup speed\n• Fixed backup race condition\n• Armory stability improvements",
-}
 
 export default function Page() {
   const [devMode, setDevMode] = useState<boolean>(false);
@@ -83,14 +71,6 @@ export default function Page() {
 
   const checkForUpdates = async () => {
     try {
-      // 🧪 TEST MODE
-      if (TESTING_FLAG) {
-        setUpdateInfo(mockUpdate)
-        setShowUpdateDialog(true)
-        return
-      }
-
-      // 🚀 REAL UPDATER
       const update = await check()
 
       if (update) {
