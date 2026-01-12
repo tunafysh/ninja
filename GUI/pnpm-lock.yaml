@@ -59,6 +59,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.9.1
         version: 2.9.1
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.5.0
+        version: 2.5.0
       '@tauri-apps/plugin-fs':
         specifier: ~2.4.5
         version: 2.4.5
@@ -1504,6 +1507,9 @@ packages:
 
   '@tauri-apps/api@2.9.1':
     resolution: {integrity: sha512-IGlhP6EivjXHepbBic618GOmiWe4URJiIeZFlB7x3czM0yDHHYviH1Xvoiv4FefdkQtn6v7TuwWCRfOGdnVUGw==}
+
+  '@tauri-apps/plugin-dialog@2.5.0':
+    resolution: {integrity: sha512-I0R0ygwRd9AN8Wj5GnzCogOlqu2+OWAtBd0zEC4+kQCI32fRowIyuhPCBoUv4h/lQt2bM39kHlxPHD5vDcFjiA==}
 
   '@tauri-apps/plugin-fs@2.4.5':
     resolution: {integrity: sha512-dVxWWGE6VrOxC7/jlhyE+ON/Cc2REJlM35R3PJX3UvFw2XwYhLGQVAIyrehenDdKjotipjYEVc4YjOl3qq90fA==}
@@ -4625,6 +4631,10 @@ snapshots:
       tailwindcss: 4.1.18
 
   '@tauri-apps/api@2.9.1': {}
+
+  '@tauri-apps/plugin-dialog@2.5.0':
+    dependencies:
+      '@tauri-apps/api': 2.9.1
 
   '@tauri-apps/plugin-fs@2.4.5':
     dependencies:

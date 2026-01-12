@@ -421,7 +421,7 @@ impl ShurikenManager {
         if &magic_buf != MAGIC {
             return Err(anyhow::Error::msg("Invalid shuriken file (bad MAGIC)."));
         }
-
+        // this comment is just a small change
         // 2) metadata_length (u16 LE)
         let mut meta_len_buf = [0u8; 2];
         file.read_exact(&mut meta_len_buf).await?;
