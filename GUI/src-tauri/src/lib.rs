@@ -63,6 +63,11 @@ pub fn run() {
     log::info!("Starting Tauri application...");
 
     let mut builder = tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(tauri_plugin_log::log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let manager = Mutex::new(
