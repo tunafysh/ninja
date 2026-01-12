@@ -249,9 +249,7 @@ unsafe fn shuriken_action_sync(
             let msg = format!("{}", e);
             set_last_error(msg.clone());
             if !out_err.is_null() {
-                unsafe{
-                    *out_err = CString::new(msg).unwrap().into_raw();
-                }
+                *out_err = CString::new(msg).unwrap().into_raw();
             }
             -1
         }

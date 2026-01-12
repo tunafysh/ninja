@@ -65,3 +65,6 @@
 
 ## 1.11.0 
 * Fixes for the building pipeline
+
+## 1.11.1
+* Patches for the C API.
