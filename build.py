@@ -126,17 +126,13 @@ def find_and_place_binary(extra_args=None):
 def build_lib(args):
     cargo = find_cargo()
     print_status("Info", "Building ninja-core")
-    run([cargo, "build", "--package", "ninja-core"] + args, "Core build")
+    run([cargo, "build", "--release", "--package", "ninja-core"] + args, "Core build")
 
 
 def build_ffi(args): 
     cargo = find_cargo()
     print_status("Info", "Building ninja-ffi")
-    run([cargo, "build", "--package", "ninja-ffi"] + args, "Core build")
-    
-    # Determine if release build
-    release = "-r" in args or "--release" in args
-    build_type = "release" if release else "debug"
+    run([cargo, "build", "--release", "--package", "ninja-ffi"] + args, "Core build")
 
     # Determine target library name based on OS
     if sys.platform.startswith("win"):
@@ -150,7 +146,7 @@ def build_ffi(args):
         out_name = "ninja.so"
 
     # Source path
-    src = Path("target") / build_type / src_name
+    src = Path("target")/ "release" / src_name
     if not src.exists():
         print(f"Error: {src_name} not found at {src}")
         return

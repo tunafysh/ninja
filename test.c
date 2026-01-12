@@ -43,6 +43,8 @@ int main(void) {
     usleep(1000 * 1000);
 #endif
 
+    ninja_lockpick_shuriken(mgr, "apache", &err);
+
     // Async stop -> callback will free its string
     printf("starting async stop...\n");
     ninja_stop_shuriken_async(mgr, "apache", my_async_callback, (void*)0x4321);
