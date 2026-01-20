@@ -346,7 +346,7 @@ impl Shuriken {
         Ok(())
     }
 
-    pub async fn configure(&self, root_path: &PathBuf) -> anyhow::Result<()> {
+    pub async fn configure(&self, root_path: &Path) -> anyhow::Result<()> {
         if let Some(ctx) = &self.config {
             let shuriken_fields = ctx.options.clone();
             let mut fields = HashMap::new();

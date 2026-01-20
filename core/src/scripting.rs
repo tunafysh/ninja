@@ -117,19 +117,16 @@ impl NinjaEngine {
         // Execute and capture the return value
         let result: mlua::Value = chunk.eval()?;
 
-        // Try to get the function from the returned table first, then from env
-        let func: mlua::Function = match result {
-            mlua::Value::Table(table) => {
-                // If script returned a table, try to get function from it
-                table.get(function)?
-            }
-            _ => {
-                // Otherwise, get function from the environment (global definition)
-                env.get(function)?
-            }
+        // Try to get the function from the returned value first (if it's a table)
+        let func: mlua::Function = if let mlua::Value::Table(table) = result {
+            // Script returned a table, try to get the function from it
+            table.get(function)?
+        } else {
+            // Script didn't return a table, try to get the function from the environment
+            env.get(function)?
         };
 
-        // Call start()/stop() with no arguments for now
+        // Call the function with no arguments
         func.call::<()>(())
     }
 }

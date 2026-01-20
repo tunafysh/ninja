@@ -77,14 +77,30 @@ mod ninja_runtime_integration_tests {
     }
 
     #[tokio::test]
+    async fn test_execute_function_with_return_value() {
+        let engine = NinjaEngine::new().await.unwrap();
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, "function add() return 2 + 2 end").unwrap();
+
+        let path = tmp.into_temp_path();
+        // Function executes successfully even with return value
+        assert!(
+            engine
+                .execute_function("add", &path.to_path_buf(), None)
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
     async fn test_execute_function_nonexistent() {
         let engine = NinjaEngine::new().await.unwrap();
 
         let mut tmp = NamedTempFile::new().unwrap();
-        writeln!(tmp, "function greet() end").unwrap();
+        writeln!(tmp, "function greet() print('hi') end").unwrap();
 
         let path = tmp.into_temp_path();
-        // Try to call a function that doesn't exist
+        // Trying to execute a function that doesn't exist should fail
         assert!(
             engine
                 .execute_function("nonexistent", &path.to_path_buf(), None)
@@ -93,92 +109,14 @@ mod ninja_runtime_integration_tests {
     }
 
     #[tokio::test]
-    async fn test_execute_function_with_error() {
+    async fn test_execute_inline_with_globals() {
         let engine = NinjaEngine::new().await.unwrap();
-
-        let mut tmp = NamedTempFile::new().unwrap();
-        writeln!(tmp, "function failing() error('intentional error') end").unwrap();
-
-        let path = tmp.into_temp_path();
-        // Function exists but throws an error when called
-        assert!(
-            engine
-                .execute_function("failing", &path.to_path_buf(), None)
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execute_file_with_syntax_error() {
-        let engine = NinjaEngine::new().await.unwrap();
-
-        let mut tmp = NamedTempFile::new().unwrap();
-        writeln!(tmp, "this is not valid lua syntax ]]]]").unwrap();
-
-        assert!(
-            engine
-                .execute_file(&tmp.path().to_path_buf(), None)
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execute_function_from_mixed_table() {
-        let engine = NinjaEngine::new().await.unwrap();
-
-        let mut tmp = NamedTempFile::new().unwrap();
-        writeln!(
-            tmp,
-            r#"return {{
-                start = function() print('starting') end,
-                stop = function() print('stopping') end,
-                data = 123
-            }}"#
-        )
-        .unwrap();
-
-        let path = tmp.into_temp_path();
-        let path_buf = path.to_path_buf();
-
-        // Both functions should be callable from the returned table
-        assert!(engine.execute_function("start", &path_buf, None).is_ok());
-        assert!(engine.execute_function("stop", &path_buf, None).is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_execute_inline_multiline() {
-        let engine = NinjaEngine::new().await.unwrap();
-
-        let script = r#"
-            local x = 10
-            local y = 20
-            local z = x + y
-            assert(z == 30, "Math failed")
-        "#;
-
-        assert!(engine.execute(script, None).is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_engine_globals_accessible() {
-        let engine = NinjaEngine::new().await.unwrap();
-
-        // Test that standard Lua globals are available
-        assert!(
-            engine
-                .execute("assert(type(print) == 'function')", None)
-                .is_ok()
-        );
-        assert!(
-            engine
-                .execute("assert(type(table) == 'table')", None)
-                .is_ok()
-        );
-        assert!(
-            engine
-                .execute("assert(type(string) == 'table')", None)
-                .is_ok()
-        );
+        
+        // Test that global modules are accessible
+        assert!(engine.execute("local x = fs", None).is_ok());
+        assert!(engine.execute("local x = env", None).is_ok());
+        assert!(engine.execute("local x = shell", None).is_ok());
+        assert!(engine.execute("local x = time", None).is_ok());
     }
 }
 

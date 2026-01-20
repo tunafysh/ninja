@@ -1063,3 +1063,56 @@ pub async fn make_modules(
         proc_module,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_strip_windows_prefix_with_prefix() {
+        #[cfg(windows)]
+        {
+            let path = PathBuf::from(r"\\?\C:\test\path");
+            let result = strip_windows_prefix(&path);
+            assert_eq!(result, PathBuf::from(r"C:\test\path"));
+        }
+    }
+
+    #[test]
+    fn test_strip_windows_prefix_without_prefix() {
+        let path = PathBuf::from("/test/path");
+        let result = strip_windows_prefix(&path);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn test_canonicalize_cwd_none() {
+        // When no base is provided, should return None
+        let result = canonicalize_cwd(None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_spawn_command_empty() {
+        // Test with empty command
+        let result = resolve_spawn_command("", None);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_resolve_spawn_command_simple() {
+        // Test with simple command
+        let result = resolve_spawn_command("ls -la", None);
+        // Should contain the command parts
+        assert!(result.contains("ls"));
+    }
+
+    #[test]
+    fn test_resolve_spawn_command_with_path() {
+        // Test with command that has path
+        let result = resolve_spawn_command("./myapp arg1 arg2", None);
+        // Should preserve the relative path
+        assert!(result.contains("./myapp") || result.contains("myapp"));
+    }
+}
