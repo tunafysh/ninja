@@ -227,4 +227,56 @@ mod ninja_api_integration_tests {
         let result = shuriken.stop(Some(&engine), dir.path()).await;
         assert!(result.is_err()); // script stop doesn't require pid
     }
+
+    #[tokio::test]
+    async fn test_manager_creation() {
+        let dir = tempdir().unwrap();
+        let engine = NinjaEngine::new().await.unwrap();
+        let manager = ShurikenManager {
+            root_path: dir.path().to_path_buf(),
+            engine: Arc::new(Mutex::new(engine)),
+            shurikens: Arc::new(RwLock::new(HashMap::new())),
+            states: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        // Verify manager initialization
+        assert_eq!(manager.root_path, dir.path());
+        assert!(manager.shurikens.read().await.is_empty());
+        assert!(manager.states.read().await.is_empty());
+        assert!(manager.processes.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_shuriken_metadata_creation() {
+        let metadata = ShurikenMetadata {
+            name: "test".into(),
+            id: "test-id".into(),
+            version: "1.0.0".to_string(),
+            management: None,
+            shuriken_type: "daemon".into(),
+            require_admin: false,
+        };
+
+        assert_eq!(metadata.name, "test");
+        assert_eq!(metadata.id, "test-id");
+        assert_eq!(metadata.version, "1.0.0");
+        assert!(!metadata.require_admin);
+    }
+
+    #[tokio::test]
+    async fn test_lockfile_directory_creation() {
+        let dir = tempdir().unwrap();
+        let lockfile_dir = dir.path().join(".ninja");
+
+        // Directory shouldn't exist yet
+        assert!(!lockfile_dir.exists());
+
+        // Create it
+        fs::create_dir_all(&lockfile_dir).unwrap();
+
+        // Now it should exist
+        assert!(lockfile_dir.exists());
+        assert!(lockfile_dir.is_dir());
+    }
 }

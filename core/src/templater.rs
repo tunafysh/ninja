@@ -51,7 +51,7 @@ impl Templater {
         context
             .entry("arch".into())
             .or_insert_with(|| FieldValue::String(env::consts::ARCH.to_string()));
-        
+
         let ninja_root = root_path
             .parent()
             .and_then(|p| p.parent())
@@ -62,7 +62,7 @@ impl Templater {
                 ))
             })?
             .to_path_buf();
-        
+
         context
             .entry("ninja_root".into())
             .or_insert_with(|| FieldValue::String(ninja_root.display().to_string()));
@@ -70,7 +70,7 @@ impl Templater {
         context
             .entry("user".into())
             .or_insert_with(|| FieldValue::String(whoami::username()));
-        
+
         debug!(
             "Templater::new: context size after injection = {}",
             context.len()

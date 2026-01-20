@@ -8,7 +8,9 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*, // <-- brings in CallToolResult, Content, ServerCapabilities, ServerInfo, Resource, RawResource, etc.
     schemars,
-    tool, tool_handler, tool_router,
+    tool,
+    tool_handler,
+    tool_router,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -169,28 +171,27 @@ impl Manager {
         description = "Tool for reading the cheatsheet because Resources aren't supported everywhere yet."
     )]
     pub fn read_cheatsheet(&self) -> Result<CallToolResult, McpError> {
-            
-            let cheatsheet_path = &self.manager.root_path.join("docs").join("cheatsheet.md");
-            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
-                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
-            })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                cheatsheet_content.as_str(),
-            )]))
+        let cheatsheet_path = &self.manager.root_path.join("docs").join("cheatsheet.md");
+        let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+            McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+        })?;
+        Ok(CallToolResult::success(vec![Content::text(
+            cheatsheet_content.as_str(),
+        )]))
     }
-    
+
     #[tool(
         description = "Tool for reading the docs because Resources aren't supported everywhere yet."
     )]
     pub fn read_docs(&self) -> Result<CallToolResult, McpError> {
-            let home_dir = &self.manager.root_path;
-            let cheatsheet_path = home_dir.join("docs").join("cheatsheet.md");
-            let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
-                McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
-            })?;
-            Ok(CallToolResult::success(vec![Content::text(
-                cheatsheet_content.as_str(),
-            )]))
+        let home_dir = &self.manager.root_path;
+        let cheatsheet_path = home_dir.join("docs").join("cheatsheet.md");
+        let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
+            McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+        })?;
+        Ok(CallToolResult::success(vec![Content::text(
+            cheatsheet_content.as_str(),
+        )]))
     }
 }
 
