@@ -190,15 +190,13 @@ pub fn kill_process_by_name(name: &str) -> bool {
 
                 let comm = comm.trim(); // usually just "bash" or "node", etc.
 
-                if comm == target {
-                    if kill_process_by_pid(pid) {
-                        any_killed = true;
-                    }
+                if comm == target && kill_process_by_pid(pid) {
+                    any_killed = true;
                 }
             }
         }
 
-        return any_killed;
+        any_killed
     }
 
     // Fallback for macOS / other Unix: use `ps` to find matches
