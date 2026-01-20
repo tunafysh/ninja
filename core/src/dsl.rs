@@ -336,7 +336,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(name) {
                         let path = &ctx.manager.root_path;
-                        shuriken.configure(&path).await.map_err(Error::msg)?;
+                        shuriken.configure(path).await.map_err(Error::msg)?;
 
                         output.push(format!(
                             "Generated configuration for shuriken {} successfully.",
@@ -503,4 +503,202 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
     }
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_comments() {
+        // Test with // comment
+        assert_eq!(strip_comments("code // comment"), "code ");
+        
+        // Test with # comment
+        assert_eq!(strip_comments("code # comment"), "code ");
+        
+        // Test with no comment
+        assert_eq!(strip_comments("code"), "code");
+        
+        // Test with empty line
+        assert_eq!(strip_comments(""), "");
+        
+        // Test with only comment
+        assert_eq!(strip_comments("// comment"), "");
+        assert_eq!(strip_comments("# comment"), "");
+    }
+
+    #[test]
+    fn test_parse_value() {
+        // Test string with double quotes
+        let val = parse_value("\"hello\"");
+        match val {
+            FieldValue::String(s) => assert_eq!(s, "hello"),
+            _ => panic!("Expected String"),
+        }
+        
+        // Test string with single quotes
+        let val = parse_value("'world'");
+        match val {
+            FieldValue::String(s) => assert_eq!(s, "world"),
+            _ => panic!("Expected String"),
+        }
+        
+        // Test boolean true
+        let val = parse_value("true");
+        match val {
+            FieldValue::Bool(b) => assert!(b),
+            _ => panic!("Expected Bool"),
+        }
+        
+        // Test boolean false
+        let val = parse_value("false");
+        match val {
+            FieldValue::Bool(b) => assert!(!b),
+            _ => panic!("Expected Bool"),
+        }
+        
+        // Test integer
+        let val = parse_value("42");
+        match val {
+            FieldValue::Number(n) => assert_eq!(n, 42),
+            _ => panic!("Expected Number"),
+        }
+        
+        // Test fallback to string
+        let val = parse_value("unquoted");
+        match val {
+            FieldValue::String(s) => assert_eq!(s, "unquoted"),
+            _ => panic!("Expected String"),
+        }
+    }
+
+    #[test]
+    fn test_parse_kv() {
+        // Test valid key-value pair
+        let result = parse_kv("key = value").unwrap();
+        assert!(result.is_some());
+        let (k, v) = result.unwrap();
+        assert_eq!(k, "key");
+        match v {
+            FieldValue::String(s) => assert_eq!(s, "value"),
+            _ => panic!("Expected String"),
+        }
+        
+        // Test with trailing semicolon
+        let result = parse_kv("key = value;").unwrap();
+        assert!(result.is_some());
+        let (k, _) = result.unwrap();
+        assert_eq!(k, "key");
+        
+        // Test empty line
+        let result = parse_kv("").unwrap();
+        assert!(result.is_none());
+        
+        // Test empty key (should fail)
+        let result = parse_kv("= value");
+        assert!(result.is_err());
+        
+        // Test no equals sign (should return None)
+        let result = parse_kv("standalone").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_collect_block_inline() {
+        let lines_vec: Vec<&str> = vec![];
+        let mut lines = lines_vec.iter().copied();
+        
+        // Test inline block with closing brace on same line
+        let result = collect_block("key = value }", &mut lines);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "key = value");
+    }
+
+    #[test]
+    fn test_collect_block_multiline() {
+        let lines_vec = vec!["line2", "line3 }"];
+        let mut lines = lines_vec.iter().copied();
+        
+        // Test multiline block
+        let result = collect_block("line1", &mut lines);
+        assert!(result.is_ok());
+        let content = result.unwrap();
+        assert!(content.contains("line1"));
+        assert!(content.contains("line2"));
+        assert!(content.contains("line3"));
+    }
+
+    #[test]
+    fn test_collect_block_missing_closing() {
+        let lines_vec = vec!["line2", "line3"];
+        let mut lines = lines_vec.iter().copied();
+        
+        // Test missing closing brace
+        let result = collect_block("line1", &mut lines);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_command_parser_simple() {
+        // Test simple commands
+        let script = "start\nstop\nlist";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_command_parser_with_comments() {
+        // Test commands with comments
+        let script = "start // start the service\nstop # stop it";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_command_parser_configure_block() {
+        // Test configure block parsing
+        let script = "configure { key1 = value1; key2 = 42 }";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            Command::ConfigureBlock(kvs) => {
+                assert_eq!(kvs.len(), 2);
+                assert_eq!(kvs[0].0, "key1");
+            }
+            _ => panic!("Expected ConfigureBlock"),
+        }
+    }
+
+    #[test]
+    fn test_command_parser_empty_lines() {
+        // Test handling of empty lines
+        let script = "\n\nstart\n\n\nstop\n\n";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_command_parser_select() {
+        // Test select command
+        let script = "select myservice";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            Command::Select(name) => assert_eq!(name, "myservice"),
+            _ => panic!("Expected Select"),
+        }
+    }
+
+    #[test]
+    fn test_command_parser_set() {
+        // Test set command
+        let script = "set key value";
+        let result = command_parser(script).unwrap();
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            Command::Set { key, .. } => assert_eq!(key, "key"),
+            _ => panic!("Expected Set"),
+        }
+    }
 }

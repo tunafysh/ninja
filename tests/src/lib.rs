@@ -75,6 +75,49 @@ mod ninja_runtime_integration_tests {
                 .is_ok()
         );
     }
+
+    #[tokio::test]
+    async fn test_execute_function_with_return_value() {
+        let engine = NinjaEngine::new().await.unwrap();
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, "function add() return 2 + 2 end").unwrap();
+
+        let path = tmp.into_temp_path();
+        // Function executes successfully even with return value
+        assert!(
+            engine
+                .execute_function("add", &path.to_path_buf(), None)
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_function_nonexistent() {
+        let engine = NinjaEngine::new().await.unwrap();
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, "function greet() print('hi') end").unwrap();
+
+        let path = tmp.into_temp_path();
+        // Trying to execute a function that doesn't exist should fail
+        assert!(
+            engine
+                .execute_function("nonexistent", &path.to_path_buf(), None)
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_inline_with_globals() {
+        let engine = NinjaEngine::new().await.unwrap();
+        
+        // Test that global modules are accessible
+        assert!(engine.execute("local x = fs", None).is_ok());
+        assert!(engine.execute("local x = env", None).is_ok());
+        assert!(engine.execute("local x = shell", None).is_ok());
+        assert!(engine.execute("local x = time", None).is_ok());
+    }
 }
 
 #[cfg(test)]
