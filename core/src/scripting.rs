@@ -50,7 +50,7 @@ impl NinjaEngine {
         globals.set("env", env)?;
         globals.set("shell", shell)?;
         globals.set("proc", proc)?;
-        
+
         info!("Executing lua script.");
         self.lua.load(script).exec()
     }

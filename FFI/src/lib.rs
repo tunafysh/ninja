@@ -99,7 +99,6 @@ unsafe fn mgr_from_ptr<'a>(mgr: *mut NinjaManagerOpaque) -> Option<&'a mut Shuri
         return None;
     }
     unsafe {
-
         let b = &mut *(mgr as *mut ManagerBox);
         Some(b.0.as_mut())
     }
@@ -175,35 +174,34 @@ pub unsafe extern "C" fn ninja_lockpick_shuriken(
     out_err: *mut *mut c_char,
 ) {
     unsafe {
-
         let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+            Some(m) => m,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return;
             }
-            return;
-        }
-    };
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null name").unwrap().into_raw();
+        };
+        let name = match str_from_c(name) {
+            Some(s) => s,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+                return;
             }
-            return;
-        }
-    };
-    match RUNTIME.block_on(async { manager.lockpick(&name).await}) {
-        Ok(_) => (),
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        };
+        match RUNTIME.block_on(async { manager.lockpick(&name).await }) {
+            Ok(_) => (),
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
             }
         }
-    }
     }
 }
 
@@ -224,37 +222,36 @@ unsafe fn shuriken_action_sync(
     action: fn(&mut ShurikenManager, &str) -> Result<()>,
 ) -> i32 {
     unsafe {
-
         let manager = match mgr_from_ptr(mgr) {
             Some(m) => m,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null name").unwrap().into_raw();
+        };
+        let name = match str_from_c(name) {
+            Some(s) => s,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    match action(manager, &name) {
-        Ok(_) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        };
+        match action(manager, &name) {
+            Ok(_) => 0,
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+                -1
             }
-            -1
         }
     }
-}
 }
 
 /// Starts a shuriken synchronously.
@@ -290,9 +287,11 @@ pub unsafe extern "C" fn ninja_stop_shuriken_sync(
     name: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    unsafe{ shuriken_action_sync(mgr, name, out_err, |m, n| {
-        RUNTIME.block_on(async { m.stop(n).await })
-    })}
+    unsafe {
+        shuriken_action_sync(mgr, name, out_err, |m, n| {
+            RUNTIME.block_on(async { m.stop(n).await })
+        })
+    }
 }
 
 // ========================
@@ -327,9 +326,9 @@ unsafe fn json_result_or_error<T: Serialize>(
                 let msg = format!("serde_json error: {}", e);
                 set_last_error(msg.clone());
                 if !out_err.is_null() {
-                    unsafe{
+                    unsafe {
                         *out_err = CString::new(msg).unwrap().into_raw();
-                    } 
+                    }
                 }
                 ptr::null_mut()
             }
@@ -340,7 +339,7 @@ unsafe fn json_result_or_error<T: Serialize>(
             if !out_err.is_null() {
                 unsafe {
                     *out_err = CString::new(msg).unwrap().into_raw();
-                } 
+                }
             }
             ptr::null_mut()
         }
@@ -363,30 +362,29 @@ unsafe fn shuriken_action_async(
     action: fn(&mut ShurikenManager, &str) -> Result<()>,
 ) {
     unsafe {
-
         let manager = match mgr_from_ptr(mgr) {
             Some(m) => m.clone(),
-        None => return,
-    };
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => return,
-    };
-
-    let userdata_ptr: *mut c_void = userdata;
-    let userdata_ptr = userdata_ptr as usize; // cast to integer for Send
-    RUNTIME.spawn(async move {
-        let r = action(&mut manager.clone(), &name);
-        let json = match r {
-            Ok(_) => "{\"ok\":true}".to_string(),
-            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+            None => return,
         };
-        if let Some(cb_fn) = cb {
-            let userdata_ptr = userdata_ptr as *mut c_void;
-            cb_fn(userdata_ptr, CString::new(json).unwrap().into_raw());
-        }
-    });
-}
+        let name = match str_from_c(name) {
+            Some(s) => s,
+            None => return,
+        };
+
+        let userdata_ptr: *mut c_void = userdata;
+        let userdata_ptr = userdata_ptr as usize; // cast to integer for Send
+        RUNTIME.spawn(async move {
+            let r = action(&mut manager.clone(), &name);
+            let json = match r {
+                Ok(_) => "{\"ok\":true}".to_string(),
+                Err(e) => format!("{{\"error\":\"{}\"}}", e),
+            };
+            if let Some(cb_fn) = cb {
+                let userdata_ptr = userdata_ptr as *mut c_void;
+                cb_fn(userdata_ptr, CString::new(json).unwrap().into_raw());
+            }
+        });
+    }
 }
 
 /// Starts a shuriken asynchronously.
@@ -404,8 +402,7 @@ pub unsafe extern "C" fn ninja_start_shuriken_async(
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
 ) {
-    unsafe{
-
+    unsafe {
         shuriken_action_async(mgr, name, cb, userdata, |m, n| {
             RUNTIME.block_on(async { m.start(n).await })
         })
@@ -428,7 +425,6 @@ pub unsafe extern "C" fn ninja_stop_shuriken_async(
     userdata: *mut c_void,
 ) {
     unsafe {
-
         shuriken_action_async(mgr, name, cb, userdata, |m, n| {
             RUNTIME.block_on(async { m.stop(n).await })
         })
@@ -457,46 +453,45 @@ pub unsafe extern "C" fn ninja_list_shurikens_sync(
     out_err: *mut *mut c_char,
 ) -> *mut c_char {
     unsafe {
-
         let manager = match mgr_from_ptr(mgr) {
             Some(m) => m,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return ptr::null_mut();
             }
-            return ptr::null_mut();
-        }
-    };
-    let res = RUNTIME.block_on(async { manager.list(false).await });
-    match res {
-        Ok(list) => {
-            let serializable: Vec<ShurikenPair> = match list {
-                Either::Left(vec) => vec
-                    .into_iter()
-                    .map(|(n, s)| ShurikenPair { name: n, state: s })
-                    .collect(),
-                Either::Right(vec) => vec
-                    .into_iter()
-                    .map(|n| ShurikenPair {
-                        name: n,
-                        state: ShurikenState::Idle,
-                    })
-                    .collect(),
-            };
-            CString::new(serde_json::to_string(&serializable).unwrap())
-                .unwrap()
-                .into_raw()
-        }
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        };
+        let res = RUNTIME.block_on(async { manager.list(false).await });
+        match res {
+            Ok(list) => {
+                let serializable: Vec<ShurikenPair> = match list {
+                    Either::Left(vec) => vec
+                        .into_iter()
+                        .map(|(n, s)| ShurikenPair { name: n, state: s })
+                        .collect(),
+                    Either::Right(vec) => vec
+                        .into_iter()
+                        .map(|n| ShurikenPair {
+                            name: n,
+                            state: ShurikenState::Idle,
+                        })
+                        .collect(),
+                };
+                CString::new(serde_json::to_string(&serializable).unwrap())
+                    .unwrap()
+                    .into_raw()
             }
-            ptr::null_mut()
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+                ptr::null_mut()
+            }
         }
     }
-}
 }
 
 // ========================
@@ -518,61 +513,60 @@ pub unsafe extern "C" fn ninja_write_options_toml_sync(
     out_err: *mut *mut c_char,
 ) -> i32 {
     unsafe {
-
         let manager = match mgr_from_ptr(mgr) {
             Some(m) => m,
             None => {
                 if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let name = match str_from_c(name) {
-        Some(s) => s,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null name").unwrap().into_raw();
+        };
+        let name = match str_from_c(name) {
+            Some(s) => s,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null name").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let toml_str = match str_from_c(toml_str) {
-        Some(s) => s,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null toml").unwrap().into_raw();
+        };
+        let toml_str = match str_from_c(toml_str) {
+            Some(s) => s,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null toml").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
+        };
 
-    let path = manager
-    .root_path
-        .join("shurikens")
-        .join(&name)
-        .join(".ninja")
-        .join("options.toml");
-    let res = RUNTIME.block_on(async {
-        if let Some(p) = path.parent() {
-            fs::create_dir_all(p).await?;
-        }
-        fs::write(&path, toml_str).await?;
-        Ok::<(), anyhow::Error>(())
-    });
-
-    match res {
-        Ok(_) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        let path = manager
+            .root_path
+            .join("shurikens")
+            .join(&name)
+            .join(".ninja")
+            .join("options.toml");
+        let res = RUNTIME.block_on(async {
+            if let Some(p) = path.parent() {
+                fs::create_dir_all(p).await?;
             }
-            -1
+            fs::write(&path, toml_str).await?;
+            Ok::<(), anyhow::Error>(())
+        });
+
+        match res {
+            Ok(_) => 0,
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+                -1
+            }
         }
     }
-}
 }
 
 // ========================
@@ -615,7 +609,6 @@ pub unsafe extern "C" fn ninja_remove_shuriken_sync(
     out_err: *mut *mut c_char,
 ) -> i32 {
     unsafe {
-
         shuriken_action_sync(mgr, name, out_err, |m, n| {
             RUNTIME.block_on(async { m.remove(n).await })
         })
@@ -639,36 +632,35 @@ pub unsafe extern "C" fn ninja_install_shuriken_sync(
     out_err: *mut *mut c_char,
 ) -> i32 {
     unsafe {
-
         let path = match path_from_c(path_ptr) {
             Some(p) => p,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null path").unwrap().into_raw();
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null path").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+        };
+        let manager = match mgr_from_ptr(mgr) {
+            Some(m) => m,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    match RUNTIME.block_on(manager.install(&path)) {
-        Ok(_) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        };
+        match RUNTIME.block_on(manager.install(&path)) {
+            Ok(_) => 0,
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+                -1
             }
-            -1
         }
-    }
     }
 }
 
@@ -691,58 +683,57 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
     out_err: *mut *mut c_char,
 ) -> i32 {
     unsafe {
-
         let meta_str = match str_from_c(meta_json) {
             Some(s) => s,
             None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null meta").unwrap().into_raw();
+                if !out_err.is_null() {
+                    *out_err = CString::new("null meta").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
-        Ok(m) => m,
-        Err(e) => {
-            if !out_err.is_null() {
-                *out_err = CString::new(format!("invalid metadata: {}", e))
-                    .unwrap()
-                    .into_raw();
+        };
+        let meta: ArmoryMetadata = match serde_json::from_str(&meta_str) {
+            Ok(m) => m,
+            Err(e) => {
+                if !out_err.is_null() {
+                    *out_err = CString::new(format!("invalid metadata: {}", e))
+                        .unwrap()
+                        .into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let src = match path_from_c(src_path) {
-        Some(p) => p,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null src path").unwrap().into_raw();
+        };
+        let src = match path_from_c(src_path) {
+            Some(p) => p,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null src path").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
-    let manager = match mgr_from_ptr(mgr) {
-        Some(m) => m,
-        None => {
-            if !out_err.is_null() {
-                *out_err = CString::new("null manager").unwrap().into_raw();
+        };
+        let manager = match mgr_from_ptr(mgr) {
+            Some(m) => m,
+            None => {
+                if !out_err.is_null() {
+                    *out_err = CString::new("null manager").unwrap().into_raw();
+                }
+                return -1;
             }
-            return -1;
-        }
-    };
+        };
 
-    match RUNTIME.block_on(manager.forge(meta, src)) {
-        Ok(_) => 0,
-        Err(e) => {
-            let msg = format!("{}", e);
-            set_last_error(msg.clone());
-            if !out_err.is_null() {
-                *out_err = CString::new(msg).unwrap().into_raw();
+        match RUNTIME.block_on(manager.forge(meta, src)) {
+            Ok(_) => 0,
+            Err(e) => {
+                let msg = format!("{}", e);
+                set_last_error(msg.clone());
+                if !out_err.is_null() {
+                    *out_err = CString::new(msg).unwrap().into_raw();
+                }
+                -1
             }
-            -1
         }
     }
-}
 }
 
 // ========================
@@ -761,10 +752,12 @@ unsafe fn shuriken_action_async_cb(
     userdata: *mut c_void,
     action: fn(&mut ShurikenManager, &str) -> Result<()>,
 ) {
-    let manager = unsafe {match mgr_from_ptr(mgr) {
-        Some(m) => m.clone(),
-        None => return,
-    }};
+    let manager = unsafe {
+        match mgr_from_ptr(mgr) {
+            Some(m) => m.clone(),
+            None => return,
+        }
+    };
     let userdata = userdata as usize;
     let name = match str_from_c(name) {
         Some(s) => s,
@@ -801,7 +794,7 @@ pub unsafe extern "C" fn ninja_remove_shuriken_async(
     cb: Option<extern "C" fn(*mut c_void, *const c_char)>,
     userdata: *mut c_void,
 ) {
-    unsafe{
+    unsafe {
         shuriken_action_async_cb(mgr, name, cb, userdata, |m, n| {
             RUNTIME.block_on(async { m.remove(n).await })
         })

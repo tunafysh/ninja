@@ -115,7 +115,11 @@ mod ninja_runtime_integration_tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "this is not valid lua syntax ]]]]").unwrap();
 
-        assert!(engine.execute_file(&tmp.path().to_path_buf(), None).is_err());
+        assert!(
+            engine
+                .execute_file(&tmp.path().to_path_buf(), None)
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -135,7 +139,7 @@ mod ninja_runtime_integration_tests {
 
         let path = tmp.into_temp_path();
         let path_buf = path.to_path_buf();
-        
+
         // Both functions should be callable from the returned table
         assert!(engine.execute_function("start", &path_buf, None).is_ok());
         assert!(engine.execute_function("stop", &path_buf, None).is_ok());
@@ -144,25 +148,37 @@ mod ninja_runtime_integration_tests {
     #[tokio::test]
     async fn test_execute_inline_multiline() {
         let engine = NinjaEngine::new().await.unwrap();
-        
+
         let script = r#"
             local x = 10
             local y = 20
             local z = x + y
             assert(z == 30, "Math failed")
         "#;
-        
+
         assert!(engine.execute(script, None).is_ok());
     }
 
     #[tokio::test]
     async fn test_engine_globals_accessible() {
         let engine = NinjaEngine::new().await.unwrap();
-        
+
         // Test that standard Lua globals are available
-        assert!(engine.execute("assert(type(print) == 'function')", None).is_ok());
-        assert!(engine.execute("assert(type(table) == 'table')", None).is_ok());
-        assert!(engine.execute("assert(type(string) == 'table')", None).is_ok());
+        assert!(
+            engine
+                .execute("assert(type(print) == 'function')", None)
+                .is_ok()
+        );
+        assert!(
+            engine
+                .execute("assert(type(table) == 'table')", None)
+                .is_ok()
+        );
+        assert!(
+            engine
+                .execute("assert(type(string) == 'table')", None)
+                .is_ok()
+        );
     }
 }
 
@@ -314,13 +330,13 @@ mod ninja_api_integration_tests {
     async fn test_lockfile_directory_creation() {
         let dir = tempdir().unwrap();
         let lockfile_dir = dir.path().join(".ninja");
-        
+
         // Directory shouldn't exist yet
         assert!(!lockfile_dir.exists());
-        
+
         // Create it
         fs::create_dir_all(&lockfile_dir).unwrap();
-        
+
         // Now it should exist
         assert!(lockfile_dir.exists());
         assert!(lockfile_dir.is_dir());

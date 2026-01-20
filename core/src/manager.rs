@@ -50,7 +50,7 @@ fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
 
         // Finish tar, then finish gzip
         let enc = tar.into_inner()?; // GzEncoder
-        enc.finish()?;               // flush into buf
+        enc.finish()?; // flush into buf
     }
 
     Ok(buf)
@@ -498,7 +498,7 @@ impl ShurikenManager {
             archive.unpack(&unpack_path)?;
             Ok(())
         })
-            .await??;
+        .await??;
 
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {
@@ -516,39 +516,38 @@ impl ShurikenManager {
             fs::create_dir_all(&output).await?;
         }
         let path = &self.root_path.join("shurikens").join(path);
-    
+
         let shuriken_path = output.join(format!("{}-{}.shuriken", meta.id, meta.platform));
         let mut file = File::create(shuriken_path).await?;
-    
+
         // ---- 1) Serialize metadata ----
-        
+
         let serialized_metadata = to_vec(&meta)?;
-    
+
         if serialized_metadata.len() > u16::MAX as usize {
             return Err(anyhow::Error::msg(
                 "Metadata too large to fit in u16 length field",
             ));
         }
-    
+
         // ---- 2) Build archive bytes (tar.gz) in a blocking thread ----
         let archive = {
             let path_clone = path.clone();
-            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone))
-                .await??
+            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone)).await??
         };
         let archive_len = archive.len();
-    
+
         if archive_len > u32::MAX as usize {
             return Err(anyhow::Error::msg(
                 "Archive too large to fit in u32 length field",
             ));
         }
-    
+
         // ---- 3) Compute signature = SHA256(archive) ----
         let mut hasher = Sha256::new();
         hasher.update(&archive);
         let signature = hasher.finalize(); // 32 bytes
-    
+
         // ---- 4) Write in correct order ----
         // [MAGIC]                 // 4 bytes
         // [metadata_length]       // u16 LE
@@ -556,27 +555,27 @@ impl ShurikenManager {
         // [archive_length]        // u32 LE
         // [archive]               // tar.gz
         // [signature]             // 32 bytes SHA-256(archive)
-    
+
         // MAGIC
         file.write_all(MAGIC).await?;
-    
+
         // metadata_length (u16 LE)
         let meta_len_le = (serialized_metadata.len() as u16).to_le_bytes();
         file.write_all(&meta_len_le).await?;
-    
+
         // metadata
         file.write_all(&serialized_metadata).await?;
-    
+
         // archive_length (u32 LE)
         let archive_len_le = (archive_len as u32).to_le_bytes();
         file.write_all(&archive_len_le).await?;
-    
+
         // archive
         file.write_all(&archive).await?;
-    
+
         // signature
         file.write_all(&signature).await?;
-    
+
         Ok(())
     }
 

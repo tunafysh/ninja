@@ -334,8 +334,11 @@ impl Shuriken {
     }
 
     pub async fn lockpick(&self, root_path: &PathBuf) -> anyhow::Result<()> {
-        let root_path = root_path.join("shurikens").join(&self.metadata.name).join(".ninja");
-        
+        let root_path = root_path
+            .join("shurikens")
+            .join(&self.metadata.name)
+            .join(".ninja");
+
         if root_path.join("shuriken.lck").exists() {
             fs::remove_file(root_path.join("shuriken.lck")).await?;
         }
@@ -352,8 +355,6 @@ impl Shuriken {
                     fields.insert(name, value);
                 }
             }
-            
-            
 
             // Construct full path to the shuriken folder
             let shuriken_path = root_path.join("shurikens").join(&self.metadata.name);
