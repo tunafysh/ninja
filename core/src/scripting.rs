@@ -114,11 +114,20 @@ impl NinjaEngine {
         // Load script into the isolated environment
         let chunk = lua.load(&script).set_environment(env.clone());
 
-        // Execute once so the script can define functions into `env`
-        chunk.exec()?;
+        // Execute and capture the return value
+        let result: mlua::Value = chunk.eval()?;
 
-        // Now extract the function from the isolated environment
-        let func: mlua::Function = env.get(function)?;
+        // Try to get the function from the returned table first, then from env
+        let func: mlua::Function = match result {
+            mlua::Value::Table(table) => {
+                // If script returned a table, try to get function from it
+                table.get(function)?
+            }
+            _ => {
+                // Otherwise, get function from the environment (global definition)
+                env.get(function)?
+            }
+        };
 
         // Call start()/stop() with no arguments for now
         func.call::<()>(())
