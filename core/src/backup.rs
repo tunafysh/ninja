@@ -213,11 +213,10 @@ pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
 
     #[test]
     fn test_compression_type_serialization() {
-        use serde_json;
-        
         // Test Fast compression
         let fast = CompressionType::Fast;
         let json = serde_json::to_string(&fast).unwrap();
@@ -236,22 +235,20 @@ mod tests {
 
     #[test]
     fn test_compression_type_deserialization() {
-        use serde_json;
-        
         // Test deserializing Fast
         let json = "\"Fast\"";
         let fast: CompressionType = serde_json::from_str(json).unwrap();
-        matches!(fast, CompressionType::Fast);
+        assert!(matches!(fast, CompressionType::Fast));
         
         // Test deserializing Normal
         let json = "\"Normal\"";
         let normal: CompressionType = serde_json::from_str(json).unwrap();
-        matches!(normal, CompressionType::Normal);
+        assert!(matches!(normal, CompressionType::Normal));
         
         // Test deserializing Best
         let json = "\"Best\"";
         let best: CompressionType = serde_json::from_str(json).unwrap();
-        matches!(best, CompressionType::Best);
+        assert!(matches!(best, CompressionType::Best));
     }
 
     #[test]
