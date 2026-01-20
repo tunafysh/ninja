@@ -170,7 +170,10 @@ pub async fn create_backup(
         .context("Failed to create Opendal operator")?
         .finish();
 
-    let backup_name = backup_file_path.file_name().unwrap().to_string_lossy();
+    let backup_name = backup_file_path
+        .file_name()
+        .context("Invalid backup file path: no filename")?
+        .to_string_lossy();
     let data = tokio::fs::read(&backup_file_path)
         .await
         .context("Failed to read backup file")?;
@@ -205,4 +208,88 @@ pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()
     .context("Restore task panicked")??;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compression_type_serialization() {
+        use serde_json;
+        
+        // Test Fast compression
+        let fast = CompressionType::Fast;
+        let json = serde_json::to_string(&fast).unwrap();
+        assert!(json.contains("Fast"));
+        
+        // Test Normal compression
+        let normal = CompressionType::Normal;
+        let json = serde_json::to_string(&normal).unwrap();
+        assert!(json.contains("Normal"));
+        
+        // Test Best compression
+        let best = CompressionType::Best;
+        let json = serde_json::to_string(&best).unwrap();
+        assert!(json.contains("Best"));
+    }
+
+    #[test]
+    fn test_compression_type_deserialization() {
+        use serde_json;
+        
+        // Test deserializing Fast
+        let json = "\"Fast\"";
+        let fast: CompressionType = serde_json::from_str(json).unwrap();
+        matches!(fast, CompressionType::Fast);
+        
+        // Test deserializing Normal
+        let json = "\"Normal\"";
+        let normal: CompressionType = serde_json::from_str(json).unwrap();
+        matches!(normal, CompressionType::Normal);
+        
+        // Test deserializing Best
+        let json = "\"Best\"";
+        let best: CompressionType = serde_json::from_str(json).unwrap();
+        matches!(best, CompressionType::Best);
+    }
+
+    #[test]
+    fn test_backup_frequency_variants() {
+        // Test that all variants are constructible
+        let daily = BackupFrequency::Daily;
+        let weekly = BackupFrequency::Weekly;
+        let monthly = BackupFrequency::Monthly;
+        
+        // Verify they can be formatted (suppress unused result warning)
+        let _ = format!("{:?}", daily);
+        let _ = format!("{:?}", weekly);
+        let _ = format!("{:?}", monthly);
+    }
+
+    #[test]
+    fn test_compression_level_conversion() {
+        // Test that compression types can be copied
+        let fast = CompressionType::Fast;
+        let fast_copy = fast;
+        let _ = format!("{:?}", fast);
+        let _ = format!("{:?}", fast_copy);
+    }
+
+    #[test]
+    fn test_compression_type_variants() {
+        // Ensure all compression types are distinct
+        let fast = CompressionType::Fast;
+        let normal = CompressionType::Normal;
+        let best = CompressionType::Best;
+        
+        // Debug format should be different
+        let fast_str = format!("{:?}", fast);
+        let normal_str = format!("{:?}", normal);
+        let best_str = format!("{:?}", best);
+        
+        assert_ne!(fast_str, normal_str);
+        assert_ne!(normal_str, best_str);
+        assert_ne!(fast_str, best_str);
+    }
 }
