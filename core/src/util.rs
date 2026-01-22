@@ -57,26 +57,53 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 }
 
 #[cfg(windows)]
-pub fn kill_process_by_pid(pid: u32) -> Result<bool> {
-    use anyhow::Error;
+pub fn kill_process_by_pid(pid: u32) -> bool {
     use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+    use windows::Win32::System::Threading::{
+        OpenProcess, TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE,
+    };
 
     unsafe {
-        // Open with terminate rights
-        let handle = OpenProcess(PROCESS_TERMINATE, false, pid)?;
-        if handle.is_invalid() {
-            return Ok(false);
+        // First check if the process exists by trying to query it
+        let query_handle = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+            Ok(h) => h,
+            Err(_) => {
+                // Process doesn't exist or we don't have access - either way, we can't kill it
+                return false;
+            }
+        };
+
+        if query_handle.is_invalid() {
+            return false;
         }
 
-        TerminateProcess(handle, 1).map_err(|e| Error::msg(e.message()))?;
-        CloseHandle(handle)?;
-        Ok(true)
+        // Close the query handle before trying to terminate
+        let _ = CloseHandle(query_handle);
+
+        // Now try to open with terminate rights
+        let terminate_handle = match OpenProcess(PROCESS_TERMINATE, false, pid) {
+            Ok(h) => h,
+            Err(_) => {
+                // Process exists but we can't terminate it (permissions issue)
+                return false;
+            }
+        };
+
+        if terminate_handle.is_invalid() {
+            return false;
+        }
+
+        // Attempt termination with exit code 1
+        let terminate_result = TerminateProcess(terminate_handle, 1);
+        let _ = CloseHandle(terminate_handle);
+
+        // Return true if termination succeeded, false otherwise
+        terminate_result.is_ok()
     }
 }
+
 #[cfg(windows)]
-pub fn kill_process_by_name(name: &str) -> Result<bool> {
-    use anyhow::Error;
+pub fn kill_process_by_name(name: &str) -> bool {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -88,19 +115,19 @@ pub fn kill_process_by_name(name: &str) -> Result<bool> {
     let target = name.to_ascii_lowercase();
 
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
         if snapshot.is_invalid() {
-            return Ok(false);
+            return false;
         }
 
         let mut entry = PROCESSENTRY32W::default();
 
         let mut any_killed = false;
 
-        if Process32FirstW(snapshot, &mut entry)
-            .map_err(|e| Error::msg(e.message()))
-            .is_ok()
-        {
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
                 // exe file name is in szExeFile (null-terminated UTF-16)
                 let len = entry
@@ -114,7 +141,7 @@ pub fn kill_process_by_name(name: &str) -> Result<bool> {
 
                 if exe.to_ascii_lowercase() == target {
                     let pid = entry.th32ProcessID;
-                    if kill_process_by_pid(pid)? {
+                    if kill_process_by_pid(pid) {
                         any_killed = true;
                     }
                 }
@@ -125,25 +152,47 @@ pub fn kill_process_by_name(name: &str) -> Result<bool> {
             }
         }
 
-        CloseHandle(HANDLE(snapshot.0))?;
-        Ok(any_killed)
+        let _ = CloseHandle(HANDLE(snapshot.0));
+        any_killed
     }
 }
 
 #[cfg(unix)]
 pub fn kill_process_by_pid(pid: u32) -> bool {
+    use nix::errno::Errno;
     use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let pid = Pid::from_raw(pid as i32);
 
-    // Try graceful SIGTERM first
-    match kill(pid, Signal::SIGTERM) {
-        Ok(_) => true,
-        Err(e) => {
-            // If EPERM/ESRCH or TERM fails, try SIGKILL as a last resort
-            eprintln!("kill(SIGTERM) failed for {pid}: {e}, trying SIGKILL");
+    // First check if the process exists using signal 0 (no-op signal)
+    match kill(pid, None) {
+        Ok(_) => {
+            // Process exists, try SIGTERM first for graceful shutdown
+            match kill(pid, Signal::SIGTERM) {
+                Ok(_) => true,
+                Err(Errno::EPERM) => {
+                    // Permission denied - process exists but we can't kill it
+                    false
+                }
+                Err(_) => {
+                    // Other error (like ESRCH - process disappeared), try SIGKILL as fallback
+                    kill(pid, Signal::SIGKILL).is_ok()
+                }
+            }
+        }
+        Err(Errno::ESRCH) => {
+            // Process doesn't exist
+            false
+        }
+        Err(Errno::EPERM) => {
+            // Process exists but we don't have permission even to check it
+            // Try SIGKILL anyway in case we have partial permissions
             kill(pid, Signal::SIGKILL).is_ok()
+        }
+        Err(_) => {
+            // Other errors - process likely doesn't exist or is inaccessible
+            false
         }
     }
 }

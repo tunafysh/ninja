@@ -513,16 +513,16 @@ mod tests {
     fn test_strip_comments() {
         // Test with // comment
         assert_eq!(strip_comments("code // comment"), "code ");
-        
+
         // Test with # comment
         assert_eq!(strip_comments("code # comment"), "code ");
-        
+
         // Test with no comment
         assert_eq!(strip_comments("code"), "code");
-        
+
         // Test with empty line
         assert_eq!(strip_comments(""), "");
-        
+
         // Test with only comment
         assert_eq!(strip_comments("// comment"), "");
         assert_eq!(strip_comments("# comment"), "");
@@ -536,35 +536,35 @@ mod tests {
             FieldValue::String(s) => assert_eq!(s, "hello"),
             _ => panic!("Expected String"),
         }
-        
+
         // Test string with single quotes
         let val = parse_value("'world'");
         match val {
             FieldValue::String(s) => assert_eq!(s, "world"),
             _ => panic!("Expected String"),
         }
-        
+
         // Test boolean true
         let val = parse_value("true");
         match val {
             FieldValue::Bool(b) => assert!(b),
             _ => panic!("Expected Bool"),
         }
-        
+
         // Test boolean false
         let val = parse_value("false");
         match val {
             FieldValue::Bool(b) => assert!(!b),
             _ => panic!("Expected Bool"),
         }
-        
+
         // Test integer
         let val = parse_value("42");
         match val {
             FieldValue::Number(n) => assert_eq!(n, 42),
             _ => panic!("Expected Number"),
         }
-        
+
         // Test fallback to string
         let val = parse_value("unquoted");
         match val {
@@ -584,21 +584,21 @@ mod tests {
             FieldValue::String(s) => assert_eq!(s, "value"),
             _ => panic!("Expected String"),
         }
-        
+
         // Test with trailing semicolon
         let result = parse_kv("key = value;").unwrap();
         assert!(result.is_some());
         let (k, _) = result.unwrap();
         assert_eq!(k, "key");
-        
+
         // Test empty line
         let result = parse_kv("").unwrap();
         assert!(result.is_none());
-        
+
         // Test empty key (should fail)
         let result = parse_kv("= value");
         assert!(result.is_err());
-        
+
         // Test no equals sign (should return None)
         let result = parse_kv("standalone").unwrap();
         assert!(result.is_none());
@@ -608,7 +608,7 @@ mod tests {
     fn test_collect_block_inline() {
         let lines_vec: Vec<&str> = vec![];
         let mut lines = lines_vec.iter().copied();
-        
+
         // Test inline block with closing brace on same line
         let result = collect_block("key = value }", &mut lines);
         assert!(result.is_ok());
@@ -619,7 +619,7 @@ mod tests {
     fn test_collect_block_multiline() {
         let lines_vec = vec!["line2", "line3 }"];
         let mut lines = lines_vec.iter().copied();
-        
+
         // Test multiline block
         let result = collect_block("line1", &mut lines);
         assert!(result.is_ok());
@@ -633,7 +633,7 @@ mod tests {
     fn test_collect_block_missing_closing() {
         let lines_vec = vec!["line2", "line3"];
         let mut lines = lines_vec.iter().copied();
-        
+
         // Test missing closing brace
         let result = collect_block("line1", &mut lines);
         assert!(result.is_err());

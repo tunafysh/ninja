@@ -840,21 +840,10 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     proc_module.set(
         "kill_pid",
         lua.create_function(|_, pid: u32| {
-            #[cfg(windows)]
-            {
-                debug!("proc.kill_pid: pid={}", pid);
-                let result = kill_process_by_pid(pid)?;
-                debug!("proc.kill_pid: result={} for pid={}", result, pid);
-                Ok(result)
-            }
-
-            #[cfg(not(windows))]
-            {
-                debug!("proc.kill_pid: pid={}", pid);
-                let result = kill_process_by_pid(pid);
-                debug!("proc.kill_pid: result={} for pid={}", result, pid);
-                Ok(result)
-            }
+            debug!("proc.kill_pid: pid={}", pid);
+            let result = kill_process_by_pid(pid);
+            debug!("proc.kill_pid: result={} for pid={}", result, pid);
+            Ok(result)
         })?,
     )?;
 

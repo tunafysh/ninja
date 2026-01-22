@@ -111,7 +111,7 @@ mod ninja_runtime_integration_tests {
     #[tokio::test]
     async fn test_execute_inline_with_globals() {
         let engine = NinjaEngine::new().await.unwrap();
-        
+
         // Test that global modules are accessible
         assert!(engine.execute("local x = fs", None).is_ok());
         assert!(engine.execute("local x = env", None).is_ok());
@@ -185,9 +185,6 @@ mod ninja_api_integration_tests {
     #[tokio::test]
     async fn test_kill_process_by_pid_invalid() {
         // 999999 should not exist
-        #[cfg(windows)]
-        let success = kill_process_by_pid(999999).unwrap();
-        #[cfg(not(windows))]
         let success = kill_process_by_pid(999999);
         assert!(!success);
     }

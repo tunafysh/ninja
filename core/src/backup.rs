@@ -221,12 +221,12 @@ mod tests {
         let fast = CompressionType::Fast;
         let json = serde_json::to_string(&fast).unwrap();
         assert!(json.contains("Fast"));
-        
+
         // Test Normal compression
         let normal = CompressionType::Normal;
         let json = serde_json::to_string(&normal).unwrap();
         assert!(json.contains("Normal"));
-        
+
         // Test Best compression
         let best = CompressionType::Best;
         let json = serde_json::to_string(&best).unwrap();
@@ -239,12 +239,12 @@ mod tests {
         let json = "\"Fast\"";
         let fast: CompressionType = serde_json::from_str(json).unwrap();
         assert!(matches!(fast, CompressionType::Fast));
-        
+
         // Test deserializing Normal
         let json = "\"Normal\"";
         let normal: CompressionType = serde_json::from_str(json).unwrap();
         assert!(matches!(normal, CompressionType::Normal));
-        
+
         // Test deserializing Best
         let json = "\"Best\"";
         let best: CompressionType = serde_json::from_str(json).unwrap();
@@ -257,7 +257,7 @@ mod tests {
         let daily = BackupFrequency::Daily;
         let weekly = BackupFrequency::Weekly;
         let monthly = BackupFrequency::Monthly;
-        
+
         // Verify they can be formatted (suppress unused result warning)
         let _ = format!("{:?}", daily);
         let _ = format!("{:?}", weekly);
@@ -279,12 +279,12 @@ mod tests {
         let fast = CompressionType::Fast;
         let normal = CompressionType::Normal;
         let best = CompressionType::Best;
-        
+
         // Debug format should be different
         let fast_str = format!("{:?}", fast);
         let normal_str = format!("{:?}", normal);
         let best_str = format!("{:?}", best);
-        
+
         assert_ne!(fast_str, normal_str);
         assert_ne!(normal_str, best_str);
         assert_ne!(fast_str, best_str);

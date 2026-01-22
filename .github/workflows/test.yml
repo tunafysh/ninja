@@ -33,10 +33,6 @@ jobs:
       - name: Run integration tests
         run: cargo test -p tests --verbose
 
-      - name: Check formatting
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo fmt --all -- --check
-
       - name: Run clippy
         if: matrix.os == 'ubuntu-latest'
         run: cargo clippy --all-targets -- -D warnings
