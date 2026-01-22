@@ -854,7 +854,7 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
             #[cfg(windows)]
             {
                 debug!("proc.kill_name: name='{}'", name);
-                let result = kill_process_by_name(&name)?;
+                let result = kill_process_by_name(&name);
                 debug!("proc.kill_name: result={} for name='{}'", result, name);
                 Ok(result)
             }
