@@ -60,7 +60,7 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 pub fn kill_process_by_pid(pid: u32) -> bool {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE,
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, TerminateProcess,
     };
 
     unsafe {

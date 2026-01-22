@@ -68,3 +68,7 @@
 
 ## 1.11.1
 * Patches for the C API.
+
+## 1.11.2
+* Fixed Windows `kill_process_by_pid` and `kill_process_by_name` functions to return `bool` instead of `Result<bool>` for consistency with Unix implementations.
+* Removed unnecessary error handling and platform-specific conditionals in process killing functions.
