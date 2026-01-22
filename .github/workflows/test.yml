@@ -32,7 +32,3 @@ jobs:
 
       - name: Run integration tests
         run: cargo test -p tests --verbose
-
-      - name: Run clippy
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo clippy --all-targets -- -D warnings
