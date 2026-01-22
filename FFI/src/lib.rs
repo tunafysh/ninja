@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{
     ffi::{CStr, CString},
-    os::raw::{c_char, c_void},
+    os::raw::{c_char, c_int, c_void},
     path::PathBuf,
     ptr,
     sync::Mutex,
@@ -41,6 +41,64 @@ static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 fn set_last_error(msg: String) {
     let mut lock = LAST_ERROR.lock().unwrap();
     *lock = Some(msg);
+}
+
+/// Clears the last error message.
+/// 
+/// This is useful when you want to clear error state before performing
+/// a new operation.
+#[unsafe(no_mangle)]
+pub extern "C" fn ninja_clear_last_error() {
+    let mut lock = LAST_ERROR.lock().unwrap();
+    *lock = None;
+}
+
+/// Checks if there is a pending error.
+/// 
+/// # Returns
+/// 
+/// * 1 if there is an error set
+/// * 0 if there is no error
+#[unsafe(no_mangle)]
+pub extern "C" fn ninja_has_error() -> c_int {
+    let lock = LAST_ERROR.lock().unwrap();
+    if lock.is_some() { 1 } else { 0 }
+}
+
+/// Gets the last error message and writes it to the provided buffer.
+/// 
+/// # Safety
+/// 
+/// * `buffer` must point to valid memory of at least `buffer_size` bytes
+/// * `buffer_size` must be > 0
+/// 
+/// # Returns
+/// 
+/// * Number of bytes written (excluding null terminator) on success
+/// * -1 if buffer is NULL or too small
+/// * 0 if there is no error
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_get_last_error_buf(buffer: *mut c_char, buffer_size: usize) -> c_int {
+    if buffer.is_null() || buffer_size == 0 {
+        return -1;
+    }
+    
+    let lock = LAST_ERROR.lock().unwrap();
+    match &*lock {
+        Some(s) => {
+            let bytes = s.as_bytes();
+            if bytes.len() + 1 > buffer_size {
+                return -1; // Buffer too small
+            }
+            // SAFETY: Caller must ensure buffer points to valid memory of at least buffer_size bytes
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, bytes.len());
+                *buffer.add(bytes.len()) = 0; // Null terminator
+            }
+            bytes.len() as c_int
+        }
+        None => 0,
+    }
 }
 
 /// Retrieves the last error message recorded by the library.
@@ -261,6 +319,11 @@ unsafe fn shuriken_action_sync(
 /// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
 /// * `name` must be a valid, null-terminated UTF-8 C string representing the shuriken name.
 /// * `out_err` must be null or a valid pointer to a `*mut c_char` to receive error messages.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error (check `ninja_last_error()` or `out_err` for details)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ninja_start_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
@@ -274,6 +337,29 @@ pub unsafe extern "C" fn ninja_start_shuriken_sync(
     }
 }
 
+/// Starts a shuriken synchronously (simple version without out_err).
+/// 
+/// This is a more ergonomic version that only uses the global error state.
+/// On error, call `ninja_last_error()` or `ninja_has_error()` to check.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_start_shuriken(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
+    unsafe { ninja_start_shuriken_sync(mgr, name, ptr::null_mut()) }
+}
+
 /// Stops a shuriken synchronously.
 ///
 /// # Safety
@@ -281,6 +367,11 @@ pub unsafe extern "C" fn ninja_start_shuriken_sync(
 /// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
 /// * `name` must be a valid, null-terminated UTF-8 C string.
 /// * `out_err` must be null or a valid pointer to a `*mut c_char`.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ninja_stop_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
@@ -292,6 +383,28 @@ pub unsafe extern "C" fn ninja_stop_shuriken_sync(
             RUNTIME.block_on(async { m.stop(n).await })
         })
     }
+}
+
+/// Stops a shuriken synchronously (simple version).
+/// 
+/// More ergonomic version without out_err parameter.
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error (check `ninja_last_error()`)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_stop_shuriken(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
+    unsafe { ninja_stop_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 
 // ========================
@@ -438,6 +551,42 @@ pub unsafe extern "C" fn ninja_stop_shuriken_async(
 struct ShurikenPair {
     name: String,
     state: ShurikenState,
+}
+
+/// Returns the number of shurikens available, or -1 on error.
+/// 
+/// This is a simpler alternative to `ninja_list_shurikens_sync` when you only
+/// need the count. On error, check `ninja_last_error()` or `ninja_has_error()`.
+/// 
+/// # Safety
+/// 
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_count_shurikens(mgr: *mut NinjaManagerOpaque) -> c_int {
+    // SAFETY: Caller must ensure mgr is valid as per the function contract
+    let manager = unsafe {
+        match mgr_from_ptr(mgr) {
+            Some(m) => m,
+            None => {
+                set_last_error("null manager".to_string());
+                return -1;
+            }
+        }
+    };
+    let res = RUNTIME.block_on(async { manager.list(false).await });
+    match res {
+        Ok(list) => {
+            let count = match list {
+                Either::Left(vec) => vec.len(),
+                Either::Right(vec) => vec.len(),
+            };
+            count as c_int
+        }
+        Err(e) => {
+            set_last_error(format!("{}", e));
+            -1
+        }
+    }
 }
 
 /// Lists all shurikens managed by the system.
@@ -592,6 +741,26 @@ pub unsafe extern "C" fn ninja_refresh_shuriken_sync(
     }
 }
 
+/// Refreshes the state of a shuriken (simple version).
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error (check `ninja_last_error()`)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_refresh_shuriken(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
+    unsafe { ninja_refresh_shuriken_sync(mgr, name, ptr::null_mut()) }
+}
+
 // ========================
 // Remove shuriken
 // ========================
@@ -613,6 +782,26 @@ pub unsafe extern "C" fn ninja_remove_shuriken_sync(
             RUNTIME.block_on(async { m.remove(n).await })
         })
     }
+}
+
+/// Removes a shuriken (simple version).
+///
+/// # Safety
+///
+/// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
+/// * `name` must be a valid, null-terminated UTF-8 C string.
+/// 
+/// # Returns
+/// 
+/// * 0 on success
+/// * -1 on error (check `ninja_last_error()`)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninja_remove_shuriken(
+    mgr: *mut NinjaManagerOpaque,
+    name: *const c_char,
+) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
+    unsafe { ninja_remove_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 
 // ========================

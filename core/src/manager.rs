@@ -30,6 +30,12 @@ use tokio::{
 
 const MAGIC: &[u8; 6] = b"HSRZEG";
 
+/// Normalizes a shuriken name to lowercase for consistent directory naming.
+/// This ensures all shuriken directories use lowercase names.
+fn normalize_shuriken_name(name: &str) -> String {
+    name.to_lowercase()
+}
+
 fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
     if !src_dir.is_dir() {
         return Err(anyhow::Error::msg(format!(
@@ -188,8 +194,11 @@ impl ShurikenManager {
                 }
             }
 
-            shurikens.insert(name.clone(), shuriken);
-            states.insert(name, state);
+            // Store using the directory name (which should already be lowercase)
+            // but normalize it to be sure
+            let normalized_name = normalize_shuriken_name(&name);
+            shurikens.insert(normalized_name.clone(), shuriken);
+            states.insert(normalized_name, state);
         }
 
         Ok((shurikens, states))
@@ -235,14 +244,15 @@ impl ShurikenManager {
     }
 
     pub async fn start(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
         let shurikens = self.shurikens.read().await;
         let shuriken = shurikens
-            .get(name)
+            .get(&normalized_name)
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
         drop(shurikens);
 
-        let shuriken_dir = self.root_path.join("shurikens").join(name);
+        let shuriken_dir = self.root_path.join("shurikens").join(&normalized_name);
         if !shuriken_dir.exists() {
             return Err(anyhow::Error::msg(format!(
                 "Shuriken directory not found: {}",
@@ -260,7 +270,7 @@ impl ShurikenManager {
             )));
         }
 
-        self.update_state(name, ShurikenState::Running).await;
+        self.update_state(&normalized_name, ShurikenState::Running).await;
         Ok(())
     }
 
@@ -273,8 +283,9 @@ impl ShurikenManager {
     }
 
     pub async fn configure(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
         let partial_shuriken = &self.shurikens.write().await;
-        let shuriken = partial_shuriken.get(name);
+        let shuriken = partial_shuriken.get(&normalized_name);
 
         if let Some(shuriken) = shuriken {
             let path = &self.root_path;
@@ -284,8 +295,9 @@ impl ShurikenManager {
     }
 
     pub async fn lockpick(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
         let partial_shuriken = &self.shurikens.write().await;
-        let shuriken = partial_shuriken.get(name);
+        let shuriken = partial_shuriken.get(&normalized_name);
 
         if let Some(shuriken) = shuriken {
             let path = &self.root_path;
@@ -296,11 +308,12 @@ impl ShurikenManager {
 
     pub async fn save_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
         println!("{:#?}", data);
+        let normalized_name = normalize_shuriken_name(name);
 
         // Update in-memory config
         {
             let mut shurikens = self.shurikens.write().await;
-            if let Some(shuriken) = shurikens.get_mut(name) {
+            if let Some(shuriken) = shurikens.get_mut(&normalized_name) {
                 if let Some(config) = &mut shuriken.config {
                     config.options = Some(data.clone());
                 } else {
@@ -317,7 +330,7 @@ impl ShurikenManager {
         let options_path = self
             .root_path
             .join("shurikens")
-            .join(name)
+            .join(&normalized_name)
             .join(".ninja")
             .join("options.toml");
 
@@ -337,14 +350,15 @@ impl ShurikenManager {
     }
 
     pub async fn stop(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
         let shurikens = self.shurikens.read().await;
         let shuriken = shurikens
-            .get(name)
+            .get(&normalized_name)
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
         drop(shurikens);
 
-        let shuriken_dir = self.root_path.join("shurikens").join(name);
+        let shuriken_dir = self.root_path.join("shurikens").join(&normalized_name);
         if !shuriken_dir.exists() {
             return Err(anyhow::Error::msg(format!(
                 "Shuriken directory not found: {}",
@@ -362,7 +376,7 @@ impl ShurikenManager {
             )));
         }
 
-        self.update_state(name, ShurikenState::Idle).await;
+        self.update_state(&normalized_name, ShurikenState::Idle).await;
         Ok(())
     }
 
@@ -488,9 +502,9 @@ impl ShurikenManager {
 
         // Unpack archive in blocking task
         let archive_cursor = Cursor::new(archive_buf);
-        let archive_name = metadata.name.clone();
+        let archive_name = normalize_shuriken_name(&metadata.name);
         let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
-        let root_path = self.root_path.clone().join("shurikens").join(archive_name);
+        let root_path = self.root_path.clone().join("shurikens").join(&archive_name);
 
         tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
             let gz_decoder = flate2::read::GzDecoder::new(archive_cursor);
@@ -580,9 +594,10 @@ impl ShurikenManager {
     }
 
     pub async fn remove(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
         warn!("Deleting {}.", name);
-        fs::remove_dir_all(format!("shurikens/{}", name)).await?;
-        let _ = &self.shurikens.write().await.remove(name);
+        fs::remove_dir_all(format!("shurikens/{}", normalized_name)).await?;
+        let _ = &self.shurikens.write().await.remove(&normalized_name);
         info!("Successfully deleted shuriken {}, refreshing.", name);
         #[cfg(debug_assertions)]
         dbg!("{:#?}", &self.shurikens);
