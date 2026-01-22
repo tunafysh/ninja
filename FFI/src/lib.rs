@@ -90,6 +90,7 @@ pub unsafe extern "C" fn ninja_get_last_error_buf(buffer: *mut c_char, buffer_si
             if bytes.len() + 1 > buffer_size {
                 return -1; // Buffer too small
             }
+            // SAFETY: Caller must ensure buffer points to valid memory of at least buffer_size bytes
             unsafe {
                 ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, bytes.len());
                 *buffer.add(bytes.len()) = 0; // Null terminator
@@ -355,6 +356,7 @@ pub unsafe extern "C" fn ninja_start_shuriken(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
 ) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
     unsafe { ninja_start_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 
@@ -401,6 +403,7 @@ pub unsafe extern "C" fn ninja_stop_shuriken(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
 ) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
     unsafe { ninja_stop_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 
@@ -560,27 +563,28 @@ struct ShurikenPair {
 /// * `mgr` must be a valid `NinjaManagerOpaque` pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ninja_count_shurikens(mgr: *mut NinjaManagerOpaque) -> c_int {
-    unsafe {
-        let manager = match mgr_from_ptr(mgr) {
+    // SAFETY: Caller must ensure mgr is valid as per the function contract
+    let manager = unsafe {
+        match mgr_from_ptr(mgr) {
             Some(m) => m,
             None => {
                 set_last_error("null manager".to_string());
                 return -1;
             }
-        };
-        let res = RUNTIME.block_on(async { manager.list(false).await });
-        match res {
-            Ok(list) => {
-                let count = match list {
-                    Either::Left(vec) => vec.len(),
-                    Either::Right(vec) => vec.len(),
-                };
-                count as c_int
-            }
-            Err(e) => {
-                set_last_error(format!("{}", e));
-                -1
-            }
+        }
+    };
+    let res = RUNTIME.block_on(async { manager.list(false).await });
+    match res {
+        Ok(list) => {
+            let count = match list {
+                Either::Left(vec) => vec.len(),
+                Either::Right(vec) => vec.len(),
+            };
+            count as c_int
+        }
+        Err(e) => {
+            set_last_error(format!("{}", e));
+            -1
         }
     }
 }
@@ -753,6 +757,7 @@ pub unsafe extern "C" fn ninja_refresh_shuriken(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
 ) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
     unsafe { ninja_refresh_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 
@@ -795,6 +800,7 @@ pub unsafe extern "C" fn ninja_remove_shuriken(
     mgr: *mut NinjaManagerOpaque,
     name: *const c_char,
 ) -> i32 {
+    // SAFETY: Caller must ensure mgr and name are valid as per the function contract
     unsafe { ninja_remove_shuriken_sync(mgr, name, ptr::null_mut()) }
 }
 

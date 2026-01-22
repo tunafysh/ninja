@@ -43,19 +43,27 @@ int main(void) {
 
     // Example 2: List shurikens with NINJA_SCOPED_STRING (auto-cleanup on supported compilers)
     printf("\n=== Example 2: List shurikens ===\n");
+    #if defined(__GNUC__) || defined(__clang__)
     {
         NINJA_SCOPED_STRING(list, ninja_list_shurikens_sync(mgr, NULL));
         if (list) {
             printf("Shurikens: %s\n", list);
-            // list is automatically freed when leaving this scope (GCC/Clang)
+            // list is automatically freed when leaving this scope
         } else {
             ninja_print_last_error("Failed to list shurikens");
         }
-        // On non-GCC/Clang compilers, you'd need to call ninja_string_free(list) here
-        #if !defined(__GNUC__) && !defined(__clang__)
-        if (list) ninja_string_free(list);
-        #endif
     }
+    #else
+    {
+        char *list = ninja_list_shurikens_sync(mgr, NULL);
+        if (list) {
+            printf("Shurikens: %s\n", list);
+            ninja_string_free(list);  // Manual cleanup on other compilers
+        } else {
+            ninja_print_last_error("Failed to list shurikens");
+        }
+    }
+    #endif
 
     // Example 3: Use simple API with NINJA_CHECK macro
     printf("\n=== Example 3: Using NINJA_CHECK macro ===\n");
