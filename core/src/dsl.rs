@@ -477,7 +477,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     .await
                     .map_err(|e| io::Error::other(e.to_string()))?;
                 engine
-                    .execute_file(&script_path, None)
+                    .execute_file(&script_path, None, Some(ctx.manager.clone()))
                     .map_err(|e| io::Error::other(e.to_string()))?;
             }
             Command::Install(file_path) => match ctx.manager.install(&file_path).await {

@@ -115,7 +115,7 @@ impl Manager {
     }
 
     #[tool(description = "List shurikens along with their states if specified.")]
-    pub async fn shuriken_status(
+    pub async fn list_shurikens(
         &self,
         Parameters(ListRequest { state }): Parameters<ListRequest>,
     ) -> Result<CallToolResult, McpError> {
@@ -160,7 +160,7 @@ impl Manager {
             .engine
             .lock()
             .await
-            .execute(&script, Some(&self.manager.root_path))
+            .execute(&script, Some(&self.manager.root_path), Some(self.manager.clone()))
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Script executed successfully",

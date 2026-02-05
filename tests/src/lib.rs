@@ -32,8 +32,8 @@ mod ninja_runtime_integration_tests {
     #[tokio::test]
     async fn test_execute_inline_script() {
         let engine = NinjaEngine::new().await.unwrap();
-        assert!(engine.execute("x = 2 + 2", None).is_ok());
-        assert!(engine.execute("error('fail')", None).is_err());
+        assert!(engine.execute("x = 2 + 2", None, None).is_ok());
+        assert!(engine.execute("error('fail')", None, None).is_err());
     }
 
     #[tokio::test]
@@ -43,7 +43,7 @@ mod ninja_runtime_integration_tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "x = 123").unwrap();
 
-        assert!(engine.execute_file(&tmp.path().to_path_buf(), None).is_ok());
+        assert!(engine.execute_file(&tmp.path().to_path_buf(), None, None).is_ok());
     }
 
     #[tokio::test]
@@ -56,7 +56,7 @@ mod ninja_runtime_integration_tests {
         let path = tmp.into_temp_path();
         assert!(
             engine
-                .execute_function("greet", &path.to_path_buf(), None)
+                .execute_function("greet", &path.to_path_buf(), None, None)
                 .is_ok()
         );
     }
@@ -71,7 +71,7 @@ mod ninja_runtime_integration_tests {
         let path = tmp.into_temp_path();
         assert!(
             engine
-                .execute_function("greet", &path.to_path_buf(), None)
+                .execute_function("greet", &path.to_path_buf(), None, None)
                 .is_ok()
         );
     }
@@ -87,7 +87,7 @@ mod ninja_runtime_integration_tests {
         // Function executes successfully even with return value
         assert!(
             engine
-                .execute_function("add", &path.to_path_buf(), None)
+                .execute_function("add", &path.to_path_buf(), None, None)
                 .is_ok()
         );
     }
@@ -103,7 +103,7 @@ mod ninja_runtime_integration_tests {
         // Trying to execute a function that doesn't exist should fail
         assert!(
             engine
-                .execute_function("nonexistent", &path.to_path_buf(), None)
+                .execute_function("nonexistent", &path.to_path_buf(), None, None)
                 .is_err()
         );
     }
@@ -113,10 +113,10 @@ mod ninja_runtime_integration_tests {
         let engine = NinjaEngine::new().await.unwrap();
 
         // Test that global modules are accessible
-        assert!(engine.execute("local x = fs", None).is_ok());
-        assert!(engine.execute("local x = env", None).is_ok());
-        assert!(engine.execute("local x = shell", None).is_ok());
-        assert!(engine.execute("local x = time", None).is_ok());
+        assert!(engine.execute("local x = fs", None, None).is_ok());
+        assert!(engine.execute("local x = env", None, None).is_ok());
+        assert!(engine.execute("local x = shell", None, None).is_ok());
+        assert!(engine.execute("local x = time", None, None).is_ok());
     }
 }
 
@@ -159,7 +159,7 @@ mod ninja_api_integration_tests {
             tools: None,
         };
 
-        shuriken.start(Some(&engine), dir.path()).await.unwrap();
+        shuriken.start(Some(&engine), dir.path(), None).await.unwrap();
         assert!(lockfile.exists());
     }
 
@@ -221,7 +221,7 @@ mod ninja_api_integration_tests {
         fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
         write_stub_script(&script_path);
 
-        let result = shuriken.stop(Some(&engine), dir.path()).await;
+        let result = shuriken.stop(Some(&engine), dir.path(), None).await;
         assert!(result.is_err()); // script stop doesn't require pid
     }
 

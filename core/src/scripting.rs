@@ -1,5 +1,9 @@
 use crate::{
-    modules::{make_env_module, make_fs_module, make_modules, make_proc_module, make_shell_module},
+    manager::ShurikenManager,
+    modules::{
+        make_env_module, make_fs_module, make_modules, make_ninja_module, make_proc_module,
+        make_shell_module,
+    },
     util::resolve_path,
 };
 use log::info;
@@ -40,8 +44,19 @@ impl NinjaEngine {
     }
 
     /// Execute a raw Lua script in the global environment.
-    pub fn execute(&self, script: &str, cwd: Option<&Path>) -> Result<(), LuaError> {
+    pub fn execute(
+        &self,
+        script: &str,
+        cwd: Option<&Path>,
+        mgr: Option<ShurikenManager>,
+    ) -> Result<(), LuaError> {
         let globals = self.lua.globals();
+
+        if let Some(mgr) = mgr {
+            let ninja = make_ninja_module(&self.lua, mgr)?;
+            globals.set("ninja", ninja)?;
+        }
+
         let fs = make_fs_module(&self.lua, cwd)?;
         let env = make_env_module(&self.lua, cwd)?;
         let shell = make_shell_module(&self.lua, cwd)?;
@@ -56,11 +71,21 @@ impl NinjaEngine {
     }
 
     /// Execute a file in the global environment, resolving path optionally against `cwd`.
-    pub fn execute_file(&self, path: &PathBuf, cwd: Option<&Path>) -> Result<(), LuaError> {
+    pub fn execute_file(
+        &self,
+        path: &PathBuf,
+        cwd: Option<&Path>,
+        mgr: Option<ShurikenManager>,
+    ) -> Result<(), LuaError> {
         info!("Executing file: {:#?}", path);
+        let globals = self.lua.globals();
+
+        if let Some(mgr) = mgr {
+            let ninja = make_ninja_module(&self.lua, mgr)?;
+            globals.set("ninja", ninja)?;
+        }
 
         let script = if let Some(cwd) = cwd {
-            let globals = self.lua.globals();
             let fs = make_fs_module(&self.lua, Some(cwd))?;
             let env = make_env_module(&self.lua, Some(cwd))?;
             let shell = make_shell_module(&self.lua, Some(cwd))?;
@@ -86,11 +111,17 @@ impl NinjaEngine {
         function: &str,
         path: &PathBuf,
         cwd: Option<&Path>,
+        mgr: Option<ShurikenManager>,
     ) -> Result<(), LuaError> {
         let lua = &self.lua;
+        let globals = self.lua.globals();
+
+        if let Some(mgr) = mgr {
+            let ninja = make_ninja_module(&self.lua, mgr)?;
+            globals.set("ninja", ninja)?;
+        }
 
         let script = if let Some(cwd) = cwd {
-            let globals = self.lua.globals();
             let fs = make_fs_module(&self.lua, Some(cwd))?;
             let env = make_env_module(&self.lua, Some(cwd))?;
             let shell = make_shell_module(&self.lua, Some(cwd))?;

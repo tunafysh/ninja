@@ -1,7 +1,11 @@
-use crate::util::{kill_process_by_name, kill_process_by_pid, resolve_path};
+use crate::{
+    manager::ShurikenManager,
+    types::ShurikenState,
+    util::{kill_process_by_name, kill_process_by_pid, resolve_path},
+};
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
-use mlua::{ExternalError, Lua, LuaSerdeExt, Result, Table};
+use mlua::{Either, Error as LuaError, ExternalError, Lua, LuaSerdeExt, Result, Table};
 use relative_path::RelativePath;
 use serde_json::Value;
 
@@ -10,6 +14,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+    sync::Arc,
     time::Duration,
 };
 
@@ -874,6 +879,178 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
     debug!("make_proc_module: done");
     Ok(proc_module)
+}
+
+pub fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<Table> {
+    let ninja_module = lua.create_table()?;
+    let mgr = Arc::new(manager.clone());
+
+    ninja_module.set(
+        "start",
+        lua.create_async_function({
+            let mgr = mgr.clone(); // captured by Fn
+
+            move |_, name: String| {
+                let mgr = mgr.clone(); // per-call handle
+
+                async move {
+                    mgr.start(&name).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "stop",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, name: String| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    mgr.stop(&name).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "refresh",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, _: ()| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    mgr.refresh().await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "list",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |lua, with_state: bool| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    let result = mgr.list(with_state).await.map_err(LuaError::external)?;
+                    let table = lua.create_table()?;
+
+                    match result {
+                        Either::Left(vec) => {
+                            let vec: Vec<(String, ShurikenState)> = vec;
+                            for (i, (name, state)) in vec.into_iter().enumerate() {
+                                let row = lua.create_table()?;
+                                row.set("name", name)?;
+                                row.set("state", format!("{:?}", state))?;
+                                table.set(i + 1, row)?;
+                            }
+                        }
+                        Either::Right(vec) => {
+                            let vec: Vec<String> = vec; // <- just tell Rust it’s Vec<String>
+                            for (i, name) in vec.into_iter().enumerate() {
+                                table.set(i + 1, name)?;
+                            }
+                        }
+                    }
+
+                    Ok(table)
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "configure",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, name: String| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    mgr.configure(&name).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "lockpick",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, name: String| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    mgr.lockpick(&name).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "install",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, path: String| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    let path = PathBuf::from(path);
+                    mgr.install(path.as_path()).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "get_projects",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, _: ()| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    let projects = mgr.get_projects().await?;
+                    Ok(projects)
+                }
+            }
+        })?,
+    )?;
+
+    ninja_module.set(
+        "remove",
+        lua.create_async_function({
+            let mgr = mgr.clone();
+
+            move |_, name: String| {
+                let mgr = mgr.clone(); // this pattern hurts my soul but it's the only one that doesn't error out so...
+
+                async move {
+                    mgr.remove(&name).await?;
+                    Ok(())
+                }
+            }
+        })?,
+    )?;
+
+    Ok(ninja_module)
 }
 
 // ========================= MODULE FACTORY =========================

@@ -1,3 +1,4 @@
+use crate::manager::ShurikenManager;
 use crate::util::kill_process_by_pid;
 use crate::{
     scripting::NinjaEngine,
@@ -232,6 +233,7 @@ impl Shuriken {
         &self,
         engine: Option<&NinjaEngine>,
         shuriken_dir: &Path,
+        mgr: Option<ShurikenManager>,
     ) -> Result<(), String> {
         info!("Starting shuriken {}", self.metadata.name);
 
@@ -312,9 +314,16 @@ impl Shuriken {
                         .to_string();
                     let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-                    engine
-                        .execute_function("start", &compiled_path, Some(shuriken_dir))
-                        .map_err(|e| format!("Script start failed: {}", e))?;
+                    if let Some(mgr) = mgr {
+                        engine
+                            .execute_function(
+                                "start",
+                                &compiled_path,
+                                Some(shuriken_dir),
+                                Some(mgr),
+                            )
+                            .map_err(|e| format!("Script start failed: {}", e))?;
+                    }
 
                     let lockfile_data = json!({
                         "name": self.metadata.name,
@@ -330,7 +339,7 @@ impl Shuriken {
         }
     }
 
-    pub async fn lockpick(&self, root_path: &PathBuf) -> anyhow::Result<()> {
+    pub async fn lockpick(&self, root_path: &Path) -> anyhow::Result<()> {
         let root_path = root_path
             .join("shurikens")
             .join(&self.metadata.name)
@@ -391,6 +400,7 @@ impl Shuriken {
         &self,
         engine: Option<&NinjaEngine>,
         shuriken_dir: &Path,
+        mgr: Option<ShurikenManager>,
     ) -> Result<(), String> {
         info!("Stopping shuriken {}", self.metadata.name);
         let lock_path = shuriken_dir.join(".ninja").join("shuriken.lck");
@@ -447,10 +457,11 @@ impl Shuriken {
                     let lock_dir = shuriken_dir.join(".ninja");
                     let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-                    engine
-                        .execute_function("stop", &compiled_path, Some(shuriken_dir))
-                        .map_err(|e| format!("Script stop failed: {}", e))?;
-
+                    if let Some(mgr) = mgr {
+                        engine
+                            .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
+                            .map_err(|e| format!("Script stop failed: {}", e))?;
+                    }
                     if lock_path.exists() {
                         tokio::fs::remove_file(&lock_path)
                             .await

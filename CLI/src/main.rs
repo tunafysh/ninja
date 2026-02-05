@@ -189,8 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::List) => {
             let partial_shurikens = manager.list(true).await?.left();
-            if partial_shurikens.is_some() {
-                let shurikens = partial_shurikens.unwrap();
+            if let Some(shurikens) = partial_shurikens {
 
                 println!("{}", "Shurikens:\n".blue().bold());
                 for (name, state) in shurikens {
@@ -211,7 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = file_arg.as_str();
             let path = PathBuf::from(content);
             if path.exists() {
-                match manager.engine.lock().await.execute_file(&path, None) {
+                match manager.engine.lock().await.execute_file(&path, None, Some(manager.clone())) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -220,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .engine
                     .lock()
                     .await
-                    .execute(content, Some(&manager.root_path))
+                    .execute(content, Some(&manager.root_path), Some(manager.clone()))
                 {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
@@ -235,46 +234,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let name: String = Input::with_theme(&theme)
                 .with_prompt("Enter the name of the shuriken")
-                .interact_text()
-                .unwrap();
+                .interact_text()?;
 
             let id: String = Input::with_theme(&theme)
                 .with_prompt("Enter the service name")
-                .interact_text()
-                .unwrap();
+                .interact_text()?;
 
             let version: String = Input::with_theme(&theme)
                             .with_prompt("Enter the version of the shuriken (this is required if you're planning to upload to Armory)")
                             .allow_empty(true)
-                            .interact_text()
-                            .unwrap();
+                            .interact_text()?;
 
             // ===== Maintenance prompt =====
             let management_choice = Select::with_theme(&theme)
                 .with_prompt("Enter the management type (native/script)")
                 .items(&management_types)
                 .default(0)
-                .interact()
-                .unwrap();
+                .interact()?;
 
             let management = match management_types[management_choice] {
                 "native" => {
                     let bin_path_windows: String = Input::with_theme(&theme)
                         .with_prompt("Enter the binary path for Windows systems")
-                        .interact_text()
-                        .unwrap();
+                        .interact_text()?;
 
                     let bin_path_unix: String = Input::with_theme(&theme)
                         .with_prompt("Enter the binary path for Unix systems")
-                        .interact_text()
-                        .unwrap();
+                        .interact_text()?;
 
                     let args = {
                         let input: String = Input::with_theme(&theme)
                             .with_prompt("Enter arguments (optional, comma-separated)")
                             .allow_empty(true)
-                            .interact_text()
-                            .unwrap();
+                            .interact_text()?;
                         (!input.trim().is_empty())
                             .then(|| input.split(',').map(|s| s.trim().to_string()).collect())
                     };
@@ -291,8 +283,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "script" => {
                     let script_path: String = Input::with_theme(&theme)
                         .with_prompt("Enter the script path")
-                        .interact_text()
-                        .unwrap();
+                        .interact_text()?;
 
                     let script_path = PathBuf::from(script_path);
 
@@ -310,14 +301,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_prompt("Enter the shuriken type")
                 .items(&shuriken_options)
                 .default(0)
-                .interact()
-                .unwrap();
+                .interact()?;
 
             let admin = dialoguer::Confirm::with_theme(&theme)
                 .with_prompt("Require administrator priviliges to launch?")
                 .default(false)
-                .interact()
-                .unwrap();
+                .interact()?;
 
             // ===== Config section =====
 
@@ -325,14 +314,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config_enabled = dialoguer::Confirm::with_theme(&theme)
                 .with_prompt("Add config?")
                 .default(false)
-                .interact()
-                .unwrap();
+                .interact()?;
 
             let (conf_path, options) = if config_enabled {
                 let conf_input: String = Input::with_theme(&theme)
                     .with_prompt("Enter config path for the templater to output (e.g. for Apache 'conf/httpd.conf')")
-                    .interact_text()
-                    .unwrap();
+                    .interact_text()?;
 
                 let conf_path = PathBuf::from(conf_input);
 
@@ -340,8 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let add_options = dialoguer::Confirm::with_theme(&theme)
                     .with_prompt("Add configuration options?")
                     .default(false)
-                    .interact()
-                    .unwrap();
+                    .interact()?;
 
                 let mut options_map: Option<HashMap<String, FieldValue>> = None;
 
@@ -352,8 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let key: String = Input::with_theme(&theme)
                             .with_prompt("Enter option key (leave empty to finish)")
                             .allow_empty(true)
-                            .interact_text()
-                            .unwrap();
+                            .interact_text()?;
 
                         if key.trim().is_empty() {
                             break;
@@ -361,8 +346,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         let value: String = Input::with_theme(&theme)
                             .with_prompt("Enter value for this key")
-                            .interact_text()
-                            .unwrap();
+                            .interact_text()?;
 
                         let value: FieldValue = FieldValue::from(value);
 

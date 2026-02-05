@@ -261,7 +261,11 @@ impl ShurikenManager {
         }
 
         if let Err(e) = shuriken
-            .start(Some(&*self.engine.lock().await), &shuriken_dir)
+            .start(
+                Some(&*self.engine.lock().await),
+                &shuriken_dir,
+                Some(self.clone()),
+            )
             .await
         {
             return Err(anyhow::Error::msg(format!(
@@ -270,7 +274,8 @@ impl ShurikenManager {
             )));
         }
 
-        self.update_state(&normalized_name, ShurikenState::Running).await;
+        self.update_state(&normalized_name, ShurikenState::Running)
+            .await;
         Ok(())
     }
 
@@ -367,7 +372,11 @@ impl ShurikenManager {
         }
 
         if let Err(e) = shuriken
-            .stop(Some(&*self.engine.lock().await), &shuriken_dir)
+            .stop(
+                Some(&*self.engine.lock().await),
+                &shuriken_dir,
+                Some(self.clone()),
+            )
             .await
         {
             return Err(anyhow::Error::msg(format!(
@@ -376,7 +385,8 @@ impl ShurikenManager {
             )));
         }
 
-        self.update_state(&normalized_name, ShurikenState::Idle).await;
+        self.update_state(&normalized_name, ShurikenState::Idle)
+            .await;
         Ok(())
     }
 
@@ -518,7 +528,7 @@ impl ShurikenManager {
         if let Some(pi_script) = &metadata.postinstall {
             info!("Running postinstall script");
             let engine = &self.engine.lock().await;
-            engine.execute_file(pi_script, Some(&root_path))?;
+            engine.execute_file(pi_script, Some(&root_path), Some(self.clone()))?;
         }
 
         Ok(())

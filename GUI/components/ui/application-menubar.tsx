@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Window } from "@tauri-apps/api/window"
-import { Anvil, File, FileText, FolderOpen, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Save, Sparkle, Sun } from 'lucide-react'
+import { File, FileText, Download, Github, HelpCircle, Laptop, LayoutGrid, LifeBuoy, LogOut, Moon, Sun } from 'lucide-react'
 import { invoke } from "@tauri-apps/api/core"
 import { Button } from "@/components/ui/button"
 import {
@@ -59,9 +59,9 @@ export function ApplicationMenubar({ platform, gridView, setGridView, activeTab,
               <DropdownMenuShortcut>⌘N</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <FolderOpen className="mr-2 h-4 w-4" />
-              <span>Open</span>
-              <DropdownMenuShortcut>⌘O</DropdownMenuShortcut>
+              <Download className="mr-2 h-4 w-4" />
+              <span>Install</span>
+              <DropdownMenuShortcut>⌘I</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>

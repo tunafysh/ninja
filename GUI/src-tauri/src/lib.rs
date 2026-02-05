@@ -1,5 +1,5 @@
 use ninja::manager::ShurikenManager;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, menu::Menu};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
@@ -12,6 +12,15 @@ mod link_parser;
 
 fn is_url(s: &str) -> bool {
     Url::parse(s).is_ok()
+}
+
+fn create_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    use tauri::menu::MenuBuilder;
+
+    let menu = MenuBuilder::new(app)
+        .build()?;
+
+    Ok(menu)
 }
 
 fn ensure_assets_exist(
@@ -49,7 +58,7 @@ fn ensure_assets_exist(
     ] {
         let dst = docs_target_path.join(dst_name);
         if !dst.exists() && src.exists() {
-            if let Err(e) = fs::copy(&src, &dst) {
+            if let Err(e) = fs::copy(src, &dst) {
                 log::warn!("Failed to copy {dst_name}: {e}");
             }
         }
@@ -70,6 +79,9 @@ pub fn run() {
         )
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            let menu = create_menu(app.handle())?;
+            app.set_menu(menu)?;
+
             let manager = Mutex::new(
                 tauri::async_runtime::block_on(ShurikenManager::new())
                     .expect("Failed to spawn a shuriken manager"),
