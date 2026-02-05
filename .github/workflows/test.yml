@@ -27,8 +27,8 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
-      - name: Run core tests
-        run: cargo test -p ninja-core
+      - name: Run unit tests
+        run: cargo test
 
       - name: Run integration tests
         run: cargo test -p tests

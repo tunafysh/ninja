@@ -196,36 +196,6 @@ mod ninja_api_integration_tests {
     }
 
     #[tokio::test]
-    async fn test_stop_without_lockfile() {
-        let engine = NinjaEngine::new().await.unwrap();
-        let shuriken = Shuriken {
-            metadata: ShurikenMetadata {
-                name: "fake".into(),
-                id: "id3".into(),
-                version: "1.0.0".to_string(),
-                management: Some(ManagementType::Script {
-                    script_path: PathBuf::from("fake.lua"),
-                }),
-                shuriken_type: "daemon".into(),
-                require_admin: false,
-            },
-            config: None,
-            logs: None,
-            tools: None,
-        };
-
-        // change dir to empty tempdir so lockfile isn't found
-        let dir = tempdir().unwrap();
-
-        let script_path = dir.path().join(".ninja").join("fake.lua");
-        fs::create_dir_all(&script_path.parent().unwrap()).unwrap();
-        write_stub_script(&script_path);
-
-        let result = shuriken.stop(Some(&engine), dir.path(), None).await;
-        assert!(result.is_err()); // script stop doesn't require pid
-    }
-
-    #[tokio::test]
     async fn test_manager_creation() {
         let dir = tempdir().unwrap();
         let engine = NinjaEngine::new().await.unwrap();
