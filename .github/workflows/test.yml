@@ -27,6 +27,15 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv
+
+      - name: Install python
+        run: uv python install
+
+      - name: Build CLI (so the GUI doesn't complain)
+        run: uv run build.py --cli-only
+
       - name: Run unit tests
         run: cargo test
 
