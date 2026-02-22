@@ -1,6 +1,6 @@
 use ninja::{
-    dsl::{DslContext, execute_commands},
     manager::ShurikenManager,
+    scripting::dsl::{DslContext, execute_commands},
 };
 use rmcp::{
     ErrorData as McpError,
@@ -160,7 +160,11 @@ impl Manager {
             .engine
             .lock()
             .await
-            .execute(&script, Some(&self.manager.root_path), Some(self.manager.clone()))
+            .execute(
+                &script,
+                Some(&self.manager.root_path),
+                Some(self.manager.clone()),
+            )
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Script executed successfully",

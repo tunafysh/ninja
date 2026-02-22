@@ -1,6 +1,6 @@
 use async_graphql::{Context, EmptySubscription, Object, Result, Schema};
+use ninja::common::types::ShurikenState;
 use ninja::manager::ShurikenManager;
-use ninja::types::ShurikenState;
 use std::collections::HashMap;
 
 pub struct QueryRoot;

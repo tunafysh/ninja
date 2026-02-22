@@ -1,9 +1,9 @@
 use crate::manager::ShurikenManager;
-use crate::util::kill_process_by_pid;
+use crate::utils::kill_process_by_pid;
 use crate::{
+    common::types::{FieldValue, PlatformPath},
     scripting::NinjaEngine,
-    templater::Templater,
-    types::{FieldValue, PlatformPath},
+    scripting::templater::Templater,
 };
 use anyhow::Result;
 use log::info;

@@ -1,5 +1,5 @@
 use ninja::manager::ShurikenManager;
-use tauri::{Emitter, Manager, menu::Menu};
+use tauri::{menu::Menu, Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
@@ -17,8 +17,7 @@ fn is_url(s: &str) -> bool {
 fn create_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
     use tauri::menu::MenuBuilder;
 
-    let menu = MenuBuilder::new(app)
-        .build()?;
+    let menu = MenuBuilder::new(app).build()?;
 
     Ok(menu)
 }

@@ -1,13 +1,8 @@
-pub mod auth;
 pub mod backup;
-pub mod dsl;
-pub mod error;
+pub mod common;
 pub mod manager;
-mod modules;
-pub mod process;
 pub mod scripting;
 pub mod shuriken;
-pub mod templater;
-pub mod types;
-pub mod util;
+pub mod utils;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

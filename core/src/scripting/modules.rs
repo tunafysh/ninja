@@ -1,7 +1,7 @@
 use crate::{
+    common::types::ShurikenState,
     manager::ShurikenManager,
-    types::ShurikenState,
-    util::{kill_process_by_name, kill_process_by_pid, resolve_path},
+    utils::{kill_process_by_name, kill_process_by_pid, resolve_path},
 };
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
@@ -10,6 +10,7 @@ use relative_path::RelativePath;
 use serde_json::Value;
 
 use std::{
+    collections::HashMap,
     env, fs,
     io::Write,
     path::{Path, PathBuf},
@@ -17,6 +18,13 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+
+type FetchArgs = (
+    String,
+    Option<HashMap<String, String>>,
+    Option<String>,
+    Option<String>,
+);
 
 #[cfg(windows)]
 fn strip_windows_prefix(p: &Path) -> PathBuf {
@@ -44,6 +52,100 @@ fn strip_windows_prefix(p: &Path) -> PathBuf {
 #[cfg(not(windows))]
 fn strip_windows_prefix(p: &Path) -> PathBuf {
     p.to_path_buf()
+}
+
+pub async fn http_request(
+    method: &str,
+    url: &str,
+    body: Option<String>,
+    headers: Option<HashMap<String, String>>,
+) -> Result<(u16, String)> {
+    debug!(
+        "http_request: method='{}', url='{}', body_len={}",
+        method,
+        url,
+        body.as_ref().map(|b| b.len()).unwrap_or(0)
+    );
+
+    let client = reqwest::Client::new();
+    if let Some(headers) = &headers {
+        for (k, v) in headers.iter() {
+            debug!("http_request: header '{}: {}'", k, v);
+        }
+    }
+    let request_builder = match method.to_uppercase().as_str() {
+        "GET" => client.get(url),
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "DELETE" => client.delete(url),
+        "PATCH" => client.patch(url),
+        _ => {
+            error!(
+                "http_request: unsupported method '{}'. Defaulting to GET.",
+                method
+            );
+            client.get(url)
+        }
+    };
+
+    let request_builder = if let Some(body) = body {
+        request_builder.body(body)
+    } else {
+        request_builder
+    };
+
+    let response = request_builder.send().await.map_err(|e| {
+        error!(
+            "http_request: request failed for '{} {}': {}",
+            method, url, e
+        );
+        LuaError::external(e)
+    })?;
+
+    let status = response.status().as_u16();
+    let text = response.text().await.map_err(|e| {
+        error!(
+            "http_request: failed to read response text for '{} {}': {}",
+            method, url, e
+        );
+        LuaError::external(e)
+    })?;
+
+    debug!(
+        "http_request: completed '{} {}' with status {}, response_len={}",
+        method,
+        url,
+        status,
+        text.len()
+    );
+
+    Ok((status, text))
+}
+
+pub async fn http_download(url: &str) -> Result<Vec<u8>> {
+    debug!("http_download: url='{}'", url);
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| {
+            error!("http_download: request failed for '{}': {}", url, e);
+            LuaError::external(e)
+        })?
+        .bytes()
+        .await
+        .map_err(|e| {
+            error!("http_download: failed to read bytes for '{}': {}", url, e);
+            LuaError::external(e)
+        })?
+        .to_vec();
+    debug!(
+        "http_download: completed '{}', bytes_len={}",
+        url,
+        response.len()
+    );
+    Ok(response)
 }
 
 fn canonicalize_cwd(base: Option<&Path>) -> Option<PathBuf> {
@@ -1214,6 +1316,84 @@ pub async fn make_modules(
         lua.create_function(|_, s: String| {
             debug!("{}", s);
             Ok(())
+        })?,
+    )?;
+
+    http_module.set(
+        "fetch",
+        lua.create_async_function(|lua, (url, headers, method, body): FetchArgs| async move {
+            debug!(
+                "http.fetch: url='{}', headers={:?}, method={:?}, body={:?}",
+                url, headers, method, body
+            );
+            // Don't use reqwest. use the made function
+            let method = method.unwrap_or_else(|| "GET".to_string());
+            let (status, response_body) = http_request(&method, &url, body, headers).await?;
+            debug!(
+                "http.fetch: url='{}' -> status={}, body_len={}",
+                url,
+                status,
+                response_body.len()
+            );
+            let result_table = lua.create_table()?;
+            result_table.set("status", status)?;
+            result_table.set("body", response_body)?;
+            Ok(result_table)
+        })?,
+    )?;
+
+    http_module.set(
+        "download",
+        lua.create_async_function({
+            let cwd_buf = canonicalize_cwd(cwd);
+            move |_, (url, dest): (String, PathBuf)| {
+                let value = cwd_buf.clone();
+                async move {
+                    debug!("http.download: url='{}', dest='{}'", url, dest.display());
+                    let bytes = http_download(&url).await?;
+                    debug!("http.download: url='{}' -> {} bytes", url, bytes.len());
+
+                    let dest = if let Some(cwd) = value.clone() {
+                        cwd.join(dest)
+                    } else {
+                        dest
+                    };
+
+                    if let Some(parent) = dest.parent()
+                        && let Err(e) = fs::create_dir_all(parent)
+                    {
+                        error!(
+                            "http.download: failed to create parent directories for '{}': {}",
+                            dest.display(),
+                            e
+                        );
+                        return Err(mlua::Error::external(format!(
+                            "Failed to create parent directories for '{}': {}",
+                            dest.display(),
+                            e
+                        )));
+                    }
+
+                    match fs::write(&dest, &bytes) {
+                        Ok(_) => {
+                            debug!("http.download: successfully wrote to '{}'", dest.display());
+                            Ok(())
+                        }
+                        Err(e) => {
+                            error!(
+                                "http.download: failed to write to '{}': {}",
+                                dest.display(),
+                                e
+                            );
+                            Err(mlua::Error::external(format!(
+                                "Failed to write to '{}': {}",
+                                dest.display(),
+                                e
+                            )))
+                        }
+                    }
+                }
+            }
         })?,
     )?;
 

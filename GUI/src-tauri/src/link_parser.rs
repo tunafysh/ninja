@@ -1,5 +1,5 @@
 use log::{error, info, warn};
-use ninja::{dsl::execute_commands, manager::ShurikenManager};
+use ninja::{manager::ShurikenManager, scripting::dsl::execute_commands};
 use std::{collections::HashMap, path::PathBuf};
 use tauri::State;
 use tokio::sync::Mutex;

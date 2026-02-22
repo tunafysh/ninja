@@ -6,10 +6,10 @@ use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
 
 use ninja::{
-    dsl::{execute_commands, DslContext},
-    manager::{ArmoryMetadata, ShurikenManager},
+    common::types::{ArmoryMetadata, FieldValue, ShurikenState},
+    manager::ShurikenManager,
+    scripting::dsl::{execute_commands, DslContext},
     shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
-    types::{FieldValue, ShurikenState},
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;

@@ -1,15 +1,17 @@
 use crate::{
-    dsl::DslContext,
-    scripting::NinjaEngine,
+    common::{
+        config::NinjaConfig,
+        registry::download_shuriken,
+        types::{ArmoryMetadata, FieldValue, ShurikenState},
+    },
+    scripting::{NinjaEngine, dsl::DslContext},
     shuriken::{Shuriken, ShurikenConfig},
-    types::{FieldValue, ShurikenState},
 };
 use anyhow::{Context, Error, Result};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
 use flate2::{Compression, write::GzEncoder};
 use log::{debug, info, warn};
-use serde::{Deserialize, Serialize};
 use serde_cbor::to_vec;
 use sha2::{Digest, Sha256};
 use std::{
@@ -62,19 +64,6 @@ fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ArmoryMetadata {
-    pub name: String,
-    pub id: String,
-    pub platform: String,
-    pub version: String,
-    pub synopsis: Option<String>,
-    pub postinstall: Option<PathBuf>,
-    pub description: Option<String>,
-    pub authors: Option<Vec<String>>,
-    pub license: Option<String>,
-}
-
 /// A thin wrapper around a spawned process. We keep it simple: the
 /// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
 #[derive(Debug)]
@@ -120,6 +109,7 @@ pub struct ShurikenManager {
     pub engine: Arc<Mutex<NinjaEngine>>,
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
     pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
+    pub config: Arc<RwLock<crate::common::config::NinjaConfig>>,
     /// Manage runtime processes for services started by Ninja
     pub processes: Arc<RwLock<HashMap<String, Arc<Mutex<ManagedProcess>>>>>,
 }
@@ -229,11 +219,21 @@ impl ShurikenManager {
             .await
             .map_err(|e| Error::msg(e.to_string()))?;
 
+        let config = if exe_dir.join("config.toml").exists() {
+            let content = fs::read_to_string(exe_dir.join("config.toml")).await?;
+            let config: NinjaConfig = toml::from_str(content.as_str())
+                .map_err(|e| Error::msg(format!("Failed to parse config.toml: {}", e)))?;
+            Arc::new(RwLock::new(config))
+        } else {
+            Arc::new(RwLock::new(NinjaConfig::new()))
+        };
+
         Ok(Self {
             root_path: exe_dir,
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(shurikens)),
             states: Arc::new(RwLock::new(states)),
+            config,
             processes: Arc::new(RwLock::new(HashMap::new())),
         })
     }
@@ -426,7 +426,115 @@ impl ShurikenManager {
         }
     }
 
-    pub async fn install(&self, path: &Path) -> Result<(), anyhow::Error> {
+    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf) -> Result<()> {
+        let output = self.root_path.join("blacksmith");
+        if !output.exists() {
+            fs::create_dir_all(&output).await?;
+        }
+        let path = &self.root_path.join("shurikens").join(path);
+
+        let shuriken_path = output.join(format!("{}-{}.shuriken", meta.id, meta.platform));
+        let mut file = File::create(shuriken_path).await?;
+
+        // ---- 1) Serialize metadata ----
+
+        let serialized_metadata = to_vec(&meta)?;
+
+        if serialized_metadata.len() > u16::MAX as usize {
+            return Err(anyhow::Error::msg(
+                "Metadata too large to fit in u16 length field",
+            ));
+        }
+
+        // ---- 2) Build archive bytes (tar.gz) in a blocking thread ----
+        let archive = {
+            let path_clone = path.clone();
+            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone)).await??
+        };
+        let archive_len = archive.len();
+
+        if archive_len > u32::MAX as usize {
+            return Err(anyhow::Error::msg(
+                "Archive too large to fit in u32 length field",
+            ));
+        }
+
+        // ---- 3) Compute signature = SHA256(archive) ----
+        let mut hasher = Sha256::new();
+        hasher.update(&archive);
+        let signature = hasher.finalize(); // 32 bytes
+
+        // ---- 4) Write in correct order ----
+        // [MAGIC]                 // 4 bytes
+        // [metadata_length]       // u16 LE
+        // [metadata]              // CBOR
+        // [archive_length]        // u32 LE
+        // [archive]               // tar.gz
+        // [signature]             // 32 bytes SHA-256(archive)
+
+        // MAGIC
+        file.write_all(MAGIC).await?;
+
+        // metadata_length (u16 LE)
+        let meta_len_le = (serialized_metadata.len() as u16).to_le_bytes();
+        file.write_all(&meta_len_le).await?;
+
+        // metadata
+        file.write_all(&serialized_metadata).await?;
+
+        // archive_length (u32 LE)
+        let archive_len_le = (archive_len as u32).to_le_bytes();
+        file.write_all(&archive_len_le).await?;
+
+        // archive
+        file.write_all(&archive).await?;
+
+        // signature
+        file.write_all(&signature).await?;
+
+        Ok(())
+    }
+
+    pub async fn remove(&self, name: &str) -> Result<()> {
+        let normalized_name = normalize_shuriken_name(name);
+        warn!("Deleting {}.", name);
+        fs::remove_dir_all(format!("shurikens/{}", normalized_name)).await?;
+        let _ = &self.shurikens.write().await.remove(&normalized_name);
+        info!("Successfully deleted shuriken {}, refreshing.", name);
+        #[cfg(debug_assertions)]
+        dbg!("{:#?}", &self.shurikens);
+        Ok(())
+    }
+
+    // -------------------- Installation functions --------------------
+
+    pub async fn install(&self, path: &Path) -> Result<()> {
+        self.install_file(path).await
+    }
+
+    pub async fn install_url(&self, url: &str) -> Result<()> {
+        let temp_path = self.root_path.join("temp_shuriken.shuriken");
+        download_shuriken(&temp_path, url).await?;
+        let result = self.install_file(&temp_path).await;
+        let _ = fs::remove_file(temp_path).await; // clean up temp file
+        result
+    }
+
+    /// Install a shuriken from a registry reference (e.g., "official:my-shuriken")
+    pub async fn install_from_registry(
+        &self,
+        registries: &std::collections::HashMap<String, crate::common::registry::Registry>,
+        reference: &crate::common::config::ShurikenReference,
+    ) -> Result<()> {
+        let download_url = crate::common::config::resolve_download_url(registries, reference)?;
+        info!(
+            "Installing shuriken {} from {}",
+            reference.shuriken, download_url
+        );
+        self.install_url(&download_url).await
+    }
+
+    pub async fn install_file(&self, path: &Path) -> Result<(), anyhow::Error> {
         use sha2::{Digest, Sha256};
         use std::io::Cursor;
 
@@ -534,85 +642,7 @@ impl ShurikenManager {
         Ok(())
     }
 
-    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf) -> Result<()> {
-        let output = self.root_path.join("blacksmith");
-        if !output.exists() {
-            fs::create_dir_all(&output).await?;
-        }
-        let path = &self.root_path.join("shurikens").join(path);
-
-        let shuriken_path = output.join(format!("{}-{}.shuriken", meta.id, meta.platform));
-        let mut file = File::create(shuriken_path).await?;
-
-        // ---- 1) Serialize metadata ----
-
-        let serialized_metadata = to_vec(&meta)?;
-
-        if serialized_metadata.len() > u16::MAX as usize {
-            return Err(anyhow::Error::msg(
-                "Metadata too large to fit in u16 length field",
-            ));
-        }
-
-        // ---- 2) Build archive bytes (tar.gz) in a blocking thread ----
-        let archive = {
-            let path_clone = path.clone();
-            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone)).await??
-        };
-        let archive_len = archive.len();
-
-        if archive_len > u32::MAX as usize {
-            return Err(anyhow::Error::msg(
-                "Archive too large to fit in u32 length field",
-            ));
-        }
-
-        // ---- 3) Compute signature = SHA256(archive) ----
-        let mut hasher = Sha256::new();
-        hasher.update(&archive);
-        let signature = hasher.finalize(); // 32 bytes
-
-        // ---- 4) Write in correct order ----
-        // [MAGIC]                 // 4 bytes
-        // [metadata_length]       // u16 LE
-        // [metadata]              // CBOR
-        // [archive_length]        // u32 LE
-        // [archive]               // tar.gz
-        // [signature]             // 32 bytes SHA-256(archive)
-
-        // MAGIC
-        file.write_all(MAGIC).await?;
-
-        // metadata_length (u16 LE)
-        let meta_len_le = (serialized_metadata.len() as u16).to_le_bytes();
-        file.write_all(&meta_len_le).await?;
-
-        // metadata
-        file.write_all(&serialized_metadata).await?;
-
-        // archive_length (u32 LE)
-        let archive_len_le = (archive_len as u32).to_le_bytes();
-        file.write_all(&archive_len_le).await?;
-
-        // archive
-        file.write_all(&archive).await?;
-
-        // signature
-        file.write_all(&signature).await?;
-
-        Ok(())
-    }
-
-    pub async fn remove(&self, name: &str) -> Result<()> {
-        let normalized_name = normalize_shuriken_name(name);
-        warn!("Deleting {}.", name);
-        fs::remove_dir_all(format!("shurikens/{}", normalized_name)).await?;
-        let _ = &self.shurikens.write().await.remove(&normalized_name);
-        info!("Successfully deleted shuriken {}, refreshing.", name);
-        #[cfg(debug_assertions)]
-        dbg!("{:#?}", &self.shurikens);
-        Ok(())
-    }
+    // -------------------- Project management API --------------------
 
     pub async fn get_projects(&self) -> Result<Vec<String>> {
         let path = &self.root_path.join("projects");

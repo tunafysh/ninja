@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ninja::{manager::ShurikenManager, types::ShurikenState};
+use ninja::{common::types::ShurikenState, manager::ShurikenManager};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tide::http::mime;

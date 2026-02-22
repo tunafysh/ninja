@@ -1,13 +1,14 @@
-use crate::{
-    manager::ShurikenManager,
-    modules::{
-        make_env_module, make_fs_module, make_modules, make_ninja_module, make_proc_module,
-        make_shell_module,
-    },
-    util::resolve_path,
-};
+pub mod dsl;
+pub mod templater;
+
+mod modules;
+use crate::{manager::ShurikenManager, utils::resolve_path};
 use log::info;
 use mlua::{Error as LuaError, Lua};
+use modules::{
+    make_env_module, make_fs_module, make_modules, make_ninja_module, make_proc_module,
+    make_shell_module,
+};
 use std::{
     fs,
     path::{Path, PathBuf},

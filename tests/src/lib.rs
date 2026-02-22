@@ -43,7 +43,11 @@ mod ninja_runtime_integration_tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "x = 123").unwrap();
 
-        assert!(engine.execute_file(&tmp.path().to_path_buf(), None, None).is_ok());
+        assert!(
+            engine
+                .execute_file(&tmp.path().to_path_buf(), None, None)
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -127,7 +131,7 @@ mod ninja_api_integration_tests {
         manager::ShurikenManager,
         scripting::NinjaEngine,
         shuriken::{ManagementType, Shuriken, ShurikenMetadata, get_process_start_time},
-        util::kill_process_by_pid,
+        utils::kill_process_by_pid,
     };
     use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
@@ -159,7 +163,10 @@ mod ninja_api_integration_tests {
             tools: None,
         };
 
-        shuriken.start(Some(&engine), dir.path(), None).await.unwrap();
+        shuriken
+            .start(Some(&engine), dir.path(), None)
+            .await
+            .unwrap();
         assert!(lockfile.exists());
     }
 

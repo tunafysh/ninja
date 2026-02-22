@@ -1,5 +1,5 @@
-use super::scripting::NinjaEngine;
-use crate::{manager::ShurikenManager, types::FieldValue};
+use crate::scripting::NinjaEngine;
+use crate::{common::types::FieldValue, manager::ShurikenManager};
 use anyhow::{Error, Result, bail};
 use either::Either;
 use log::debug;
@@ -400,7 +400,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     if let Some(shuriken) = shurikens.get_mut(shuriken_name)
                         && let Some(cfg) = &mut shuriken.config
                     {
-                        let cloned_value = value.clone();
+                        let cloned_value: FieldValue = value.clone();
                         if let Some(partial_options) = &mut cfg.options {
                             partial_options.insert(key.clone(), FieldValue::from(value.render()));
                         }
@@ -702,3 +702,4 @@ mod tests {
         }
     }
 }
+

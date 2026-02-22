@@ -1,8 +1,8 @@
 use std::io::{self, Write as _};
 
 use ninja::{
-    dsl::{DslContext, execute_commands},
     manager::ShurikenManager,
+    scripting::dsl::{DslContext, execute_commands},
 };
 
 pub fn get_input(prompt: &str) -> Result<String, io::Error> {

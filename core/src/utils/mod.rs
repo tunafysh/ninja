@@ -1,3 +1,5 @@
+pub mod download;
+
 use anyhow::{Result, anyhow};
 use regex::Regex;
 use std::{

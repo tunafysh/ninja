@@ -1,5 +1,6 @@
 use anyhow::Result;
-use ninja::manager::{ArmoryMetadata, ShurikenManager};
+use ninja::common::types::ArmoryMetadata;
+use ninja::manager::ShurikenManager;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{
@@ -96,7 +97,7 @@ pub unsafe extern "C" fn ninja_get_last_error_buf(
             if bytes.len() + 1 > buffer_size {
                 return -1;
             }
-            unsafe{
+            unsafe {
                 ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, bytes.len());
                 *buffer.add(bytes.len()) = 0;
             }
@@ -175,7 +176,7 @@ unsafe fn json_result_or_error<T: Serialize>(
             let msg = format!("{}", e);
             set_last_error(msg.clone());
             if !out_err.is_null() {
-                unsafe {  *out_err = CString::new(msg).unwrap().into_raw() };
+                unsafe { *out_err = CString::new(msg).unwrap().into_raw() };
             }
             ptr::null_mut()
         }
@@ -204,7 +205,9 @@ macro_rules! ffi_sync {
                 mgr
             } else {
                 if !out_err.is_null() {
-                    unsafe { *out_err = CString::new("Manager pointer was null").unwrap().into_raw() };
+                    unsafe {
+                        *out_err = CString::new("Manager pointer was null").unwrap().into_raw()
+                    };
                 }
                 return -1;
             };
@@ -299,12 +302,14 @@ macro_rules! ffi_async {
 pub unsafe extern "C" fn ninja_manager_new(out_err: *mut *mut c_char) -> *mut NinjaManagerOpaque {
     let res = RUNTIME.block_on(async { ShurikenManager::new().await });
     match res {
-        Ok(manager) => Box::into_raw(Box::new(ManagerBox(Box::new(manager)))) as *mut NinjaManagerOpaque,
+        Ok(manager) => {
+            Box::into_raw(Box::new(ManagerBox(Box::new(manager)))) as *mut NinjaManagerOpaque
+        }
         Err(e) => {
             let msg = format!("Failed to create manager: {}", e);
             set_last_error(msg.clone());
             if !out_err.is_null() {
-                unsafe { *out_err = CString::new(msg).unwrap().into_raw()};
+                unsafe { *out_err = CString::new(msg).unwrap().into_raw() };
             }
             ptr::null_mut()
         }
@@ -402,9 +407,10 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
         Ok(m) => m,
         Err(e) => {
             if !out_err.is_null() {
-                unsafe { *out_err = CString::new(format!("Invalid metadata JSON: {}", e))
-                    .unwrap()
-                    .into_raw();
+                unsafe {
+                    *out_err = CString::new(format!("Invalid metadata JSON: {}", e))
+                        .unwrap()
+                        .into_raw();
                 }
             }
             return -1;

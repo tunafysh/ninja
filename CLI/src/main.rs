@@ -4,9 +4,16 @@ use clap_verbosity_flag::Verbosity;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
     VERSION,
-    manager::{ArmoryMetadata, ShurikenManager},
+    common::{
+        config::{
+            NinjaConfig, ShurikenReference, fetch_registries, find_shuriken_in_registries,
+            get_shuriken_info, resolve_shuriken_url,
+        },
+        registry::ArmoryItem,
+        types::{ArmoryMetadata, FieldValue, PlatformPath, ShurikenState},
+    },
+    manager::ShurikenManager,
     shuriken::{ManagementType, Shuriken, ShurikenConfig, ShurikenMetadata},
-    types::{FieldValue, PlatformPath, ShurikenState},
 };
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
@@ -70,6 +77,8 @@ enum Commands {
     Forge(ForgeArgs),
     /// Remove a shuriken (uninstall it completely)
     Remove(RemoveArgs),
+    /// Manage registries and get shuriken information
+    Registry(RegistryArgs),
 }
 
 #[derive(Args)]
@@ -137,6 +146,32 @@ pub struct RemoveArgs {
     pub shuriken: String,
 }
 
+#[derive(Subcommand)]
+pub enum RegistrySubcommands {
+    /// Get information about a shuriken from registries
+    Get(RegistryGetArgs),
+    /// Install a shuriken from the registries using its reference (registry:shuriken)
+    Install(RegistryInstallArgs),
+}
+
+#[derive(Args)]
+pub struct RegistryArgs {
+    #[command(subcommand)]
+    pub subcommand: RegistrySubcommands,
+}
+
+#[derive(Args)]
+pub struct RegistryGetArgs {
+    /// The shuriken reference in format "registry:shuriken"
+    pub reference: String,
+}
+
+#[derive(Args)]
+pub struct RegistryInstallArgs {
+    /// The shuriken reference in format "registry:shuriken"
+    pub reference: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = NinjaCli::parse();
@@ -190,7 +225,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::List) => {
             let partial_shurikens = manager.list(true).await?.left();
             if let Some(shurikens) = partial_shurikens {
-
                 println!("{}", "Shurikens:\n".blue().bold());
                 for (name, state) in shurikens {
                     if state == ShurikenState::Running {
@@ -210,17 +244,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = file_arg.as_str();
             let path = PathBuf::from(content);
             if path.exists() {
-                match manager.engine.lock().await.execute_file(&path, None, Some(manager.clone())) {
-                    Ok(_) => exit(0),
-                    Err(e) => eprintln!("Error: {}", e),
-                }
-            } else {
                 match manager
                     .engine
                     .lock()
                     .await
-                    .execute(content, Some(&manager.root_path), Some(manager.clone()))
+                    .execute_file(&path, None, Some(manager.clone()))
                 {
+                    Ok(_) => exit(0),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+            } else {
+                match manager.engine.lock().await.execute(
+                    content,
+                    Some(&manager.root_path),
+                    Some(manager.clone()),
+                ) {
                     Ok(_) => exit(0),
                     Err(e) => eprintln!("Error: {}", e),
                 }
@@ -538,6 +576,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .and_then(|v| if v.is_empty() { None } else { Some(v) });
 
+                let repository: Option<String> = Input::<String>::with_theme(&theme)
+                    .with_prompt("The repository URL for this shuriken (optional)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .ok()
+                    .and_then(|s| {
+                        let s = s.trim().to_string();
+                        if s.is_empty() { None } else { Some(s) }
+                    });
+
                 let license: Option<String> = Input::<String>::with_theme(&theme)
                     .with_prompt(
                         "The license or licenses the software in this shuriken use \
@@ -563,6 +611,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     authors,
                     license,
                     synopsis,
+                    repository,
                 };
 
                 println!("{}", "Creating shuriken...".bold());
@@ -571,6 +620,86 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Remove(args)) => {
             manager.remove(&args.shuriken).await?;
+        }
+        Some(Commands::Registry(registry_args)) => {
+            match registry_args.subcommand {
+                RegistrySubcommands::Get(get_args) => {
+                    info!(
+                        "Fetching info for shuriken reference: {}",
+                        get_args.reference
+                    );
+
+                    let reference = ShurikenReference::parse(&get_args.reference)?;
+                    let config = NinjaConfig::new();
+                    let registries = fetch_registries(&config).await;
+
+                    match get_shuriken_info(&registries, &reference) {
+                        Ok(info) => {
+                            println!("{}", serde_json::to_string_pretty(&info)?);
+                        }
+                        Err(e) => {
+                            eprintln!("{}", format!("Failed to get shuriken info: {}", e).red());
+                            exit(1);
+                        }
+                    }
+                }
+                RegistrySubcommands::Install(install_args) => {
+                    info!(
+                        "Installing shuriken from registry with reference: {}",
+                        install_args.reference
+                    );
+                    // Similar to Get, but we also resolve the URL and then call manager.install_url
+                    let reference = ShurikenReference::parse(&install_args.reference)?;
+                    let config = NinjaConfig::new();
+                    let registries = fetch_registries(&config).await;
+                    match find_shuriken_in_registries(&registries, &reference) {
+                        Ok((shuriken, registry_name)) => {
+                            let registry_url =
+                                config.get_registries().get(&registry_name).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Registry URL not found for '{}'",
+                                        registry_name
+                                    )
+                                })?;
+                            let shuriken_url = match shuriken {
+                                ArmoryItem::Shuriken { url, .. } => url,
+                                ArmoryItem::Bundle { shurikens, .. } => {
+                                    for shuriken_ref in shurikens {
+                                        let item_ref = ShurikenReference {
+                                            registry: registry_name.clone(),
+                                            shuriken: shuriken_ref.clone(),
+                                        };
+                                        match find_shuriken_in_registries(&registries, &item_ref) {
+                                            Ok((item, _)) => {
+                                                if let ArmoryItem::Shuriken { url, .. } = item {
+                                                    let resolved_url =
+                                                        resolve_shuriken_url(registry_url, &url)?;
+                                                    manager.install_url(&resolved_url).await?;
+                                                } else {
+                                                    eprintln!("{}", format!("Bundle '{}' contains another bundle '{}', nested bundles are not supported", reference.shuriken, shuriken_ref).red());
+                                                }
+                                            }
+                                            Err(e) => {
+                                                eprintln!("{}", format!("Failed to find shuriken '{}' in registries: {}", shuriken_ref, e).red());
+                                            }
+                                        }
+                                    }
+                                    return Ok(()); // After processing all shurikens in the bundle, we can exit
+                                }
+                            };
+                            let resolved_url = resolve_shuriken_url(registry_url, &shuriken_url)?;
+                            manager.install_url(&resolved_url).await?;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "{}",
+                                format!("Failed to find shuriken in registries: {}", e).red()
+                            );
+                            exit(1);
+                        }
+                    }
+                }
+            }
         }
         None => {}
     }

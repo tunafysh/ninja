@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use toml::{Value, map::Map};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,4 +186,18 @@ impl From<FieldValue> for toml::Value {
             }
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArmoryMetadata {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub synopsis: Option<String>,
+    pub description: Option<String>,
+    pub authors: Option<Vec<String>>,
+    pub license: Option<String>,
+    pub repository: Option<String>,
+    pub postinstall: Option<PathBuf>,
+    pub platform: String,
 }
