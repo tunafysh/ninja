@@ -17,12 +17,11 @@ export type Tool = {
 }
 
 export type ShurikenMetadata = {
-    name: string
-    id: string
-    version: string
-    maintenance: MaintenanceType
-    type: "daemon" | "executable"
-    add_path: boolean;
+  name: string
+  id: string
+  version: string
+  "script-path": string
+  type: "daemon" | "executable"
 }
 
 // Rust: pub enum MaintenanceType
@@ -94,3 +93,9 @@ export type UpdateInfo = {
   downloadAndInstall: () => void
   body?: string
 } | null
+
+export type Config = {
+  registries: Map<String, String>,
+  devMode: boolean,
+  checkUpdates: boolean
+}

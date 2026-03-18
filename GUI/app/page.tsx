@@ -2,7 +2,7 @@
 
 import { ApplicationMenubar } from "@/components/ui/application-menubar"
 import { Card, CardContent } from "@/components/ui/card"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { check } from "@tauri-apps/plugin-updater"
 import Dashboard from "@/components/pages/dashboard"
 import DeveloperModePanel from "@/components/pages/developer"
@@ -144,7 +144,7 @@ export default function Page() {
   }, [activeIndex, tabs.length])
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden select-none">
+    <div className="relative w-screen h-screen overflow-hidden select-none rounded-t-xl">
       <ApplicationMenubar 
         platform={platform} 
         gridView={gridView} 
@@ -162,67 +162,67 @@ export default function Page() {
           borderBottomRightRadius: "7px",
         }}
       >
-        <div className={`flex flex-row select-none items-center ${platform === "mac" ? "pt-2" : "pt-4"}`}>
-          <Card className="w-full border-none shadow-none relative flex items-center py-2 justify-center bg-transparent">
-            <CardContent className="p-0">
-              <div className="relative">
-                <div
-                  className="absolute h-7.5 transition-all duration-300 ease-out bg-[#0e0f1114] dark:bg-[#ffffff1a] rounded-[6px] flex items-center"
-                  style={{ ...hoverStyle, opacity: hoveredIndex !== null ? 1 : 0 }}
-                />
-                <div
-                  className="absolute -bottom-1.5 h-0.5 bg-[#0e0f11] dark:bg-white transition-all duration-300 ease-out"
-                  style={activeStyle}
-                />
-                <div className="relative flex space-x-1.5 items-center">
-                  {tabs.map((tab, index) => (
+            <div className={`flex flex-row select-none items-center ${platform === "mac" ? "pt-2" : "pt-4"}`}>
+              <Card className="w-full border-none shadow-none relative flex items-center py-2 justify-center bg-transparent">
+                <CardContent className="p-0">
+                  <div className="relative">
                     <div
-                      key={index}
-                      ref={(el) => { tabRefs.current[index] = el; return void 0 }}
-                      className={`px-3 py-2 cursor-pointer transition-colors duration-300 h-7.5 ${
-                        index === activeIndex ? "text-[#0e0e10] dark:text-white" : "text-[#0e0f1199] dark:text-[#ffffff99]"
-                      }`}
-                      onMouseEnter={() => setHoveredIndex(index)}
-                      onMouseLeave={() => setHoveredIndex(null)}
-                      onClick={() => setActiveIndex(index)}
-                    >
-                      <div className="text-sm font-(--www-mattmannucci-me-geist-regular-font-family) leading-5 whitespace-nowrap flex items-center justify-center h-full">
-                        {tabsIcons[index]}
-                        {tab}
-                      </div>
+                      className="absolute h-7.5 transition-all duration-300 ease-out bg-[#0e0f1114] dark:bg-[#ffffff1a] rounded-[6px] flex items-center"
+                      style={{ ...hoverStyle, opacity: hoveredIndex !== null ? 1 : 0 }}
+                      />
+                    <div
+                      className="absolute -bottom-1.5 h-0.5 bg-[#0e0f11] dark:bg-white transition-all duration-300 ease-out"
+                      style={activeStyle}
+                      />
+                    <div className="relative flex space-x-1.5 items-center">
+                      {tabs.map((tab, index) => (
+                        <div
+                        key={index}
+                          ref={(el) => { tabRefs.current[index] = el; return void 0 }}
+                          className={`px-3 py-2 cursor-pointer transition-colors duration-300 h-7.5 ${
+                            index === activeIndex ? "text-[#0e0e10] dark:text-white" : "text-[#0e0f1199] dark:text-[#ffffff99]"
+                          }`}
+                          onMouseEnter={() => setHoveredIndex(index)}
+                          onMouseLeave={() => setHoveredIndex(null)}
+                          onClick={() => setActiveIndex(index)}
+                        >
+                          <div className="text-sm font-(--www-mattmannucci-me-geist-regular-font-family) leading-5 whitespace-nowrap flex items-center justify-center h-full">
+                            {tabsIcons[index]}
+                            {tab}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-        <Toaster richColors />
-        <div className="p-4 overflow-auto" style={{ height: "calc(100vh - 100px)" }}>
-          
-          <UpdateDialog
-            open={showUpdateDialog}
-            onOpenChange={setShowUpdateDialog}
-            updateInfo={updateInfo}
-          />
+<Toaster richColors />
+            <div className="p-4 overflow-auto" style={{ height: "calc(100vh - 100px)" }}>
+              
+              <UpdateDialog
+                open={showUpdateDialog}
+                onOpenChange={setShowUpdateDialog}
+                updateInfo={updateInfo}
+              />
 
-          {activeIndex === 0 ? (
-            <Dashboard gridView={gridView} />
-          ) : activeIndex === 1 ? (
-            <Configuration/>
-          ) : activeIndex === 2 ? (
-            <Logs shurikens={allShurikens}/>
-          ) : activeIndex === 3 ? (
-            <Tools />
-          ) : activeIndex === 4 ? (
-            <Backup />
-          ) : activeIndex === 5 ? (
-            <Armory platform={platform} />
-          ) : activeIndex === 6 && devMode ? (
-            <DeveloperModePanel />
-          ) : null}
-        </div>
+              {activeIndex === 0 ? (
+                <Dashboard gridView={gridView} setActiveIndex={setActiveIndex} />
+              ) : activeIndex === 1 ? (
+                <Configuration/>
+              ) : activeIndex === 2 ? (
+                <Logs shurikens={allShurikens}/>
+              ) : activeIndex === 3 ? (
+                <Tools />
+              ) : activeIndex === 4 ? (
+                <Backup />
+              ) : activeIndex === 5 ? (
+                <Armory platform={platform} />
+              ) : activeIndex === 6 && devMode ? (
+                <DeveloperModePanel />
+              ) : null}
+            </div>
       </main>
     </div>
   )

@@ -1,5 +1,6 @@
 use log::{error, info};
 use ninja::backup::{create_backup, restore_backup, CompressionType};
+use ninja::common::config::NinjaConfig;
 use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
@@ -295,4 +296,63 @@ pub async fn lockpick_shuriken(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_config(manager: State<'_, Mutex<ShurikenManager>>) -> Result<NinjaConfig, String> {
+    let manager = manager.lock().await;
+    let config = manager.config.read().await;
+    Ok(config.clone())
+}
+
+#[tauri::command]
+pub async fn toggle_dev_mode(manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
+    let manager = manager.lock().await;
+    let mut config = manager.config.write().await;
+    let dev_mode = !config.dev_mode;
+    config.set_dev_mode(dev_mode);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_registry(
+    name: String,
+    url: String,
+    manager: State<'_, Mutex<ShurikenManager>>,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    let mut config = manager.config.write().await;
+    config.add_registry(name, url);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_updates(manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
+    let manager = manager.lock().await;
+    let mut config = manager.config.write().await;
+    let value = !config.check_updates;
+    config.set_check_updates(value);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_registry(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    name: String,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    let mut config = manager.config.write().await;
+    config.remove_registry(&name);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn config_exists(manager: State<'_, Mutex<ShurikenManager>>) -> Result<bool, String> {
+    let manager = manager.lock().await;
+    if manager.root_path.join("config.toml").exists() {
+        Ok(true)
+    }
+    else {
+        Ok(false)
+    }
 }

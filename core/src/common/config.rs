@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::Url;
 
-use crate::common::registry::{ArmoryItem, is_absolute_url};
+use crate::common::registry::{ArmoryItem, fetch_registry, is_absolute_url};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShurikenReference {
@@ -29,11 +29,11 @@ impl ShurikenReference {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NinjaConfig {
-    registries: HashMap<String, String>,
-    check_updates: bool,
-    dev_mode: bool,
+    pub registries: HashMap<String, String>,
+    pub check_updates: bool,
+    pub dev_mode: bool,
 }
 
 impl NinjaConfig {
@@ -60,9 +60,6 @@ impl NinjaConfig {
     pub fn set_dev_mode(&mut self, dev_mode: bool) {
         self.dev_mode = dev_mode;
     }
-    pub fn get_registries(&self) -> &HashMap<String, String> {
-        &self.registries
-    }
     pub fn remove_registry(&mut self, registry: &str) {
         self.registries.remove(registry);
     }
@@ -79,7 +76,7 @@ pub async fn fetch_registries(
 ) -> HashMap<String, crate::common::registry::Registry> {
     let mut registries = HashMap::new();
 
-    for (name, url) in config.get_registries() {
+    for (name, url) in &config.registries {
         info!("Fetching registry '{}' from {}", name, url);
         match crate::common::registry::fetch_registry(url).await {
             Ok(reg) => {
@@ -111,13 +108,16 @@ pub fn resolve_shuriken_url(
 }
 
 /// Find a shuriken in the fetched registries by its reference (e.g., "official:my-shuriken")
-pub fn find_shuriken_in_registries(
-    registries: &HashMap<String, crate::common::registry::Registry>,
+pub async fn find_shuriken_in_registries(
+    registries: &HashMap<String, String>,
     reference: &ShurikenReference,
 ) -> Result<(ArmoryItem, String), anyhow::Error> {
-    let registry = registries
+
+    let registry_url = registries
         .get(&reference.registry)
-        .ok_or_else(|| anyhow::anyhow!("Registry '{}' not found", reference.registry))?;
+        .ok_or_else(|| anyhow::anyhow!("Registry {} does not exist in the config.", &reference.registry))?;
+
+    let registry = fetch_registry(registry_url).await?;
 
     let shuriken = registry
         .shurikens
@@ -138,11 +138,11 @@ pub fn find_shuriken_in_registries(
 }
 
 /// Get information about a shuriken from registries as JSON
-pub fn get_shuriken_info(
-    registries: &HashMap<String, crate::common::registry::Registry>,
+pub async fn get_shuriken_info(
+    registries: &HashMap<String, String>,
     reference: &ShurikenReference,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let (shuriken, registry_name) = find_shuriken_in_registries(registries, reference)?;
+    let (shuriken, registry_name) = find_shuriken_in_registries(registries, reference).await?;
 
     let info = match shuriken {
         ArmoryItem::Shuriken {
@@ -191,18 +191,15 @@ pub fn get_shuriken_info(
 }
 
 /// Resolve the download URL for a shuriken from registries
-pub fn resolve_download_url(
-    registries: &HashMap<String, crate::common::registry::Registry>,
+pub async fn resolve_download_url(
+    registries: &HashMap<String, String>,
     reference: &ShurikenReference,
 ) -> Result<String, anyhow::Error> {
-    let registry = registries
-        .get(&reference.registry)
-        .ok_or_else(|| anyhow::anyhow!("Registry '{}' not found", reference.registry))?;
+    if !registries.contains_key(&reference.registry){
+        return Err(anyhow::anyhow!("Registry {} not found in config.", &reference.registry))
+    }
 
-    let registry_url = format!(
-        "https://raw.githubusercontent.com/tunafysh/ninja-registry/main/{}.yaml",
-        &reference.registry
-    );
+    let registry = fetch_registry(&reference.registry).await?;
 
     let shuriken = registry
         .shurikens
@@ -224,5 +221,5 @@ pub fn resolve_download_url(
         _ => return Err(anyhow::anyhow!("Bundles do not have direct download URLs")),
     };
 
-    resolve_shuriken_url(&registry_url, shuriken_url)
+    resolve_shuriken_url(&reference.registry, shuriken_url)
 }

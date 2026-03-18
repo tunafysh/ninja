@@ -6,11 +6,11 @@ use crate::{
     },
     scripting::{NinjaEngine, dsl::DslContext},
     shuriken::{Shuriken, ShurikenConfig},
+    utils::{create_tar_gz_bytes, load_shurikens, normalize_shuriken_name},
 };
 use anyhow::{Context, Error, Result};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
-use flate2::{Compression, write::GzEncoder};
 use log::{debug, info, warn};
 use serde_cbor::to_vec;
 use sha2::{Digest, Sha256};
@@ -21,7 +21,7 @@ use std::{
     str,
     sync::Arc,
 };
-use tar::Builder as TarBuilder;
+
 use tokio::process::{Child, Command};
 use tokio::{
     fs::{self, File},
@@ -31,38 +31,6 @@ use tokio::{
 };
 
 const MAGIC: &[u8; 6] = b"HSRZEG";
-
-/// Normalizes a shuriken name to lowercase for consistent directory naming.
-/// This ensures all shuriken directories use lowercase names.
-fn normalize_shuriken_name(name: &str) -> String {
-    name.to_lowercase()
-}
-
-fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
-    if !src_dir.is_dir() {
-        return Err(anyhow::Error::msg(format!(
-            "Source directory does not exist or is not a directory: {}",
-            src_dir.display()
-        )));
-    }
-
-    let mut buf = Vec::new();
-
-    {
-        // Gzip wraps the in-memory buffer
-        let enc = GzEncoder::new(&mut buf, Compression::default());
-        let mut tar = TarBuilder::new(enc);
-
-        // This recursively adds `src_dir` contents under "." in the archive
-        tar.append_dir_all(".", src_dir)?;
-
-        // Finish tar, then finish gzip
-        let enc = tar.into_inner()?; // GzEncoder
-        enc.finish()?; // flush into buf
-    }
-
-    Ok(buf)
-}
 
 /// A thin wrapper around a spawned process. We keep it simple: the
 /// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
@@ -115,85 +83,6 @@ pub struct ShurikenManager {
 }
 
 impl ShurikenManager {
-    // Shared logic for loading shurikens from disk
-    async fn load_shurikens(
-        root_path: &Path,
-    ) -> Result<(HashMap<String, Shuriken>, HashMap<String, ShurikenState>)> {
-        let shurikens_dir = root_path.join("shurikens");
-        let mut shurikens = HashMap::new();
-        let mut states = HashMap::new();
-
-        // Only iterate immediate children of `shurikens/`
-        let mut dir = match fs::read_dir(&shurikens_dir).await {
-            Ok(d) => d,
-            Err(_) => return Ok((shurikens, states)), // no shurikens dir = empty
-        };
-
-        while let Some(entry) = dir.next_entry().await? {
-            let shuriken_path = entry.path();
-            if !shuriken_path.is_dir() {
-                continue;
-            }
-
-            let name = match shuriken_path.file_name().and_then(|n| n.to_str()) {
-                Some(n) => n.to_owned(),
-                None => continue, // skip non-UTF8 names
-            };
-
-            let ninja_dir = shuriken_path.join(".ninja");
-
-            // 1. Load manifest (required)
-            let manifest_path = ninja_dir.join("manifest.toml");
-            if !manifest_path.exists() {
-                continue; // not a valid shuriken
-            }
-
-            let content: String = fs::read_to_string(&manifest_path).await?;
-            let mut shuriken: Shuriken = toml::from_str(&content).map_err(|e| {
-                Error::msg(format!("TOML error in {}: {}", manifest_path.display(), e))
-            })?;
-
-            // 2. Check for lock file
-            let lock_path = ninja_dir.join("shuriken.lck");
-            let state = if lock_path.exists() {
-                ShurikenState::Running
-            } else {
-                ShurikenState::Idle
-            };
-
-            // 3. Load options (optional)
-            let options_path = ninja_dir.join("options.toml");
-            if options_path.exists() {
-                let content: String = fs::read_to_string(&options_path).await?;
-                let options: HashMap<String, FieldValue> =
-                    toml::from_str(&content).map_err(|e| {
-                        Error::msg(format!(
-                            "Options error in {}: {}",
-                            options_path.display(),
-                            e
-                        ))
-                    })?;
-
-                if let Some(config) = &mut shuriken.config {
-                    config.options = Some(options);
-                } else {
-                    shuriken.config = Some(ShurikenConfig {
-                        config_path: PathBuf::from("options.toml"),
-                        options: Some(options),
-                    });
-                }
-            }
-
-            // Store using the directory name (which should already be lowercase)
-            // but normalize it to be sure
-            let normalized_name = normalize_shuriken_name(&name);
-            shurikens.insert(normalized_name.clone(), shuriken);
-            states.insert(normalized_name, state);
-        }
-
-        Ok((shurikens, states))
-    }
-
     pub async fn new() -> Result<Self> {
         let exe_dir = dirs::home_dir()
             .ok_or_else(|| Error::msg("Could not find home directory"))?
@@ -213,7 +102,7 @@ impl ShurikenManager {
             fs::create_dir(&projects_dir).await?;
         }
 
-        let (shurikens, states) = Self::load_shurikens(&exe_dir).await?;
+        let (shurikens, states) = load_shurikens(&exe_dir).await?;
 
         let engine = NinjaEngine::new()
             .await
@@ -262,7 +151,7 @@ impl ShurikenManager {
 
         if let Err(e) = shuriken
             .start(
-                Some(&*self.engine.lock().await),
+                &*self.engine.lock().await,
                 &shuriken_dir,
                 Some(self.clone()),
             )
@@ -280,7 +169,7 @@ impl ShurikenManager {
     }
 
     pub async fn refresh(&self) -> Result<()> {
-        let (new_shurikens, new_states) = Self::load_shurikens(&self.root_path).await?;
+        let (new_shurikens, new_states) = load_shurikens(&self.root_path).await?;
         *self.shurikens.write().await = new_shurikens;
         *self.states.write().await = new_states;
         debug!("Shuriken manager refreshed.");
@@ -373,7 +262,7 @@ impl ShurikenManager {
 
         if let Err(e) = shuriken
             .stop(
-                Some(&*self.engine.lock().await),
+                &*self.engine.lock().await,
                 &shuriken_dir,
                 Some(self.clone()),
             )
@@ -523,10 +412,10 @@ impl ShurikenManager {
     /// Install a shuriken from a registry reference (e.g., "official:my-shuriken")
     pub async fn install_from_registry(
         &self,
-        registries: &std::collections::HashMap<String, crate::common::registry::Registry>,
         reference: &crate::common::config::ShurikenReference,
     ) -> Result<()> {
-        let download_url = crate::common::config::resolve_download_url(registries, reference)?;
+        let registries = &self.config.read().await.registries;
+        let download_url = crate::common::config::resolve_download_url(registries, reference).await?;
         info!(
             "Installing shuriken {} from {}",
             reference.shuriken, download_url

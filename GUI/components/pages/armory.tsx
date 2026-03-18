@@ -5,13 +5,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event"
-import { Search } from "lucide-react";
+import { RefreshCcw, Search } from "lucide-react";
 import InstallCard from "@/components/ui/install-card";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { ArmoryItem, ArmoryMetadata } from "@/lib/types";
+import ArrayEditor from "@/components/ui/array-editor";
+import { useConfig } from "@/hooks/config";
 
 export default function Armory({platform}: {platform: "mac" | "windows" | "linux" | "unknown"}) {
+  const { config, addRegistry, removeRegistry, fetchConfig } = useConfig();
+  const [registryEditorOpen, setRegistryEditorOpen] = useState(false);
+  const [pendingRegistries, setPendingRegistries] = useState<[string, string][]>([]);
   const [path, setPath] = useState("");
   const [shurikens, setShurikens] = useState([
     {
@@ -94,6 +99,7 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
     }
   ])
    const [localShuriken, setLocalShuriken] = useState<ArmoryMetadata | null>(null);
+
    const installLocalFile = async () => {
      const file = await open({
        filters: [
@@ -131,6 +137,9 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
     return (
       <div className="relative w-screen h-screen overflow-hidden flex justify-center">
         <div className="h-full w-5/6">
+          <div className="w-full flex justify-between items-center mt-10">
+            <h1 className="font-bold text-2xl select-none">Explore shurikens</h1>
+          </div>
           <div id="search" className="w-full flex justify-center items-center my-10">
             <div className="flex gap-2 w-full">
               <div className="relative w-full">
@@ -147,10 +156,6 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
               <InstallCard shuriken={localShuriken} path={path} onClose={() => setLocalShuriken(null)} />
             </div>
           )}
-  
-          <div className="w-full flex justify-center">
-            <h1 className="font-bold text-2xl select-none">Browse for more shurikens</h1>
-          </div>
   
           <div className="grid gap-4 grid-cols-4 mt-10">
             {shurikens.map((shuriken) => (

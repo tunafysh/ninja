@@ -128,10 +128,10 @@ mod ninja_runtime_integration_tests {
 mod ninja_api_integration_tests {
     use crate::ninja_runtime_integration_tests::write_stub_script;
     use ninja::{
+        common::config::NinjaConfig,
         manager::ShurikenManager,
         scripting::NinjaEngine,
-        shuriken::{ManagementType, Shuriken, ShurikenMetadata, get_process_start_time},
-        utils::kill_process_by_pid,
+        shuriken::{Shuriken, ShurikenMetadata},
     };
     use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
     use tempfile::tempdir;
@@ -152,21 +152,15 @@ mod ninja_api_integration_tests {
                 name: "test_script".into(),
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
-                management: Some(ManagementType::Script {
-                    script_path: PathBuf::from("dummy.ns"),
-                }),
+                script_path: PathBuf::from("dummy.ns"),
                 shuriken_type: "daemon".into(),
-                require_admin: false,
             },
             config: None,
             logs: None,
             tools: None,
         };
 
-        shuriken
-            .start(Some(&engine), dir.path(), None)
-            .await
-            .unwrap();
+        shuriken.start(&engine, dir.path(), None).await.unwrap();
         assert!(lockfile.exists());
     }
 
@@ -175,6 +169,7 @@ mod ninja_api_integration_tests {
         let dir = tempdir().unwrap();
         let engine = NinjaEngine::new().await.unwrap();
         let manager = ShurikenManager {
+            config: Arc::new(RwLock::new(NinjaConfig::default())),
             root_path: dir.path().to_path_buf(),
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
@@ -190,23 +185,11 @@ mod ninja_api_integration_tests {
     }
 
     #[tokio::test]
-    async fn test_kill_process_by_pid_invalid() {
-        // 999999 should not exist
-        let success = kill_process_by_pid(999999);
-        assert!(!success);
-    }
-
-    #[tokio::test]
-    async fn test_get_process_start_time_invalid() {
-        let result = get_process_start_time(999999);
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
     async fn test_manager_creation() {
         let dir = tempdir().unwrap();
         let engine = NinjaEngine::new().await.unwrap();
         let manager = ShurikenManager {
+            config: Arc::new(RwLock::new(NinjaConfig::default())),
             root_path: dir.path().to_path_buf(),
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
@@ -227,15 +210,13 @@ mod ninja_api_integration_tests {
             name: "test".into(),
             id: "test-id".into(),
             version: "1.0.0".to_string(),
-            management: None,
+            script_path: PathBuf::from("script.ns"),
             shuriken_type: "daemon".into(),
-            require_admin: false,
         };
 
         assert_eq!(metadata.name, "test");
         assert_eq!(metadata.id, "test-id");
         assert_eq!(metadata.version, "1.0.0");
-        assert!(!metadata.require_admin);
     }
 
     #[tokio::test]

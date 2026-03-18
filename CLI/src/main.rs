@@ -6,14 +6,14 @@ use ninja::{
     VERSION,
     common::{
         config::{
-            NinjaConfig, ShurikenReference, fetch_registries, find_shuriken_in_registries,
+            ShurikenReference, find_shuriken_in_registries,
             get_shuriken_info, resolve_shuriken_url,
         },
         registry::ArmoryItem,
-        types::{ArmoryMetadata, FieldValue, PlatformPath, ShurikenState},
+        types::{ArmoryMetadata, FieldValue, ShurikenState},
     },
     manager::ShurikenManager,
-    shuriken::{ManagementType, Shuriken, ShurikenConfig, ShurikenMetadata},
+    shuriken::{Shuriken, ShurikenConfig, ShurikenMetadata},
 };
 use ninja_api::server;
 use ninja_mcp::server as mcpserver;
@@ -266,7 +266,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::New) => {
             let theme = ColorfulTheme::default();
-            let management_types = ["native", "script"];
 
             println!("{}", "Manifest section".bold().blue());
 
@@ -283,55 +282,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .allow_empty(true)
                             .interact_text()?;
 
-            // ===== Maintenance prompt =====
-            let management_choice = Select::with_theme(&theme)
-                .with_prompt("Enter the management type (native/script)")
-                .items(&management_types)
-                .default(0)
-                .interact()?;
+            // ===== Script path prompt =====
+            let script_path: String = Input::with_theme(&theme)
+                .with_prompt("Enter the script path")
+                .interact_text()?;
 
-            let management = match management_types[management_choice] {
-                "native" => {
-                    let bin_path_windows: String = Input::with_theme(&theme)
-                        .with_prompt("Enter the binary path for Windows systems")
-                        .interact_text()?;
-
-                    let bin_path_unix: String = Input::with_theme(&theme)
-                        .with_prompt("Enter the binary path for Unix systems")
-                        .interact_text()?;
-
-                    let args = {
-                        let input: String = Input::with_theme(&theme)
-                            .with_prompt("Enter arguments (optional, comma-separated)")
-                            .allow_empty(true)
-                            .interact_text()?;
-                        (!input.trim().is_empty())
-                            .then(|| input.split(',').map(|s| s.trim().to_string()).collect())
-                    };
-
-                    ManagementType::Native {
-                        bin_path: PlatformPath::Platform {
-                            windows: bin_path_windows,
-                            unix: bin_path_unix,
-                        },
-                        args,
-                        cwd: None,
-                    }
-                }
-                "script" => {
-                    let script_path: String = Input::with_theme(&theme)
-                        .with_prompt("Enter the script path")
-                        .interact_text()?;
-
-                    let script_path = PathBuf::from(script_path);
-
-                    ManagementType::Script { script_path }
-                }
-                _ => {
-                    eprintln!("Invalid management type selected.");
-                    exit(1);
-                }
-            };
+            let script_path = PathBuf::from(script_path);
 
             // ===== Shuriken type prompt (tagged struct) =====
             let shuriken_options = ["daemon", "executable"];
@@ -339,11 +295,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_prompt("Enter the shuriken type")
                 .items(&shuriken_options)
                 .default(0)
-                .interact()?;
-
-            let admin = dialoguer::Confirm::with_theme(&theme)
-                .with_prompt("Require administrator priviliges to launch?")
-                .default(false)
                 .interact()?;
 
             // ===== Config section =====
@@ -406,9 +357,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     name: name.clone(),
                     id: id.clone(),
                     version,
-                    management: Some(management),
+                    script_path: script_path.clone(),
                     shuriken_type: shuriken_options[choice].to_string(),
-                    require_admin: admin,
                 },
                 config: conf_path.map(|path| ShurikenConfig {
                     config_path: path,
@@ -437,18 +387,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let Some(management) = &manifest.metadata.management
-                && let ManagementType::Script { script_path } = management
-            {
-                if let Some(parent) = script_path.parent() {
-                    fs::create_dir_all(parent).await?;
-                }
-                fs::write(
-                        script_path,
-                        "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
-                    )
-                    .await?;
+            if let Some(parent) = script_path.parent() {
+                fs::create_dir_all(parent).await?;
             }
+            fs::write(
+                    &script_path,
+                    "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
+                )
+                .await?;
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
                 eprintln!("Failed to serialize manifest for shuriken '{}'", name);
@@ -622,6 +568,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             manager.remove(&args.shuriken).await?;
         }
         Some(Commands::Registry(registry_args)) => {
+            let config = manager.config.read().await;
             match registry_args.subcommand {
                 RegistrySubcommands::Get(get_args) => {
                     info!(
@@ -630,10 +577,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
 
                     let reference = ShurikenReference::parse(&get_args.reference)?;
-                    let config = NinjaConfig::new();
-                    let registries = fetch_registries(&config).await;
-
-                    match get_shuriken_info(&registries, &reference) {
+                    match get_shuriken_info(&config.registries, &reference).await {
                         Ok(info) => {
                             println!("{}", serde_json::to_string_pretty(&info)?);
                         }
@@ -650,12 +594,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                     // Similar to Get, but we also resolve the URL and then call manager.install_url
                     let reference = ShurikenReference::parse(&install_args.reference)?;
-                    let config = NinjaConfig::new();
-                    let registries = fetch_registries(&config).await;
-                    match find_shuriken_in_registries(&registries, &reference) {
+                    match find_shuriken_in_registries(&config.registries, &reference).await {
                         Ok((shuriken, registry_name)) => {
                             let registry_url =
-                                config.get_registries().get(&registry_name).ok_or_else(|| {
+                                config.registries.get(&registry_name).ok_or_else(|| {
                                     anyhow::anyhow!(
                                         "Registry URL not found for '{}'",
                                         registry_name
@@ -669,7 +611,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             registry: registry_name.clone(),
                                             shuriken: shuriken_ref.clone(),
                                         };
-                                        match find_shuriken_in_registries(&registries, &item_ref) {
+                                        match find_shuriken_in_registries(&config.registries, &item_ref).await {
                                             Ok((item, _)) => {
                                                 if let ArmoryItem::Shuriken { url, .. } = item {
                                                     let resolved_url =

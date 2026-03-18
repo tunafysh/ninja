@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Dispatch, SetStateAction, useEffect, useState } from "react"
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +16,7 @@ import { useShuriken } from "@/hooks/use-shuriken"
 import { invoke } from "@tauri-apps/api/core"
 import LocalProjectsSidebar from "../ui/projects-pane"
 
-export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
+export default function Dashboard({ gridView, setActiveIndex }: { gridView: "grid" | "list", setActiveIndex: Dispatch<SetStateAction<number>> }) {
   const { allShurikens, refreshShurikens, startShuriken, stopShuriken, loading } = useShuriken()
   const [projects, setProjects] = useState<string[]>([""])
 
@@ -183,7 +183,7 @@ export default function Dashboard({ gridView }: { gridView: "grid" | "list" }) {
               </Table>
             )
           ) : (
-            <div className="text-center text-muted-foreground my-8">No Shurikens found.</div>
+            <div className="text-center text-muted-foreground my-8">No Shurikens found. You can get shurikens at the <Button onClick={() => setActiveIndex(5)} variant={"link"} className="px-0.5">Armory</Button></div>
           )}
         </div>
 

@@ -165,7 +165,13 @@ pub fn run() {
             install_shuriken,
             backup_restore,
             backup_now,
-            lockpick_shuriken
+            lockpick_shuriken,
+            add_registry,
+            get_config,
+            toggle_dev_mode,
+            remove_registry,
+            toggle_updates,
+            config_exists
         ]);
 
     builder
