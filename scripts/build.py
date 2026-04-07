@@ -261,9 +261,6 @@ def clean():
             p.unlink()
             print_status("Rm", f"GUI binary {p}")
 
-import shutil
-from pathlib import Path
-
 def export_dist():
     """
     Create a top-level dist/ folder and copy final Tauri bundle
@@ -377,12 +374,16 @@ def main():
     )
 
     parser.add_argument(
-        "install", action="store_true", help="Install the built CLI binary to /usr/local/bin or equivalent."
+        "--install", action="store_true", help="Install the built CLI binary to /usr/local/bin or equivalent."
     )
 
     args = parser.parse_args()
     if args.clean:
         clean()
+        return
+
+    if args.install:
+        install()
         return
 
     # please place args manually lol
