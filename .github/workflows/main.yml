@@ -87,7 +87,7 @@ jobs:
           echo "${{secrets.TAURI_SIGNING_PRIVATE_KEY}}" > tauri_signing_key.pem
           DOCKER_BUILDKIT=1 docker build \
             --secret id=tauri_key,src=tauri_signing_key.pem \
-            -t ninja:latest -f Dockerfile.build.
+            -t ninja:latest -f .
 
           mkdir -p dist
 
