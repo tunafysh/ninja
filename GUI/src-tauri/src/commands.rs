@@ -33,16 +33,14 @@ pub async fn start_shuriken(
     let name = name.to_string();
     let app = app.clone();
 
-    std::thread::spawn(move || {
-        tauri::async_runtime::block_on(async move {
-            let manager: State<'_, Mutex<ShurikenManager>> = app.state();
-            let manager = manager.lock().await;
+    tauri::async_runtime::spawn(async move {
+        let manager: State<'_, Mutex<ShurikenManager>> = app.state();
+        let manager = manager.lock().await;
 
-            match manager.start(&name).await {
-                Ok(_) => info!("Shuriken {} started successfully.", name),
-                Err(e) => error!("Failed to start shuriken {}: {}", name, e),
-            }
-        });
+        match manager.start(&name).await {
+            Ok(_) => info!("Shuriken {} started successfully.", name),
+            Err(e) => error!("Failed to start shuriken {}: {}", name, e),
+        }
     });
 
     Ok(())
@@ -57,16 +55,14 @@ pub async fn stop_shuriken(
     let name = name.to_string();
     let app = app.clone();
 
-    std::thread::spawn(move || {
-        tauri::async_runtime::block_on(async move {
-            let manager: State<'_, Mutex<ShurikenManager>> = app.state();
-            let manager = manager.lock().await;
+    tauri::async_runtime::spawn(async move {
+        let manager: State<'_, Mutex<ShurikenManager>> = app.state();
+        let manager = manager.lock().await;
 
-            match manager.stop(&name).await {
-                Ok(_) => info!("Shuriken {} stopped successfully.", name),
-                Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
-            }
-        });
+        match manager.stop(&name).await {
+            Ok(_) => info!("Shuriken {} stopped successfully.", name),
+            Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
+        }
     });
 
     Ok(())

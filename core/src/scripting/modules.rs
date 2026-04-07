@@ -6,6 +6,7 @@ use crate::{
 use chrono::prelude::*;
 use log::{debug, error, info, warn};
 use mlua::{Either, Error as LuaError, ExternalError, Lua, LuaSerdeExt, Result, Table};
+use regex;
 use relative_path::RelativePath;
 use serde_json::Value;
 
@@ -202,60 +203,42 @@ fn resolve_spawn_command(command: &str, cwd: Option<&Path>) -> String {
         cwd.map(|p| p.display().to_string())
     );
 
-    let mut parts_iter = command.split_whitespace();
-    let Some(first) = parts_iter.next() else {
+    if command.is_empty() {
         debug!("resolve_spawn_command: empty command, returning as-is");
-        return command.to_string();
-    };
-
-    let rest: Vec<&str> = parts_iter.collect();
-
-    let is_path_like = first.starts_with("./")
-        || first.starts_with(".\\")
-        || first.starts_with("../")
-        || first.starts_with("..\\")
-        || first.contains('/')
-        || first.contains('\\');
-
-    if !is_path_like {
-        debug!(
-            "resolve_spawn_command: '{}' is not path-like, using original command",
-            first
-        );
         return command.to_string();
     }
 
     let Some(cwd) = cwd else {
-        debug!("resolve_spawn_command: path-like but no cwd, using original command");
+        debug!("resolve_spawn_command: no cwd provided, returning original command");
         return command.to_string();
     };
 
-    let first_path = Path::new(first);
-    let abs = if first_path.is_absolute() {
-        debug!(
-            "resolve_spawn_command: '{}' is absolute path",
-            first_path.display()
-        );
-        first_path.to_path_buf()
-    } else {
-        debug!(
-            "resolve_spawn_command: '{}' is relative, resolving against '{}'",
-            first_path.display(),
-            cwd.display()
-        );
-        let rel = RelativePath::new(first);
-        rel.to_logical_path(cwd)
-    };
+    // Use regex to find and replace all relative path references
+    // Match ./ or .\ followed by non-whitespace characters
+    let re = regex::Regex::new(r"\.[/\\]([^\s]+)").unwrap();
+    let result = re.replace_all(command, |caps: &regex::Captures| {
+        // caps[0] is the full match (e.g., "./file" or ".\file")
+        // caps[1] is the path part after "./" or ".\" (e.g., "file")
+        let full_match = &caps[0];
+        let path_part = &caps[1];
+        let full_path = format!("./{}", path_part);  // Normalize to forward slash
+        
+        debug!("resolve_spawn_command: found relative path '{}' from '{}'", full_path, full_match);
+        
+        let path = Path::new(&full_path);
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            let rel = RelativePath::new(&full_path);
+            rel.to_logical_path(cwd)
+        };
+        
+        let abs = strip_windows_prefix(&abs);
+        abs.to_string_lossy().to_string()
+    });
 
-    let abs = strip_windows_prefix(&abs);
-    let mut cmd = abs.to_string_lossy().to_string();
-    if !rest.is_empty() {
-        cmd.push(' ');
-        cmd.push_str(&rest.join(" "));
-    }
-
-    debug!("resolve_spawn_command: resolved command='{}'", cmd);
-    cmd
+    debug!("resolve_spawn_command: resolved command='{}'", result);
+    result.to_string()
 }
 
 // ========================= FS MODULE =========================
@@ -756,189 +739,65 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                 let cwd_opt = proc_cwd.as_deref();
                 let resolved = resolve_spawn_command(&command, cwd_opt);
 
-                // ---------- WINDOWS IMPLEMENTATION ----------
+                debug!("proc.spawn: resolved command='{}'", resolved);
+
+                // Use std::process::Command with proper detachment
+                use std::process::{Command, Stdio};
+
+                let mut cmd = if cfg!(windows) {
+                    let mut c = Command::new("cmd");
+                    c.args(["/C", &resolved]);
+                    c
+                } else {
+                    let mut c = Command::new("sh");
+                    c.args(["-c", &resolved]);
+                    c
+                };
+
+                // Set working directory if provided
+                if let Some(cwd) = cwd_opt {
+                    cmd.current_dir(cwd);
+                }
+
+                // Detach from stdio
+                cmd.stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+
+                // Platform-specific detachment
                 #[cfg(windows)]
                 {
-                    use windows::core::{PCWSTR, PWSTR};
-                    use windows::Win32::Foundation::{CloseHandle, GetLastError};
-                    use windows::Win32::System::Threading::{
-                        CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW, CREATE_NO_WINDOW,
-                    };
-
-                    debug!(
-                        "proc.spawn (windows): original='{}', resolved='{}'",
-                        command, resolved
-                    );
-
-                    let mut cmd_w: Vec<u16> = resolved
-                        .encode_utf16()
-                        .chain(std::iter::once(0))
-                        .collect();
-
-                    let mut si: STARTUPINFOW = STARTUPINFOW::default();
-                    si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-
-                    let mut pi: PROCESS_INFORMATION = PROCESS_INFORMATION::default();
-
-                    let ok = unsafe {
-                        CreateProcessW(
-                            PCWSTR::null(),                   // lpApplicationName
-                            Some(PWSTR(cmd_w.as_mut_ptr())), // lpCommandLine
-                            None,
-                            None,
-                            false,
-                            CREATE_NO_WINDOW,
-                            None,
-                            PCWSTR::null(), // lpCurrentDirectory (inherits from parent)
-                            &si,
-                            &mut pi,
-                        )
-                    };
-
-                    if let Err(e) = ok {
-                        let code = unsafe { GetLastError().0 };
-                        let msg = format_win32_error(code);
-                        error!(
-                            "proc.spawn (windows): CreateProcessW failed\n  original='{}'\n  resolved='{}'\n  code={}\n  message='{}'\n  api_error='{}'",
-                            command,
-                            resolved,
-                            code,
-                            msg,
-                            e
-                        );
-                        return Err(mlua::Error::external(format!(
-                            "CreateProcessW failed for '{}': code {} ({})",
-                            resolved, code, msg
-                        )));
-                    }
-
-                    let pid = pi.dwProcessId;
-                    debug!("proc.spawn (windows): spawned pid={}", pid);
-
-                    unsafe {
-                        if let Err(e) = CloseHandle(pi.hThread) {
-                            warn!(
-                                "proc.spawn (windows): CloseHandle(hThread) failed for pid {}: {}",
-                                pid, e
-                            );
-                        }
-                        if let Err(e) = CloseHandle(pi.hProcess) {
-                            warn!(
-                                "proc.spawn (windows): CloseHandle(hProcess) failed for pid {}: {}",
-                                pid, e
-                            );
-                        }
-                    }
-
-                    result_table.set("pid", pid)?;
-                    return Ok(result_table);
+                    use std::os::windows::process::CommandExt;
+                    const DETACHED_PROCESS: u32 = 0x00000008;
+                    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+                    cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
                 }
 
-                // ---------- UNIX (LINUX + MACOS) IMPLEMENTATION ----------
                 #[cfg(unix)]
                 {
-                    use nix::unistd::{execve, execvp, fork, ForkResult};
-                    use std::{
-                        ffi::{CStr, CString, NulError},
-                        result::Result as StdResult,
-                    };
-
-                    debug!(
-                        "proc.spawn (unix): original='{}', resolved='{}'",
-                        command, resolved
-                    );
-
-                    let parts: Vec<&str> = resolved.split_whitespace().collect();
-                    if parts.is_empty() {
-                        error!("proc.spawn (unix): empty command after resolve");
-                        return Err(mlua::Error::external("spawn: empty command string"));
-                    }
-
-                    let cstrings: Vec<CString> = parts
-                        .iter()
-                        .map(|s| CString::new(*s))
-                        .collect::<StdResult<Vec<CString>, NulError>>()
-                        .map_err(|e| {
-                            error!(
-                                "proc.spawn (unix): failed to build argv for '{}': {}",
-                                resolved, e
-                            );
-                            mlua::Error::external(e)
-                        })?;
-
-                    let prog = &cstrings[0];
-                    let argv: Vec<&CStr> = cstrings.iter().map(|s| s.as_c_str()).collect();
-
-                    let prog_str = prog.to_string_lossy();
-                    let is_path_like = prog_str.starts_with("./")
-                        || prog_str.starts_with("../")
-                        || prog_str.contains('/')
-                        || prog_str.starts_with(".\\")
-                        || prog_str.starts_with("..\\")
-                        || prog_str.contains('\\');
-
-                    debug!(
-                        "proc.spawn (unix): prog='{}', is_path_like={}",
-                        prog_str, is_path_like
-                    );
-
-                    match unsafe { fork() } {
-                        Ok(ForkResult::Parent { child }) => {
-                            let pid: i32 = child.as_raw();
-                            debug!("proc.spawn (unix): parent, child pid={}", pid);
-                            result_table.set("pid", pid)?;
-                            Ok(result_table)
-                        }
-                        Ok(ForkResult::Child) => {
-                            debug!(
-                                "proc.spawn (unix): child, using {}",
-                                if is_path_like { "execve" } else { "execvp" }
-                            );
-
-                            if is_path_like {
-                                let env_cstrings: Vec<CString> = std::env::vars_os()
-                                    .filter_map(|(k, v)| {
-                                        let mut kv = k.into_string().ok()?;
-                                        kv.push('=');
-                                        kv.push_str(&v.into_string().ok()?);
-                                        CString::new(kv).ok()
-                                    })
-                                    .collect();
-                                let envp: Vec<&CStr> =
-                                    env_cstrings.iter().map(|s| s.as_c_str()).collect();
-
-                                match execve(prog, &argv, &envp) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        eprintln!("execve failed for '{}': {e}", resolved);
-                                        error!(
-                                            "proc.spawn (unix): execve failed for '{}': {}",
-                                            resolved, e
-                                        );
-                                        std::process::exit(127);
-                                    }
-                                }
-                            } else {
-                                match execvp(prog, &argv) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        eprintln!("execvp failed for '{}': {e}", resolved);
-                                        error!(
-                                            "proc.spawn (unix): execvp failed for '{}': {}",
-                                            resolved, e
-                                        );
-                                        std::process::exit(127);
-                                    }
-                                }
-                            }
-                            unreachable!("execve/execvp should not return on success");
-                        }
-                        Err(e) => {
-                            error!("proc.spawn (unix): fork failed: {}", e);
-                            Err(mlua::Error::external(format!("fork failed: {e}")))
-                        }
+                    use std::os::unix::process::CommandExt;
+                    unsafe {
+                        cmd.pre_exec(|| {
+                            libc::setsid();
+                            Ok(())
+                        });
                     }
                 }
+
+                // Spawn the process
+                let child = cmd.spawn().map_err(|e| {
+                    error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
+                    mlua::Error::external(format!("spawn failed: {}", e))
+                })?;
+
+                let pid = child.id();
+                debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                // Forget the child to prevent waiting on drop (true detachment)
+                std::mem::forget(child);
+
+                result_table.set("pid", pid)?;
+                Ok(result_table)
             }
         })?,
     )?;
@@ -1512,5 +1371,39 @@ mod tests {
         let result = resolve_spawn_command("./myapp arg1 arg2", None);
         // Should preserve the relative path
         assert!(result.contains("./myapp") || result.contains("myapp"));
+    }
+
+    #[test]
+    fn test_resolve_spawn_command_multiple_relative_paths() {
+        use std::env;
+        
+        // Test with multiple relative paths in arguments
+        let temp_dir = env::temp_dir();
+        let result = resolve_spawn_command("./myapp ./input.txt ./output.txt", Some(&temp_dir));
+        
+        // Should not contain any "./" - all should be resolved
+        assert!(!result.contains("./"), "Result should not contain './' after resolution: {}", result);
+        
+        // Should contain resolved paths
+        assert!(result.contains("myapp"));
+        assert!(result.contains("input.txt"));
+        assert!(result.contains("output.txt"));
+    }
+
+    #[test]
+    fn test_resolve_spawn_command_backslash_paths() {
+        use std::env;
+        
+        // Test with backslash relative paths (Windows-style)
+        let temp_dir = env::temp_dir();
+        let input = r".\myapp.exe .\file.txt";  // Use raw string to have literal backslashes
+        let result = resolve_spawn_command(input, Some(&temp_dir));
+        
+        // Should not contain any ".\" - all should be resolved
+        assert!(!result.contains(r".\"), "Result should not contain '.\\' after resolution: {}", result);
+        
+        // Should contain resolved paths
+        assert!(result.contains("myapp"));
+        assert!(result.contains("file.txt"));
     }
 }
