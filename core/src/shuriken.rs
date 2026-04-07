@@ -30,7 +30,9 @@ pub struct ShurikenMetadata {
     pub id: String,
     pub version: String,
     #[serde(rename = "script-path")]
-    pub script_path: PathBuf,
+    pub script_path: Option<PathBuf>,
+    #[serde(rename = "import-script")]
+    pub import_script: Option<PathBuf>,
     #[serde(rename = "type")]
     pub shuriken_type: String,
 }
@@ -81,35 +83,38 @@ impl Shuriken {
             .map_err(|e| format!("Failed to create .ninja directory: {}", e))?;
         let lock_path = lock_dir.join("shuriken.lck");
 
-        let full_script_path = self.resolve_script_path(&self.metadata.script_path, shuriken_dir);
+        if self.metadata.shuriken_type == "daemon"
+            && let Some(script_path) = &self.metadata.script_path
+        {
+            let full_script_path = self.resolve_script_path(script_path, shuriken_dir);
 
-        let stem = full_script_path
-            .file_stem()
-            .ok_or_else(|| "Invalid script path".to_string())?
-            .to_string_lossy()
-            .to_string();
-        let compiled_path = lock_dir.join(format!("{stem}.ns"));
+            let stem = full_script_path
+                .file_stem()
+                .ok_or_else(|| "Invalid script path".to_string())?
+                .to_string_lossy()
+                .to_string();
+            let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-        if let Some(mgr) = mgr {
-            engine
-                .execute_function("start", &compiled_path, Some(shuriken_dir), Some(mgr))
-                .map_err(|e| format!("Script start failed: {}", e))?;
+            if let Some(mgr) = mgr {
+                engine
+                    .execute_function("start", &compiled_path, Some(shuriken_dir), Some(mgr))
+                    .map_err(|e| format!("Script start failed: {}", e))?;
+            }
+
+            let lockfile_data = json!({
+                "name": self.metadata.name,
+                "type": "Script",
+            });
+
+            atomic_write_json(&lock_path, &lockfile_data).await?;
         }
-
-        let lockfile_data = json!({
-            "name": self.metadata.name,
-            "type": "Script",
-        });
-
-        atomic_write_json(&lock_path, &lockfile_data).await?;
-
         Ok(())
     }
 
     pub async fn lockpick(&self, root_path: &Path) -> anyhow::Result<()> {
         let root_path = root_path
             .join("shurikens")
-            .join(&self.metadata.name)
+            .join(&self.metadata.name.to_lowercase())
             .join(".ninja");
 
         if root_path.join("shuriken.lck").exists() {
@@ -130,7 +135,9 @@ impl Shuriken {
             }
 
             // Construct full path to the shuriken folder
-            let shuriken_path = root_path.join("shurikens").join(&self.metadata.name);
+            let shuriken_path = root_path
+                .join("shurikens")
+                .join(&self.metadata.name.to_lowercase());
 
             // Ensure the directory exists
             fs::create_dir_all(&shuriken_path).await?;
@@ -161,27 +168,31 @@ impl Shuriken {
         shuriken_dir: &Path,
         mgr: Option<ShurikenManager>,
     ) -> Result<(), String> {
-        info!("Shuriken {} is importing data!", &self.metadata.name);
+        info!(
+            "Shuriken {} is importing data! (if there is any)",
+            &self.metadata.name
+        );
 
         let lock_dir = shuriken_dir.join(".ninja");
         tokio::fs::create_dir_all(&lock_dir)
             .await
             .map_err(|e| format!("Failed to create .ninja directory: {}", e))?;
 
-        let full_script_path = self.resolve_script_path(&self.metadata.script_path, shuriken_dir);
+        if let Some(import_script) = &self.metadata.import_script {
+            let full_script_path = self.resolve_script_path(import_script, shuriken_dir);
 
-        let stem = full_script_path
-            .file_stem()
-            .ok_or_else(|| "Invalid script".to_string())?
-            .to_string_lossy()
-            .to_string();
-        let lock_dir = shuriken_dir.join(".ninja");
-        let compiled_path = lock_dir.join(format!("{stem}.ns"));
+            let stem = full_script_path
+                .file_stem()
+                .ok_or_else(|| "Invalid script".to_string())?
+                .to_string_lossy()
+                .to_string();
+            let lock_dir = shuriken_dir.join(".ninja");
+            let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-        engine
-            .execute_function("import", &compiled_path, Some(shuriken_dir), mgr)
-            .map_err(|e| e.to_string())?;
-
+            engine
+                .execute_function("import", &compiled_path, Some(shuriken_dir), mgr)
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -202,28 +213,31 @@ impl Shuriken {
         info!("Stopping shuriken {}", self.metadata.name);
         let lock_path = shuriken_dir.join(".ninja").join("shuriken.lck");
 
-        let full_script_path = self.resolve_script_path(&self.metadata.script_path, shuriken_dir);
+        if self.metadata.shuriken_type == "daemon"
+            && let Some(script_path) = &self.metadata.script_path
+        {
+            let full_script_path = self.resolve_script_path(script_path, shuriken_dir);
 
-        let stem = full_script_path
-            .file_stem()
-            .ok_or_else(|| "Invalid script".to_string())?
-            .to_string_lossy()
-            .to_string();
-        let lock_dir = shuriken_dir.join(".ninja");
-        let compiled_path = lock_dir.join(format!("{stem}.ns"));
+            let stem = full_script_path
+                .file_stem()
+                .ok_or_else(|| "Invalid script".to_string())?
+                .to_string_lossy()
+                .to_string();
+            let lock_dir = shuriken_dir.join(".ninja");
+            let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-        if let Some(mgr) = mgr {
-            engine
-                .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
-                .map_err(|e| format!("Script stop failed: {}", e))?;
+            if let Some(mgr) = mgr {
+                engine
+                    .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
+                    .map_err(|e| format!("Script stop failed: {}", e))?;
+            }
+
+            if lock_path.exists() {
+                tokio::fs::remove_file(&lock_path)
+                    .await
+                    .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
+            }
         }
-
-        if lock_path.exists() {
-            tokio::fs::remove_file(&lock_path)
-                .await
-                .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
-        }
-
         Ok(())
     }
 }

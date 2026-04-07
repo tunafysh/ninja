@@ -321,15 +321,36 @@ def export_dist():
     # ----------------------------------------
     # 2. Add shurikenctl Linux binary only
     # ----------------------------------------
-    shuri = root / "target" / "release" / "shurikenctl"
-    if shuri.exists() and shuri.is_file():
-        shutil.copy2(shuri, dist_dir / "shurikenctl")
+    shurikenctl = root / "target" / "release" / "shurikenctl"
+    if shurikenctl.exists() and shurikenctl.is_file():
+        shutil.copy2(shurikenctl, dist_dir / "shurikenctl")
         print_status("Info", "Included Linux shurikenctl → dist/shurikenctl")
     else:
         print_status("Warn", "Linux shurikenctl binary not found")
 
     print_status("Info", "Dist export completed.")
 
+def install():
+    """
+    Install the CLI binary to /usr/local/bin or equivalent (POSIX only).
+    """
+    host_target = detect_target()
+    src = Path("target") / "release" / f"shurikenctl-{host_target}"
+    if not src.exists():
+        print_status("Err", f"CLI binary not found at {src}. Build it first.")
+        return
+    if os.name == "posix":
+        dest = Path("/usr/local/bin/shurikenctl")
+    else:
+        print_status("Err", "Installation is only supported on POSIX systems.")
+        return
+
+    shutil.copy2(src, dest)
+
+    src.chmod(0o755)
+    dest.chmod(0o755)
+
+    print_status("Info", f"Installed {src.name} → {dest}")
 
 # ===== CLI Entrypoint =====
 def main():
@@ -353,6 +374,10 @@ def main():
     )
     parser.add_argument(
         "--gui-only", action="store_true", help="Build only the GUI."
+    )
+
+    parser.add_argument(
+        "install", action="store_true", help="Install the built CLI binary to /usr/local/bin or equivalent."
     )
 
     args = parser.parse_args()

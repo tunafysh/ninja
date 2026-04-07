@@ -365,7 +365,7 @@ ffi_async!(ninja_remove_shuriken_async, |m: &mut ShurikenManager, n| {
 // ========================
 
 #[unsafe(no_mangle)]
-/// Forge a shuriken from metadata JSON and source path.
+/// Forge a shuriken from metadata JSON and source path and optionally output dir.
 ///
 /// # Safety
 /// `mgr` must be valid, `meta_json` and `src_path` must be valid C strings.
@@ -374,6 +374,7 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
     meta_json: *const c_char,
     src_path: *const c_char,
+    output_dir: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
     let manager = match unsafe { mgr_from_ptr(mgr) } {
@@ -416,7 +417,14 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
             return -1;
         }
     };
-    match RUNTIME.block_on(manager.forge(meta, src)) {
+    let output_dir_opt: Option<PathBuf> = if output_dir.is_null() {
+        None
+    } else {
+        Some(PathBuf::from(unsafe {
+            CStr::from_ptr(output_dir).to_string_lossy().to_string()
+        }))
+    };
+    match RUNTIME.block_on(manager.forge(meta, src, output_dir_opt)) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("Forge failed: {}", e);

@@ -1,25 +1,22 @@
 use ::log::info;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
-use dialoguer::{Input, Select, theme::ColorfulTheme};
 use ninja::{
     VERSION,
     common::{
         config::{
-            ShurikenReference, find_shuriken_in_registries,
-            get_shuriken_info, resolve_shuriken_url,
+            ShurikenReference, find_shuriken_in_registries, get_shuriken_info, resolve_shuriken_url,
         },
         registry::ArmoryItem,
-        types::{ArmoryMetadata, FieldValue, ShurikenState},
+        types::{ArmoryMetadata, ShurikenState},
     },
     manager::ShurikenManager,
     shuriken::{Shuriken, ShurikenConfig, ShurikenMetadata},
 };
-use ninja_api::server;
+use ninja_http::server;
 use ninja_mcp::server as mcpserver;
 use owo_colors::OwoColorize;
 use std::{
-    collections::HashMap,
     env,
     fs::{File, create_dir_all},
     io::Write,
@@ -34,6 +31,9 @@ use log::setup_logger;
 
 mod repl;
 use repl::repl_mode;
+
+mod prompts;
+use prompts::{collect_forge_metadata, collect_new_shuriken_input};
 
 #[derive(Parser)]
 #[command(name = "ninja")]
@@ -138,6 +138,9 @@ pub struct ForgeArgs {
     /// optional path to something like forge-options.json to skip inputs (CI friendly)
     #[arg(short = 'c', long)]
     pub options: Option<PathBuf>,
+    /// optional output path
+    #[arg(short = 'o', long)]
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -265,102 +268,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(Commands::New) => {
-            let theme = ColorfulTheme::default();
+            let input = collect_new_shuriken_input()?;
+            let shuriken_name = input.name.clone();
 
-            println!("{}", "Manifest section".bold().blue());
-
-            let name: String = Input::with_theme(&theme)
-                .with_prompt("Enter the name of the shuriken")
-                .interact_text()?;
-
-            let id: String = Input::with_theme(&theme)
-                .with_prompt("Enter the service name")
-                .interact_text()?;
-
-            let version: String = Input::with_theme(&theme)
-                            .with_prompt("Enter the version of the shuriken (this is required if you're planning to upload to Armory)")
-                            .allow_empty(true)
-                            .interact_text()?;
-
-            // ===== Script path prompt =====
-            let script_path: String = Input::with_theme(&theme)
-                .with_prompt("Enter the script path")
-                .interact_text()?;
-
-            let script_path = PathBuf::from(script_path);
-
-            // ===== Shuriken type prompt (tagged struct) =====
-            let shuriken_options = ["daemon", "executable"];
-            let choice = Select::with_theme(&theme)
-                .with_prompt("Enter the shuriken type")
-                .items(&shuriken_options)
-                .default(0)
-                .interact()?;
-
-            // ===== Config section =====
-
-            println!("{}", "Config section".bold().blue());
-            let config_enabled = dialoguer::Confirm::with_theme(&theme)
-                .with_prompt("Add config?")
-                .default(false)
-                .interact()?;
-
-            let (conf_path, options) = if config_enabled {
-                let conf_input: String = Input::with_theme(&theme)
-                    .with_prompt("Enter config path for the templater to output (e.g. for Apache 'conf/httpd.conf')")
-                    .interact_text()?;
-
-                let conf_path = PathBuf::from(conf_input);
-
-                // Ask whether to add configuration options interactively
-                let add_options = dialoguer::Confirm::with_theme(&theme)
-                    .with_prompt("Add configuration options?")
-                    .default(false)
-                    .interact()?;
-
-                let mut options_map: Option<HashMap<String, FieldValue>> = None;
-
-                if add_options {
-                    let mut map = HashMap::new();
-
-                    loop {
-                        let key: String = Input::with_theme(&theme)
-                            .with_prompt("Enter option key (leave empty to finish)")
-                            .allow_empty(true)
-                            .interact_text()?;
-
-                        if key.trim().is_empty() {
-                            break;
-                        }
-
-                        let value: String = Input::with_theme(&theme)
-                            .with_prompt("Enter value for this key")
-                            .interact_text()?;
-
-                        let value: FieldValue = FieldValue::from(value);
-
-                        map.insert(key, value);
-                    }
-
-                    options_map = Some(map);
-                }
-
-                (Some(conf_path), options_map)
-            } else {
-                (None, None)
-            };
-
-            println!("{}", format!("Generating manifest for '{}'", name).bold());
+            println!(
+                "{}",
+                format!("Generating manifest for '{}'", shuriken_name).bold()
+            );
 
             let manifest = Shuriken {
                 metadata: ShurikenMetadata {
-                    name: name.clone(),
-                    id: id.clone(),
-                    version,
-                    script_path: script_path.clone(),
-                    shuriken_type: shuriken_options[choice].to_string(),
+                    name: input.name.clone(),
+                    id: input.id,
+                    version: input.version,
+                    script_path: Some(input.script_path.clone()),
+                    import_script: None,
+                    shuriken_type: input.shuriken_type,
                 },
-                config: conf_path.map(|path| ShurikenConfig {
+                config: input.config_path.map(|path| ShurikenConfig {
                     config_path: path,
                     options: None,
                 }),
@@ -368,14 +293,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tools: None,
             };
 
-            create_dir_all(format!("shurikens/{}/.ninja", name)).unwrap_or_else(|_| {
-                eprintln!("Failed to create directory for shuriken '{}'", name);
+            create_dir_all(format!("shurikens/{}/.ninja", shuriken_name)).unwrap_or_else(|_| {
+                eprintln!(
+                    "Failed to create directory for shuriken '{}'",
+                    shuriken_name
+                );
                 exit(1);
             });
 
-            env::set_current_dir(format!("shurikens/{}/.ninja", name))?;
+            env::set_current_dir(format!("shurikens/{}/.ninja", shuriken_name))?;
 
-            if let Some(opts) = options {
+            if let Some(opts) = input.options {
                 let serialized_options = toml::ser::to_string_pretty(&opts)?;
                 fs::write("config.tmpl", "").await?;
                 fs::write("options.toml", serialized_options).await?;
@@ -383,32 +311,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let manifest_path = PathBuf::from("manifest.toml");
             let mut file = File::create(&manifest_path).unwrap_or_else(|_| {
-                eprintln!("Failed to create manifest file for shuriken '{}'", name);
+                eprintln!(
+                    "Failed to create manifest file for shuriken '{}'",
+                    shuriken_name
+                );
                 exit(1);
             });
 
-            if let Some(parent) = script_path.parent() {
+            if let Some(parent) = input.script_path.parent() {
                 fs::create_dir_all(parent).await?;
             }
             fs::write(
-                    &script_path,
+                    &input.script_path,
                     "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
                 )
                 .await?;
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
-                eprintln!("Failed to serialize manifest for shuriken '{}'", name);
+                eprintln!(
+                    "Failed to serialize manifest for shuriken '{}'",
+                    shuriken_name
+                );
                 exit(1);
             });
 
             file.write_all(toml_content.as_bytes()).unwrap_or_else(|_| {
-                eprintln!("Failed to write manifest file for shuriken '{}'", name);
+                eprintln!(
+                    "Failed to write manifest file for shuriken '{}'",
+                    shuriken_name
+                );
                 exit(1);
             });
 
             env::set_current_dir(&manager.root_path)?;
 
-            println!("Manifest for '{}' generated successfully!", name);
+            println!("Manifest for '{}' generated successfully!", shuriken_name);
         }
         Some(Commands::Configure(args)) => {
             info!("Configuring shuriken {}", args.shuriken);
@@ -428,7 +365,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             manager.install(&args.path).await?;
         }
         Some(Commands::Forge(args)) => {
-            use dialoguer::{Input, theme::ColorfulTheme};
             use serde_json::from_str;
             use tokio::fs;
 
@@ -441,127 +377,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // No need to manually create "blacksmith" here,
                 // `forge` already ensures the directory exists.
-                manager.forge(metadata, args.path).await?;
+                manager.forge(metadata, args.path, args.output).await?;
             } else {
-                let theme = ColorfulTheme::default();
-
-                let name: String = Input::with_theme(&theme)
-                    .with_prompt("Enter the name of the shuriken")
-                    .interact_text()?;
-
-                let id: String = Input::with_theme(&theme)
-                    .with_prompt("Enter the id for this shuriken (Apache -> httpd)")
-                    .interact_text()?;
-
-                let platform: String = Input::with_theme(&theme)
-                    .with_prompt(
-                        "Enter the platform this shuriken was designed for \
-                             (target triple is preferred but something like \
-                             windows-x86_64 is allowed)",
-                    )
-                    .interact_text()?;
-
-                let version: String = Input::with_theme(&theme)
-                    .with_prompt(
-                        "Enter the version for this shuriken \
-                             (semver is preferred but anything with numbers will suffice)",
-                    )
-                    .interact_text()?;
-
-                let postinstall: Option<PathBuf> = Input::<String>::with_theme(&theme)
-                        .with_prompt(
-                            "Path for postinstall script (starts from the path you provided as argument, optional)",
-                        )
-                        .allow_empty(true)
-                        .interact_text()
-                        .ok()
-                        .and_then(|s| {
-                            let s = s.trim();
-                            if s.is_empty() {
-                                None
-                            } else {
-                                Some(PathBuf::from(s))
-                            }
-                        });
-
-                let description: Option<String> = Input::<String>::with_theme(&theme)
-                        .with_prompt(
-                            "Description for the shuriken (will be displayed on the install menu, optional)",
-                        )
-                        .allow_empty(true)
-                        .interact_text()
-                        .ok()
-                        .and_then(|s| {
-                            let s = s.trim().to_string();
-                            if s.is_empty() { None } else { Some(s) }
-                        });
-
-                let synopsis: Option<String> = Input::<String>::with_theme(&theme)
-                        .with_prompt(
-                            "Synopsis (short description) for the shuriken (will be displayed on the install menu, optional)",
-                        )
-                        .allow_empty(true)
-                        .interact_text()
-                        .ok()
-                        .and_then(|s| {
-                            let s = s.trim().to_string();
-                            if s.is_empty() { None } else { Some(s) }
-                        });
-
-                let authors: Option<Vec<String>> = Input::<String>::with_theme(&theme)
-                    .with_prompt("Authors of this shuriken (optional, comma-separated)")
-                    .allow_empty(true)
-                    .interact_text()
-                    .ok()
-                    .map(|s| {
-                        s.split(',')
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                            .map(String::from)
-                            .collect::<Vec<_>>()
-                    })
-                    .and_then(|v| if v.is_empty() { None } else { Some(v) });
-
-                let repository: Option<String> = Input::<String>::with_theme(&theme)
-                    .with_prompt("The repository URL for this shuriken (optional)")
-                    .allow_empty(true)
-                    .interact_text()
-                    .ok()
-                    .and_then(|s| {
-                        let s = s.trim().to_string();
-                        if s.is_empty() { None } else { Some(s) }
-                    });
-
-                let license: Option<String> = Input::<String>::with_theme(&theme)
-                    .with_prompt(
-                        "The license or licenses the software in this shuriken use \
-                             (GPL, MIT or anything similar, optional)",
-                    )
-                    .allow_empty(true)
-                    .interact_text()
-                    .ok()
-                    .and_then(|s| {
-                        let s = s.trim().to_string();
-                        if s.is_empty() { None } else { Some(s) }
-                    });
-
-                println!("{}", format!("Generating metadata for '{}'", &name).bold());
-
-                let metadata = ArmoryMetadata {
-                    name,
-                    id,
-                    platform,
-                    version,
-                    postinstall,
-                    description,
-                    authors,
-                    license,
-                    synopsis,
-                    repository,
-                };
+                let metadata = collect_forge_metadata()?;
 
                 println!("{}", "Creating shuriken...".bold());
-                manager.forge(metadata, args.path).await?;
+                manager.forge(metadata, args.path, args.output).await?;
             }
         }
         Some(Commands::Remove(args)) => {
@@ -611,7 +432,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             registry: registry_name.clone(),
                                             shuriken: shuriken_ref.clone(),
                                         };
-                                        match find_shuriken_in_registries(&config.registries, &item_ref).await {
+                                        match find_shuriken_in_registries(
+                                            &config.registries,
+                                            &item_ref,
+                                        )
+                                        .await
+                                        {
                                             Ok((item, _)) => {
                                                 if let ArmoryItem::Shuriken { url, .. } = item {
                                                     let resolved_url =

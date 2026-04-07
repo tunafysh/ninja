@@ -1,8 +1,9 @@
 use log::{error, info};
 use ninja::backup::{create_backup, restore_backup, CompressionType};
 use ninja::common::config::NinjaConfig;
+use ninja::common::registry::ArmoryItem;
 use std::{collections::HashMap, io::Read, path::PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
 
@@ -26,39 +27,49 @@ pub struct ShurikenWithStatus {
 #[tauri::command]
 pub async fn start_shuriken(
     name: &str,
-    manager: State<'_, Mutex<ShurikenManager>>,
+    app: AppHandle,
 ) -> Result<(), String> {
     info!("Starting shuriken: {}", name);
-    let manager = manager.lock().await;
-    match manager.start(name).await {
-        Ok(_) => {
-            info!("Shuriken {} started successfully.", name);
-            Ok(())
-        }
-        Err(e) => {
-            error!("Failed to start shuriken {}: {}", name, e);
-            Err(format!("Failed to start shuriken: {}", e))
-        }
-    }
+    let name = name.to_string();
+    let app = app.clone();
+
+    std::thread::spawn(move || {
+        tauri::async_runtime::block_on(async move {
+            let manager: State<'_, Mutex<ShurikenManager>> = app.state();
+            let manager = manager.lock().await;
+
+            match manager.start(&name).await {
+                Ok(_) => info!("Shuriken {} started successfully.", name),
+                Err(e) => error!("Failed to start shuriken {}: {}", name, e),
+            }
+        });
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn stop_shuriken(
     name: &str,
-    manager: State<'_, Mutex<ShurikenManager>>,
+    app: AppHandle,
 ) -> Result<(), String> {
     info!("Stopping shuriken: {}", name);
-    let manager = manager.lock().await;
-    match manager.stop(name).await {
-        Ok(_) => {
-            info!("Shuriken {} stopped successfully.", name);
-            Ok(())
-        }
-        Err(e) => {
-            error!("Failed to stop shuriken {}: {}", name, e);
-            Err(format!("Failed to stop shuriken: {}", e))
-        }
-    }
+    let name = name.to_string();
+    let app = app.clone();
+
+    std::thread::spawn(move || {
+        tauri::async_runtime::block_on(async move {
+            let manager: State<'_, Mutex<ShurikenManager>> = app.state();
+            let manager = manager.lock().await;
+
+            match manager.stop(&name).await {
+                Ok(_) => info!("Shuriken {} stopped successfully.", name),
+                Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
+            }
+        });
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -351,8 +362,16 @@ pub async fn config_exists(manager: State<'_, Mutex<ShurikenManager>>) -> Result
     let manager = manager.lock().await;
     if manager.root_path.join("config.toml").exists() {
         Ok(true)
-    }
-    else {
+    } else {
         Ok(false)
     }
+}
+
+#[tauri::command]
+pub async fn registry_get_all_shurikens(
+    manager: tauri::State<'_, Mutex<ShurikenManager>>,
+) -> Result<Vec<ArmoryItem>, String> {
+    let manager = manager.lock().await;
+    let result = manager.registry_get_all_shurikens().await;
+    Ok(result)
 }

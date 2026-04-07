@@ -98,5 +98,5 @@ root = {
 
 print(json.dumps(root, indent=4))
 
-with open("latest.json", "w", encoding="utf-8") as f:
+with open("../latest.json", "w", encoding="utf-8") as f:
     json.dump(root, f, indent=4)

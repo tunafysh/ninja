@@ -958,25 +958,77 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     proc_module.set(
         "kill_name",
         lua.create_function(|_, name: String| {
-            #[cfg(windows)]
-            {
-                debug!("proc.kill_name: name='{}'", name);
-                let result = kill_process_by_name(&name);
-                debug!("proc.kill_name: result={} for name='{}'", result, name);
-                Ok(result)
-            }
+            debug!("proc.kill_name: name='{}'", name);
+            let result = kill_process_by_name(&name);
+            debug!("proc.kill_name: result={} for name='{}'", result, name);
+            Ok(result)
+        })?,
+    )?;
 
-            #[cfg(not(windows))]
-            {
-                debug!("proc.kill_name: name='{}'", name);
-                let result = kill_process_by_name(&name);
-                debug!("proc.kill_name: result={} for name='{}'", result, name);
+    // =============== proc.exec (synchronous exec with output) ===============
+    proc_module.set(
+        "exec",
+        lua.create_function({
+            let proc_cwd = proc_cwd.clone();
+            move |lua, args: mlua::Value| {
+                let (command, capture_output): (String, bool) = match args {
+                    mlua::Value::String(s) => (s.to_str()?.to_string(), true),
+                    mlua::Value::Table(t) => {
+                        let cmd: String = t.get("command")
+                            .or_else(|_| t.get(1))?;
+                        let capture: bool = t.get("capture").unwrap_or(true);
+                        (cmd, capture)
+                    }
+                    _ => return Err(mlua::Error::external(
+                        "exec requires string or table with 'command' field"
+                    )),
+                };
+
+                debug!("proc.exec: command='{}', capture={}", command, capture_output);
+                
+                let cwd_opt = proc_cwd.as_deref();
+                let resolved = resolve_spawn_command(&command, cwd_opt);
+                
+                let mut cmd = if cfg!(windows) {
+                    let mut c = Command::new("cmd");
+                    c.args(["/C", &resolved]);
+                    c
+                } else {
+                    let mut c = Command::new("sh");
+                    c.args(["-c", &resolved]);
+                    c
+                };
+
+                if let Some(cwd) = cwd_opt {
+                    cmd.current_dir(cwd);
+                }
+
+                let output = if capture_output {
+                    cmd.output()
+                } else {
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .output()
+                }.map_err(|e| {
+                    error!("proc.exec: failed to execute '{}': {}", resolved, e);
+                    mlua::Error::external(e)
+                })?;
+
+                let result = lua.create_table()?;
+                result.set("exit_code", output.status.code().unwrap_or(-1))?;
+                result.set("success", output.status.success())?;
+                
+                if capture_output {
+                    result.set("stdout", String::from_utf8_lossy(&output.stdout).to_string())?;
+                    result.set("stderr", String::from_utf8_lossy(&output.stderr).to_string())?;
+                }
+
                 Ok(result)
             }
         })?,
     )?;
 
-    // =============== proc.list (currently empty) ===============
     proc_module.set("list", lua.create_table()?)?;
 
     debug!("make_proc_module: done");

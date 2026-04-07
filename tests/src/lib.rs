@@ -152,8 +152,9 @@ mod ninja_api_integration_tests {
                 name: "test_script".into(),
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
-                script_path: PathBuf::from("dummy.ns"),
+                script_path: Some(PathBuf::from("dummy.ns")),
                 shuriken_type: "daemon".into(),
+                import_script: None,
             },
             config: None,
             logs: None,
@@ -210,8 +211,9 @@ mod ninja_api_integration_tests {
             name: "test".into(),
             id: "test-id".into(),
             version: "1.0.0".to_string(),
-            script_path: PathBuf::from("script.ns"),
+            script_path: Some(PathBuf::from("script.ns")),
             shuriken_type: "daemon".into(),
+            import_script: None,
         };
 
         assert_eq!(metadata.name, "test");

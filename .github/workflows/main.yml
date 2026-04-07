@@ -62,7 +62,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          uv run build.py
+          uv run scripts/build.py
 
       # ----------------------------
       # Windows build
@@ -76,7 +76,7 @@ jobs:
           cd GUI
           pnpm install
           cd ..
-          uv run build.py
+          uv run scripts\build.py
 
       # ----------------------------
       # Linux builds via Docker

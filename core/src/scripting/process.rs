@@ -20,43 +20,74 @@ impl DetachedProcess {
         {
             use std::os::windows::process::CommandExt;
             const DETACHED_PROCESS: u32 = 0x00000008;
-            command.creation_flags(DETACHED_PROCESS);
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+            command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
         }
 
         #[cfg(unix)]
         {
-            use libc;
             use std::os::unix::process::CommandExt;
             unsafe {
                 command.pre_exec(|| {
-                    libc::setsid(); // detach fully
+                    libc::setsid();
                     Ok(())
                 });
             }
         }
 
-        let child = command.spawn()?; // fire & forget
-        Ok(Self { pid: child.id() })
+        let mut child = command.spawn()?;
+        let pid = child.id();
+        
+        #[cfg(unix)]
+        {
+            std::mem::forget(child);
+        }
+        
+        #[cfg(windows)]
+        {
+            std::mem::forget(child);
+        }
+        
+        Ok(Self { pid })
     }
 
-    /// Kill the detached process by PID
+    /// Attempt graceful termination before forcefully killing
     pub fn kill(&self) -> io::Result<()> {
         #[cfg(unix)]
         {
             use nix::sys::signal::{Signal, kill};
             use nix::unistd::Pid;
+            use std::thread;
+            use std::time::Duration;
 
-            kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL).map_err(io::Error::other)
+            let pid = Pid::from_raw(self.pid as i32);
+            
+            if kill(pid, Signal::SIGTERM).is_ok() {
+                for _ in 0..10 {
+                    thread::sleep(Duration::from_millis(100));
+                    if kill(pid, None).is_err() {
+                        return Ok(());
+                    }
+                }
+            }
+            
+            kill(pid, Signal::SIGKILL).map_err(io::Error::other)
         }
 
         #[cfg(windows)]
         {
+            use windows::Win32::Foundation::CloseHandle;
             use windows::Win32::System::Threading::*;
 
             unsafe {
-                let handle = OpenProcess(PROCESS_TERMINATE, false, self.pid);
-                TerminateProcess(handle?, 1)?;
-                Ok(())
+                let handle = OpenProcess(PROCESS_TERMINATE, false, self.pid)
+                    .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
+                
+                let result = TerminateProcess(handle, 1)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
+                
+                let _ = CloseHandle(handle);
+                result
             }
         }
     }

@@ -112,10 +112,12 @@ pub async fn find_shuriken_in_registries(
     registries: &HashMap<String, String>,
     reference: &ShurikenReference,
 ) -> Result<(ArmoryItem, String), anyhow::Error> {
-
-    let registry_url = registries
-        .get(&reference.registry)
-        .ok_or_else(|| anyhow::anyhow!("Registry {} does not exist in the config.", &reference.registry))?;
+    let registry_url = registries.get(&reference.registry).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Registry {} does not exist in the config.",
+            &reference.registry
+        )
+    })?;
 
     let registry = fetch_registry(registry_url).await?;
 
@@ -195,8 +197,11 @@ pub async fn resolve_download_url(
     registries: &HashMap<String, String>,
     reference: &ShurikenReference,
 ) -> Result<String, anyhow::Error> {
-    if !registries.contains_key(&reference.registry){
-        return Err(anyhow::anyhow!("Registry {} not found in config.", &reference.registry))
+    if !registries.contains_key(&reference.registry) {
+        return Err(anyhow::anyhow!(
+            "Registry {} not found in config.",
+            &reference.registry
+        ));
     }
 
     let registry = fetch_registry(&reference.registry).await?;
@@ -214,12 +219,14 @@ pub async fn resolve_download_url(
                 reference.shuriken,
                 reference.registry
             )
-        })?;
+        })?
+        .to_owned()
+        .resolve();
 
     let shuriken_url = match shuriken {
         ArmoryItem::Shuriken { url, .. } => url,
         _ => return Err(anyhow::anyhow!("Bundles do not have direct download URLs")),
     };
 
-    resolve_shuriken_url(&reference.registry, shuriken_url)
+    resolve_shuriken_url(&reference.registry, &shuriken_url)
 }

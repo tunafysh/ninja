@@ -1,5 +1,5 @@
 [package]
-name = "ninja"
+name = "ninja-app"
 description = "A control panel similar to XAMPP"
 authors = ["Hanan Smani"]
 license = "Ninja End User License Agreement (2025)"

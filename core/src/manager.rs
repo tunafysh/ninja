@@ -1,7 +1,7 @@
 use crate::{
     common::{
         config::NinjaConfig,
-        registry::download_shuriken,
+        registry::{ArmoryItem, download_shuriken, get_shurikens_from_registries},
         types::{ArmoryMetadata, FieldValue, ShurikenState},
     },
     scripting::{NinjaEngine, dsl::DslContext},
@@ -46,7 +46,6 @@ impl ManagedProcess {
         self.child.id()
     }
 
-    /// Attempt to check if the process is still running. Returns `Ok(true)` when running.
     pub fn is_running_sync(&mut self) -> bool {
         match self.child.try_wait() {
             Ok(Some(_)) => false,
@@ -55,18 +54,13 @@ impl ManagedProcess {
         }
     }
 
-    /// Kill and await the child process.
     pub async fn kill_and_wait(&mut self) -> Result<()> {
-        // kill() is synchronous (returns io::Result), wait is async
-        self.child
-            .kill()
-            .await
-            .map_err(|e| Error::msg(e.to_string()))?;
-        let _ = self
-            .child
-            .wait()
-            .await
-            .map_err(|e| Error::msg(e.to_string()))?;
+        if !self.is_running_sync() {
+            return Ok(());
+        }
+
+        self.child.kill().await?;
+        self.child.wait().await?;
         Ok(())
     }
 }
@@ -315,8 +309,13 @@ impl ShurikenManager {
         }
     }
 
-    pub async fn forge(&self, meta: ArmoryMetadata, path: PathBuf) -> Result<()> {
-        let output = self.root_path.join("blacksmith");
+    pub async fn forge(
+        &self,
+        meta: ArmoryMetadata,
+        path: PathBuf,
+        output: Option<PathBuf>,
+    ) -> Result<()> {
+        let output = output.unwrap_or_else(|| self.root_path.join("blacksmith"));
         if !output.exists() {
             fs::create_dir_all(&output).await?;
         }
@@ -395,6 +394,14 @@ impl ShurikenManager {
         Ok(())
     }
 
+    pub async fn reset_engine(&self) -> Result<()> {
+        let new_engine = NinjaEngine::new()
+            .await
+            .map_err(|e| Error::msg(e.to_string()))?;
+        *self.engine.lock().await = new_engine; // don't ask i need to reset the engine everytime i run scripts in gui.
+        Ok(())
+    }
+
     // -------------------- Installation functions --------------------
 
     pub async fn install(&self, path: &Path) -> Result<()> {
@@ -415,7 +422,8 @@ impl ShurikenManager {
         reference: &crate::common::config::ShurikenReference,
     ) -> Result<()> {
         let registries = &self.config.read().await.registries;
-        let download_url = crate::common::config::resolve_download_url(registries, reference).await?;
+        let download_url =
+            crate::common::config::resolve_download_url(registries, reference).await?;
         info!(
             "Installing shuriken {} from {}",
             reference.shuriken, download_url
@@ -531,6 +539,19 @@ impl ShurikenManager {
         Ok(())
     }
 
+    pub async fn registry_get_all_shurikens(&self) -> Vec<ArmoryItem> {
+        let registries: Vec<String> = self
+            .config
+            .read()
+            .await
+            .registries
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let shurikens = get_shurikens_from_registries(&registries).await;
+        shurikens
+    }
+
     // -------------------- Project management API --------------------
 
     pub async fn get_projects(&self) -> Result<Vec<String>> {
@@ -601,29 +622,51 @@ impl ShurikenManager {
         Ok(())
     }
 
-    /// Check whether a tracked process is still running.
     pub async fn is_process_running(&self, proc_name: &str) -> Result<bool> {
         let procs = self.processes.read().await;
         if let Some(proc_arc) = procs.get(proc_name) {
             let mut guard = proc_arc.lock().await;
-            Ok(guard.is_running_sync())
+            let is_running = guard.is_running_sync();
+            drop(guard);
+            drop(procs);
+            
+            if !is_running {
+                self.processes.write().await.remove(proc_name);
+            }
+            
+            Ok(is_running)
         } else {
             Ok(false)
         }
     }
 
-    /// List tracked processes and their basic info.
     pub async fn list_processes(&self) -> Result<Vec<(String, Option<u32>, bool)>> {
-        let procs = self.processes.read().await;
         let mut out = Vec::new();
-        for (name, arc_proc) in procs.iter() {
-            let mut guard = arc_proc.lock().await;
-            out.push((name.clone(), guard.id(), guard.is_running_sync()));
+        let mut dead_processes = Vec::new();
+        
+        {
+            let procs = self.processes.read().await;
+            for (name, arc_proc) in procs.iter() {
+                let mut guard = arc_proc.lock().await;
+                let is_running = guard.is_running_sync();
+                out.push((name.clone(), guard.id(), is_running));
+                
+                if !is_running {
+                    dead_processes.push(name.clone());
+                }
+            }
         }
+        
+        if !dead_processes.is_empty() {
+            let mut procs = self.processes.write().await;
+            for name in dead_processes {
+                procs.remove(&name);
+            }
+        }
+        
         Ok(out)
     }
 
-    /// Kill all tracked processes. This is the async cleanup you should call on shutdown.
     pub async fn cleanup(&self) {
         let keys: Vec<String> = {
             let procs = self.processes.read().await;

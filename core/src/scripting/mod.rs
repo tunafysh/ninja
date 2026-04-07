@@ -9,6 +9,7 @@ use modules::{
     make_env_module, make_fs_module, make_modules, make_ninja_module, make_proc_module,
     make_shell_module,
 };
+use regex::Regex;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,6 +17,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct NinjaEngine {
+    preload_dir: Option<PathBuf>,
     #[cfg(feature = "testing")]
     pub lua: Lua,
     #[cfg(not(feature = "testing"))]
@@ -23,13 +25,47 @@ pub struct NinjaEngine {
 }
 
 impl NinjaEngine {
+    fn load_preloads(&self) -> Result<(), LuaError> {
+        let Some(dir) = &self.preload_dir else {
+            return Ok(());
+        };
+
+        let lua = &self.lua;
+        let globals = lua.globals();
+
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        for entry in std::fs::read_dir(dir)? {
+            let path = entry?.path();
+
+            if path.extension().and_then(|s| s.to_str()) != Some("ns") {
+                continue;
+            }
+
+            let re = Regex::new(r"export\s+function\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+                .map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+
+            let name = path.file_stem().unwrap().to_string_lossy();
+            let raw_script =
+                std::fs::read_to_string(&path)?.replace("export function", "function __mod.");
+            let transformed = re.replace_all(&raw_script, "function __mod.$1").to_string();
+            let script = format!("local __mod = {{}}; {}\nreturn __mod", transformed);
+
+            let module: mlua::Table = lua.load(&script).eval()?;
+
+            globals.set(name.as_ref(), module)?;
+        }
+
+        Ok(())
+    }
     /// Default constructor: modules are created with no fixed cwd.
     /// All existing call sites can keep using this.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let lua = Lua::new();
         let globals = lua.globals();
 
-        // NOTE: this is the adapted call: pass cwd down to make_modules
         let (fs, env, shell, time, json, http, log, proc) = make_modules(&lua, None).await?;
 
         globals.set("fs", fs)?;
@@ -41,7 +77,14 @@ impl NinjaEngine {
         globals.set("log", log)?;
         globals.set("proc", proc)?;
 
-        Ok(Self { lua })
+        let engine = Self {
+            lua,
+            preload_dir: Some(PathBuf::from(".ninja/preloads")),
+        };
+
+        engine.load_preloads()?;
+
+        Ok(engine)
     }
 
     /// Execute a raw Lua script in the global environment.

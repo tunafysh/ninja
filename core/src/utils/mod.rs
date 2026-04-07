@@ -74,41 +74,29 @@ pub fn kill_process_by_pid(pid: u32) -> bool {
     };
 
     unsafe {
-        // First check if the process exists by trying to query it
         let query_handle = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
             Ok(h) => h,
-            Err(_) => {
-                // Process doesn't exist or we don't have access - either way, we can't kill it
-                return false;
-            }
+            Err(_) => return false,
         };
 
         if query_handle.is_invalid() {
             return false;
         }
 
-        // Close the query handle before trying to terminate
         let _ = CloseHandle(query_handle);
 
-        // Now try to open with terminate rights
         let terminate_handle = match OpenProcess(PROCESS_TERMINATE, false, pid) {
             Ok(h) => h,
-            Err(_) => {
-                // Process exists but we can't terminate it (permissions issue)
-                return false;
-            }
+            Err(_) => return false,
         };
 
         if terminate_handle.is_invalid() {
             return false;
         }
 
-        // Attempt termination with exit code 1
-        let terminate_result = TerminateProcess(terminate_handle, 1);
+        let result = TerminateProcess(terminate_handle, 1).is_ok();
         let _ = CloseHandle(terminate_handle);
-
-        // Return true if termination succeeded, false otherwise
-        terminate_result.is_ok()
+        result
     }
 }
 
@@ -129,17 +117,16 @@ pub fn kill_process_by_name(name: &str) -> bool {
             Ok(s) => s,
             Err(_) => return false,
         };
+        
         if snapshot.is_invalid() {
             return false;
         }
 
         let mut entry = PROCESSENTRY32W::default();
-
         let mut any_killed = false;
 
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
-                // exe file name is in szExeFile (null-terminated UTF-16)
                 let len = entry
                     .szExeFile
                     .iter()
@@ -150,8 +137,7 @@ pub fn kill_process_by_name(name: &str) -> bool {
                 let exe = exe_os.to_string_lossy().to_string();
 
                 if exe.to_ascii_lowercase() == target {
-                    let pid = entry.th32ProcessID;
-                    if kill_process_by_pid(pid) {
+                    if kill_process_by_pid(entry.th32ProcessID) {
                         any_killed = true;
                     }
                 }
@@ -172,38 +158,29 @@ pub fn kill_process_by_pid(pid: u32) -> bool {
     use nix::errno::Errno;
     use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
+    use std::thread;
+    use std::time::Duration;
 
     let pid = Pid::from_raw(pid as i32);
 
-    // First check if the process exists using signal 0 (no-op signal)
     match kill(pid, None) {
         Ok(_) => {
-            // Process exists, try SIGTERM first for graceful shutdown
-            match kill(pid, Signal::SIGTERM) {
-                Ok(_) => true,
-                Err(Errno::EPERM) => {
-                    // Permission denied - process exists but we can't kill it
-                    false
-                }
-                Err(_) => {
-                    // Other error (like ESRCH - process disappeared), try SIGKILL as fallback
-                    kill(pid, Signal::SIGKILL).is_ok()
+            if kill(pid, Signal::SIGTERM).is_ok() {
+                for _ in 0..10 {
+                    thread::sleep(Duration::from_millis(100));
+                    if kill(pid, None).is_err() {
+                        return true;
+                    }
                 }
             }
-        }
-        Err(Errno::ESRCH) => {
-            // Process doesn't exist
-            false
-        }
-        Err(Errno::EPERM) => {
-            // Process exists but we don't have permission even to check it
-            // Try SIGKILL anyway in case we have partial permissions
+            
             kill(pid, Signal::SIGKILL).is_ok()
         }
-        Err(_) => {
-            // Other errors - process likely doesn't exist or is inaccessible
-            false
+        Err(Errno::ESRCH) => false,
+        Err(Errno::EPERM) => {
+            kill(pid, Signal::SIGKILL).is_ok()
         }
+        Err(_) => false,
     }
 }
 

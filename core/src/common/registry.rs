@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use futures_util::future::join_all;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -36,6 +37,38 @@ pub enum ArmoryItem {
     },
 }
 
+impl ArmoryItem {
+    pub fn resolve(self) -> Self {
+        match self {
+            ArmoryItem::Shuriken {
+                name,
+                version,
+                description,
+                author,
+                license,
+                platforms,
+                url,
+            } => {
+                let resolved_partial_url = url.replace("{{ os }}", std::env::consts::OS);
+                let resolved_url =
+                    resolved_partial_url.replace("{{ arch }}", std::env::consts::ARCH);
+
+                ArmoryItem::Shuriken {
+                    name,
+                    version,
+                    description,
+                    author,
+                    license,
+                    platforms,
+                    url: resolved_url,
+                }
+            }
+
+            ArmoryItem::Bundle { .. } => self,
+        }
+    }
+}
+
 pub fn is_absolute_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -58,4 +91,29 @@ pub async fn download_shuriken(path: &Path, url: &str) -> Result<(), anyhow::Err
     let bytes = response.bytes().await?.to_vec();
     fs::write(path, &bytes).await?;
     Ok(())
+}
+
+pub async fn get_shurikens_from_registries(urls: &[String]) -> Vec<ArmoryItem> {
+    let futures = urls.iter().map(|url| fetch_registry(url));
+    let results = join_all(futures).await;
+
+    let mut all_shurikens = Vec::new();
+
+    for result in results {
+        match result {
+            Ok(registry) => {
+                let shurikens = registry
+                    .shurikens
+                    .into_iter()
+                    .filter(|item| matches!(item, ArmoryItem::Shuriken { .. }));
+
+                all_shurikens.extend(shurikens);
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch registry: {}", e);
+            }
+        }
+    }
+
+    all_shurikens
 }

@@ -171,7 +171,8 @@ pub fn run() {
             toggle_dev_mode,
             remove_registry,
             toggle_updates,
-            config_exists
+            config_exists,
+            registry_get_all_shurikens
         ]);
 
     builder
