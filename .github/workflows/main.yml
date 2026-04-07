@@ -140,7 +140,7 @@ jobs:
           
       - name: Generate latest.json
         run: |
-          uv run version.py
+           uv run scripts/version.py
       # -------------------------------------------------
       # Build release body (signatures)
       # -------------------------------------------------

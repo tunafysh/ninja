@@ -39,7 +39,7 @@ jobs:
         run: uv python install
 
       - name: Build CLI (so the GUI doesn't complain)
-        run: uv run build.py --cli-only
+        run: uv run scripts/build.py --cli-only
 
       - name: Run unit tests
         run: cargo test
