@@ -60,7 +60,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           cd GUI
-          pnpm install
+          pnpm install --no-frozen-lockfile
           cd ..
           uv run scripts/build.py
 
@@ -74,7 +74,7 @@ jobs:
         run: |
           $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
           cd GUI
-          pnpm install
+          pnpm install --no-frozen-lockfile
           cd ..
           uv run scripts\build.py
 

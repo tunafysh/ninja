@@ -17,6 +17,7 @@ type ShurikenState = {
   startShuriken: (name: string) => Promise<void>
   stopShuriken: (name: string) => Promise<void>
   configureShuriken: (name: string) => Promise<void>
+  removeShuriken: (name: string) => Promise<void>
   clearError: () => void
 }
 
@@ -140,6 +141,20 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
     }
   },
 
+  removeShuriken: async (name: string) => {
+    const { handleError, setLoadingDebounced, refreshShurikens } = get()
+    
+    setLoadingDebounced(true)
+    try {
+      await invoke("remove_shuriken", { name })
+      toast.success(`Removed ${name}`)
+    } catch (err) {
+      handleError(err, `removeShuriken(${name})`)
+    } finally {
+      setLoadingDebounced(false)
+      refreshShurikens()
+    }
+  },
   // -------------------------
   // CLEAR ERROR
   // -------------------------

@@ -349,6 +349,7 @@ impl ShurikenManager {
 
         // ---- 3) Compute signature = SHA256(archive) ----
         let mut hasher = Sha256::new();
+        
         hasher.update(&archive);
         let signature = hasher.finalize(); // 32 bytes
 
@@ -493,10 +494,6 @@ impl ShurikenManager {
 
         // Verify checksum = SHA256(MAGIC + metadata_len + metadata + archive_len + archive)
         let mut hasher = Sha256::new();
-        hasher.update(magic_buf);
-        hasher.update(meta_len_buf);
-        hasher.update(&metadata_buf);
-        hasher.update(archive_len_buf);
         hasher.update(&archive_buf);
         let digest = hasher.finalize();
 

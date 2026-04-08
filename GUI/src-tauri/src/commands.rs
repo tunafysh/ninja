@@ -267,6 +267,18 @@ pub async fn install_shuriken(
     Ok(())
 }
 
+pub async fn remove_shuriken(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    name: String,
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+    manager
+        .remove(&name)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn backup_now(
     level: CompressionType,

@@ -44,7 +44,7 @@ ENV CI=true
 RUN uv sync --frozen || true
 
 # --- Install frontend dependencies ---
-RUN pnpm i -C ./GUI
+RUN pnpm i --no-frozen-lockfile -C ./GUI
 
 # --- Run Python xtask build instead of cargo xtask ---
 RUN --mount=type=secret,id=tauri_key \
