@@ -321,10 +321,15 @@ def export_dist():
         ".json",
     }
 
+    blacklist = {
+        "data.tar.gz",
+        "control.tar.gz",
+    }
+
     for bundle_root in existing_bundle_roots:
         for path in bundle_root.rglob("*"):
             # Skip directories unless it's a macOS .app bundle
-            if path.is_dir() and path.suffix != ".app":
+            if path.is_dir() and path.suffix != ".app" and path.name not in blacklist:
                 continue
 
             # Allow .app bundles

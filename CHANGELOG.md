@@ -75,3 +75,6 @@
 
 ## 1.12.2
 * a lot of changes that im too lazy to list so please look at the commits pls
+
+## 1.12.3
+* Added Lua stdlib besides my custom one.
