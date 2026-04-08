@@ -41,11 +41,12 @@ def run(cmd: list[str], desc: str):
 
 
 # ===== Build logic =====
-def target_dir(target: str | None) -> Path:
+def target_dir(target: str | None, warn_missing: bool = True) -> Path:
     base = Path("target")
     tdir = base / target / "release" if target else base / "release"
     if not tdir.exists():
-        print_status("Warn", f"{tdir} not found, using target/release")
+        if warn_missing:
+            print_status("Warn", f"{tdir} not found, using target/release")
         return base / "release"
     return tdir
 
@@ -74,7 +75,7 @@ def find_and_place_binary(extra_args=None):
     Find any shurikenctl[.exe] in target/**/release and copy it to GUI/src-tauri/binaries.
     Renames the binary to include the target triple, using --target if specified.
     """
-    root = Path(__file__).parent.resolve()
+    root = Path(__file__).resolve().parent.parent
     binaries_dir = (root / "GUI" / "src-tauri" / "binaries").resolve()
     binaries_dir.mkdir(parents=True, exist_ok=True)
 
@@ -168,8 +169,8 @@ def build_cli(args):
     target = extract_target(args) or detect_target()
     print_status("Info", f"Target: {target}")
 
-    release = target_dir(target)
-    host_release = target_dir(None)
+    release = target_dir(target, warn_missing=False)
+    host_release = target_dir(None, warn_missing=False)
     bins = [("shurikenctl", "ninja-cli")]
     ext = ".exe" if os.name == "nt" else ""
 
@@ -180,11 +181,26 @@ def build_cli(args):
             "Build",
         )
 
-        built = release / f"{bin_name}{ext}"
-        if not built.exists():
-            print_status("Warn", f"{built} not found, scanning target/**/release...")
-            find_and_place_binary(args)
-            return
+        built_candidates = [
+            release / f"{bin_name}{ext}",
+            Path("target") / target / "release" / f"{bin_name}{ext}",
+            host_release / f"{bin_name}{ext}",
+        ]
+        built = next((p for p in built_candidates if p.exists()), None)
+        if built is None:
+            root = Path(__file__).resolve().parent.parent
+            discovered = sorted(
+                root.glob(f"target/**/release/{bin_name}{ext}"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if discovered:
+                built = discovered[0]
+                print_status("Info", f"Discovered built binary at {built}")
+            else:
+                print_status("Warn", "Built binary not found in expected target paths; scanning target/**/release...")
+                find_and_place_binary(args)
+                return
 
         host_release.mkdir(parents=True, exist_ok=True)
         dest = host_release / f"{bin_name}{ext}"
@@ -267,7 +283,7 @@ def export_dist():
     Create a top-level dist/ folder and copy final Tauri bundle
     artifacts + shurikenctl Linux binary into it.
     """
-    root = Path(__file__).parent.resolve()
+    root = Path(__file__).resolve().parent.parent
     dist_dir = root / "dist"
 
     # Clean dist/
@@ -278,11 +294,18 @@ def export_dist():
     # -----------------------
     # 1. Collect Tauri bundles
     # -----------------------
-    bundle_root = root / "target" / "release" / "bundle"
+    bundle_roots = [
+        root / "target" / "release" / "bundle",
+        root / "target" / "debug" / "bundle",
+        root / "GUI" / "src-tauri" / "target" / "release" / "bundle",
+        root / "GUI" / "src-tauri" / "target" / "debug" / "bundle",
+    ]
+    bundle_roots.extend(root.glob("target/**/release/bundle"))
+    bundle_roots.extend((root / "GUI" / "src-tauri").glob("target/**/release/bundle"))
+    existing_bundle_roots = [p for p in bundle_roots if p.exists()]
 
-    if not bundle_root.exists():
-        print_status("Error", "Tauri bundle directory not found")
-        return
+    if not existing_bundle_roots:
+        print_status("Warn", "Tauri bundle directory not found; exporting CLI binaries only")
 
     allowed_exts = {
         ".msi",
@@ -298,33 +321,46 @@ def export_dist():
         ".json",
     }
 
-    for path in bundle_root.rglob("*"):
-        # Skip directories unless it's a macOS .app bundle
-        if path.is_dir() and path.suffix != ".app":
-            continue
+    for bundle_root in existing_bundle_roots:
+        for path in bundle_root.rglob("*"):
+            # Skip directories unless it's a macOS .app bundle
+            if path.is_dir() and path.suffix != ".app":
+                continue
 
-        # Allow .app bundles
-        if path.is_dir() and path.suffix == ".app":
-            dest = dist_dir / path.name
-            shutil.copytree(path, dest)
-            print_status("Info", f"Copied {path} → dist/{path.name}")
-            continue
+            # Allow .app bundles
+            if path.is_dir() and path.suffix == ".app":
+                dest = dist_dir / path.name
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(path, dest)
+                print_status("Info", f"Copied {path} → dist/{path.name}")
+                continue
 
-        # Allow files by extension
-        if path.is_file() and path.suffix in allowed_exts:
-            dest = dist_dir / path.name
-            shutil.copy2(path, dest)
-            print_status("Info", f"Copied {path} → dist/{path.name}")
+            # Allow files by extension
+            if path.is_file() and path.suffix in allowed_exts:
+                dest = dist_dir / path.name
+                shutil.copy2(path, dest)
+                print_status("Info", f"Copied {path} → dist/{path.name}")
 
     # ----------------------------------------
     # 2. Add shurikenctl Linux binary only
     # ----------------------------------------
-    shurikenctl = root / "target" / "release" / "shurikenctl"
-    if shurikenctl.exists() and shurikenctl.is_file():
-        shutil.copy2(shurikenctl, dist_dir / "shurikenctl")
-        print_status("Info", "Included Linux shurikenctl → dist/shurikenctl")
-    else:
-        print_status("Warn", "Linux shurikenctl binary not found")
+    shuriken_candidates = []
+    shuriken_candidates.extend((root / "target" / "release").glob("shurikenctl*"))
+    shuriken_candidates.extend(
+        (root / "GUI" / "src-tauri" / "binaries").glob("shurikenctl*")
+    )
+
+    copied_cli = 0
+    for binary in shuriken_candidates:
+        if binary.is_file():
+            dest = dist_dir / binary.name
+            shutil.copy2(binary, dest)
+            copied_cli += 1
+            print_status("Info", f"Included {binary.name} → dist/{binary.name}")
+
+    if copied_cli == 0:
+        print_status("Warn", "No shurikenctl binary found to include in dist")
 
     print_status("Info", "Dist export completed.")
 
@@ -378,7 +414,7 @@ def main():
         "--install", action="store_true", help="Install the built CLI binary to /usr/local/bin or equivalent."
     )
 
-    args = parser.parse_args()
+    args, passthrough = parser.parse_known_args()
     if args.clean:
         clean()
         return
@@ -389,26 +425,26 @@ def main():
 
     # please place args manually lol
     if args.libs_only:
-        build_lib(args=[])
+        build_lib(args=passthrough)
         return
 
     if args.cli_only:
-        build_cli(args=[])
+        build_cli(args=passthrough)
         export_dist()
         return
     
     if args.ffi_only:
-        build_ffi(args=[])
+        build_ffi(args=passthrough)
         return
 
     if args.gui_only:
-        build_gui(args=[])
+        build_gui(args=passthrough)
         export_dist()
         return
 
     # Default: build the cli and gui. 
-    build_cli(args=[])
-    build_gui(args=[])
+    build_cli(args=passthrough)
+    build_gui(args=passthrough)
     export_dist()
 
 
