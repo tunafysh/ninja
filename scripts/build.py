@@ -39,6 +39,7 @@ def run(cmd: list[str], desc: str):
         sys.exit(f"{desc} failed")
 
 
+
 # ===== Build logic =====
 def target_dir(target: str | None) -> Path:
     base = Path("target")

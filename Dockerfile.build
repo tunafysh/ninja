@@ -38,7 +38,6 @@ WORKDIR /build
 COPY . .
 
 ENV CI=true
-
 # --- Install Python deps (if you use a uv-managed project) ---
 # This will auto-detect pyproject.toml if it exists
 RUN uv sync --frozen || true
@@ -46,8 +45,8 @@ RUN uv sync --frozen || true
 # --- Install frontend dependencies ---
 RUN pnpm i --no-frozen-lockfile -C ./GUI
 
-# --- Run Python xtask build instead of cargo xtask ---
 RUN --mount=type=secret,id=tauri_key \
     --mount=type=cache,id=uv-cache,target=/build/target \
-    export TAURI_SIGNING_PRIVATE_KEY="$(cat /run/secrets/tauri_key)" && \
+    export TAURI_SIGNING_PRIVATE_KEY=$(cat /run/secrets/tauri_key) && \
+    echo "TAURI_SIGNING_PRIVATE_KEY is set." && \
     uv run scripts/build.py
