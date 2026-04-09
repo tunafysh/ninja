@@ -722,9 +722,15 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         "sh"
                     });
 
-                    if cfg!(windows) {
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
                         cmd.args(["/C", &resolved]);
-                    } else {
+                        cmd.creation_flags(0x08000000 | 0x00000008 | 0x00000200); // CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                    } 
+
+                    #[cfg(unix)]
+                    {
                         cmd.args(["-c", &resolved]);
                     }
 
@@ -747,14 +753,6 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                                 Ok(())
                             });
                         }
-                    }
-
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        const DETACHED_PROCESS: u32 = 0x00000008;
-                        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-                        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
                     }
 
                     let child = cmd.spawn().map_err(|e| {
