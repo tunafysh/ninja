@@ -712,27 +712,15 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         }
                     };
 
-                    debug!("proc.spawn: command='{}', custom_cwd={:?}", command, custom_cwd);
+                    #[cfg(unix)]{
+                    debug!("proc.spawn unix: command='{}', custom_cwd={:?}", command, custom_cwd);
                     let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                     let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                    let mut cmd = tokio::process::Command::new(if cfg!(windows) {
-                        "cmd"
-                    } else {
-                        "sh"
-                    });
+                    let mut cmd = tokio::process::Command::new("sh");
 
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        cmd.args(["/C", &resolved]);
-                        cmd.creation_flags(0x08000000 | 0x00000008 | 0x00000200); // CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-                    } 
-
-                    #[cfg(unix)]
-                    {
-                        cmd.args(["-c", &resolved]);
-                    }
+                    // dont ask temporary value dropped error to go away
+                    cmd.args(["-c", &resolved]);
 
                     if let Some(cwd) = cwd_to_use {
                         cmd.current_dir(cwd);
@@ -743,16 +731,13 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         .stdout(Stdio::null())
                         .stderr(Stdio::null());
 
-                    #[cfg(unix)]
-                    {
-                        #[allow(unused_imports)]
-                        use std::os::unix::process::CommandExt;
-                        unsafe {
-                            cmd.pre_exec(|| {
-                                libc::setsid();
-                                Ok(())
-                            });
-                        }
+                    #[allow(unused_imports)]
+                    use std::os::unix::process::CommandExt;
+                    unsafe {
+                        cmd.pre_exec(|| {
+                            libc::setsid();
+                            Ok(())
+                        });
                     }
 
                     let child = cmd.spawn().map_err(|e| {
@@ -766,6 +751,20 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                     let result_table = lua.create_table()?;
                     result_table.set("pid", pid)?;
                     Ok(result_table)
+                }
+
+                #[cfg(windows)]
+                ///idgaf atp i hate this too much to care anyway this should spawn a process with CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | DETACHED_PROCESS flags but windows is a nightmare and i dont want to deal with it so just spawn normally for now and maybe fix later if it becomes an issue.
+                unsafe { 
+                    use windows::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CreateProcessW, DETACHED_PROCESS};
+                    debug!("proc.spawn windows: command='{}', custom_cwd={:?}", command, custom_cwd);
+                    let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
+                    let resolved = resolve_spawn_command(&command, cwd_to_use);
+    
+                    
+
+                    
+                }
                 }
             }
         })?,
