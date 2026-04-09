@@ -19,7 +19,7 @@ windows = {version = "0.61.3", features = ["Win32", "Win32_System", "Win32_Syste
 [dependencies]
 chrono = { version = "0.4.41", default-features = false, features = ["now"]}
 log = { version = "0.4.27", default-features = false }
-mlua = { version = "0.11.1", default-features = false, features = ["anyhow", "luau", "serde", "send", "async", "vendored"] }
+mlua = { version = "0.11.1", default-features = false, features = ["anyhow", "lua54", "serde", "send", "async", "vendored"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.140" }
 regex = { version = "1.11.1", default-features = false }

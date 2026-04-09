@@ -74,7 +74,6 @@
 * Removed unnecessary error handling and platform-specific conditionals in process killing functions.
 
 ## 1.12.2
-* a lot of changes that im too lazy to list so please look at the commits pls
 
-## 1.12.3
-* Added Lua stdlib besides my custom one.
+* Switched the embedded Lua runtime from Luau to Lua 5.4.
+* Restricted engine initialization to `StdLib::ALL_SAFE` for safer defaults because debug wouldn't work for some reason idk atp but whatever also i did so many changes internally because ok to be honest this whole thing is a mess please help me i need help THIS IS A CRY FOR HELP.

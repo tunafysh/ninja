@@ -63,7 +63,7 @@ impl NinjaEngine {
     /// Default constructor: modules are created with no fixed cwd.
     /// All existing call sites can keep using this.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let lua = Lua::new_with(mlua::StdLib::ALL, mlua::LuaOptions::default())?;
+        let lua = Lua::new_with(mlua::StdLib::ALL_SAFE, mlua::LuaOptions::default())?;
         let globals = lua.globals();
 
         let (fs, env, shell, time, json, http, log, proc) = make_modules(&lua, None).await?;
