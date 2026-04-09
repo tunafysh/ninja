@@ -807,7 +807,7 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
 
                     CreateProcessW(
                         PCWSTR::null(),
-                        PWSTR(cmd_line_wide.as_mut_ptr()),
+                        Some(PWSTR(cmd_line_wide.as_mut_ptr())),
                         None,
                         None,
                         false,
