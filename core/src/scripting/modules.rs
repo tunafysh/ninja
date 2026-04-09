@@ -680,35 +680,6 @@ pub fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     Ok(shell_module)
 }
 
-#[cfg(windows)]
-fn format_win32_error(code: u32) -> String {
-    use windows::Win32::System::Diagnostics::Debug::{
-        FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
-    };
-    use windows::core::PWSTR;
-
-    let mut buf: [u16; 512] = [0; 512];
-
-    unsafe {
-        let len = FormatMessageW(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-            None,
-            code,
-            0,
-            PWSTR(buf.as_mut_ptr()),
-            buf.len() as u32,
-            None,
-        );
-
-        if len == 0 {
-            return format!("Unknown Win32 error {}", code);
-        }
-
-        let s = String::from_utf16_lossy(&buf[..len as usize]);
-        s.trim().to_string()
-    }
-}
-
 pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     debug!(
         "make_proc_module: base_cwd = {:?}",
@@ -716,88 +687,88 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     );
 
     let proc_module = lua.create_table()?;
-
     let proc_cwd: Option<PathBuf> = canonicalize_cwd(base_cwd);
-    debug!(
-        "make_proc_module: proc_cwd = {:?}",
-        proc_cwd.as_ref().map(|p| p.display().to_string())
-    );
 
     // =============== proc.spawn ===============
     proc_module.set(
         "spawn",
-        lua.create_function({
+        lua.create_async_function({
             let proc_cwd = proc_cwd.clone();
-            move |lua, command: String| {
-                debug!(
-                    "proc.spawn: command='{}', proc_cwd={:?}",
-                    command,
-                    proc_cwd.as_ref().map(|p| p.display().to_string())
-                );
-                let result_table = lua.create_table()?;
+            move |lua, args: mlua::Value| {
+                let proc_cwd = proc_cwd.clone();
+                async move {
+                    let (command, custom_cwd): (String, Option<PathBuf>) = match args {
+                        mlua::Value::String(s) => (s.to_str()?.to_string(), None),
+                        mlua::Value::Table(t) => {
+                            let cmd: String =
+                                t.get("command").or_else(|_| t.get(1))?;
+                            let cwd: Option<PathBuf> = t.get("cwd").ok();
+                            (cmd, cwd)
+                        }
+                        _ => {
+                            return Err(mlua::Error::external(
+                                "spawn requires string or table with 'command' field",
+                            ))
+                        }
+                    };
 
-                let cwd_opt = proc_cwd.as_deref();
-                let resolved = resolve_spawn_command(&command, cwd_opt);
+                    debug!("proc.spawn: command='{}', custom_cwd={:?}", command, custom_cwd);
+                    let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
+                    let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                debug!("proc.spawn: resolved command='{}'", resolved);
+                    let mut cmd = tokio::process::Command::new(if cfg!(windows) {
+                        "cmd"
+                    } else {
+                        "sh"
+                    });
 
-                // Use std::process::Command with proper detachment
-                use std::process::{Command, Stdio};
-
-                let mut cmd = if cfg!(windows) {
-                    let mut c = Command::new("cmd");
-                    c.args(["/C", &resolved]);
-                    c
-                } else {
-                    let mut c = Command::new("sh");
-                    c.args(["-c", &resolved]);
-                    c
-                };
-
-                // Set working directory if provided
-                if let Some(cwd) = cwd_opt {
-                    cmd.current_dir(cwd);
-                }
-
-                // Detach from stdio
-                cmd.stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null());
-
-                // Platform-specific detachment
-                #[cfg(windows)]
-                {
-                    use std::os::windows::process::CommandExt;
-                    const DETACHED_PROCESS: u32 = 0x00000008;
-                    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-                    cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-                }
-
-                #[cfg(unix)]
-                {
-                    use std::os::unix::process::CommandExt;
-                    unsafe {
-                        cmd.pre_exec(|| {
-                            libc::setsid();
-                            Ok(())
-                        });
+                    if cfg!(windows) {
+                        cmd.args(["/C", &resolved]);
+                    } else {
+                        cmd.args(["-c", &resolved]);
                     }
+
+                    if let Some(cwd) = cwd_to_use {
+                        cmd.current_dir(cwd);
+                    }
+
+                    // Configure for detached process
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+
+                    #[cfg(unix)]
+                    {
+                        #[allow(unused_imports)]
+                        use std::os::unix::process::CommandExt;
+                        unsafe {
+                            cmd.pre_exec(|| {
+                                libc::setsid();
+                                Ok(())
+                            });
+                        }
+                    }
+
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        const DETACHED_PROCESS: u32 = 0x00000008;
+                        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+                        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                    }
+
+                    let child = cmd.spawn().map_err(|e| {
+                        error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
+                        mlua::Error::external(format!("spawn failed: {}", e))
+                    })?;
+
+                    let pid = child.id().unwrap_or(0);
+                    debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                    let result_table = lua.create_table()?;
+                    result_table.set("pid", pid)?;
+                    Ok(result_table)
                 }
-
-                // Spawn the process
-                let child = cmd.spawn().map_err(|e| {
-                    error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
-                    mlua::Error::external(format!("spawn failed: {}", e))
-                })?;
-
-                let pid = child.id();
-                debug!("proc.spawn: spawned detached process with pid={}", pid);
-
-                // Forget the child to prevent waiting on drop (true detachment)
-                std::mem::forget(child);
-
-                result_table.set("pid", pid)?;
-                Ok(result_table)
             }
         })?,
     )?;
@@ -805,10 +776,10 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     // =============== proc.kill_pid ===============
     proc_module.set(
         "kill_pid",
-        lua.create_function(|_, pid: u32| {
+        lua.create_async_function(|_, pid: u32| async move {
             debug!("proc.kill_pid: pid={}", pid);
             let result = kill_process_by_pid(pid);
-            debug!("proc.kill_pid: result={} for pid={}", result, pid);
+            debug!("proc.kill_pid: result={}", result);
             Ok(result)
         })?,
     )?;
@@ -816,79 +787,107 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     // =============== proc.kill_name ===============
     proc_module.set(
         "kill_name",
-        lua.create_function(|_, name: String| {
+        lua.create_async_function(|_, name: String| async move {
             debug!("proc.kill_name: name='{}'", name);
             let result = kill_process_by_name(&name);
-            debug!("proc.kill_name: result={} for name='{}'", result, name);
+            debug!("proc.kill_name: result={}", result);
             Ok(result)
         })?,
     )?;
 
-    // =============== proc.exec (synchronous exec with output) ===============
+    // =============== proc.exec (async execution with optional timeout) ===============
     proc_module.set(
         "exec",
-        lua.create_function({
+        lua.create_async_function({
             let proc_cwd = proc_cwd.clone();
             move |lua, args: mlua::Value| {
-                let (command, capture_output): (String, bool) = match args {
-                    mlua::Value::String(s) => (s.to_str()?.to_string(), true),
-                    mlua::Value::Table(t) => {
-                        let cmd: String = t.get("command")
-                            .or_else(|_| t.get(1))?;
-                        let capture: bool = t.get("capture").unwrap_or(true);
-                        (cmd, capture)
+                let proc_cwd = proc_cwd.clone();
+                async move {
+                    let (command, timeout_secs, custom_cwd): (String, Option<u64>, Option<PathBuf>) = match args {
+                        mlua::Value::String(s) => (s.to_str()?.to_string(), None, None),
+                        mlua::Value::Table(t) => {
+                            let cmd: String =
+                                t.get("command").or_else(|_| t.get(1))?;
+                            let timeout: Option<u64> = t.get("timeout").ok();
+                            let cwd: Option<PathBuf> = t.get("cwd").ok();
+                            (cmd, timeout, cwd)
+                        }
+                        _ => {
+                            return Err(mlua::Error::external(
+                                "exec requires string or table with 'command' field",
+                            ))
+                        }
+                    };
+
+                    debug!(
+                        "proc.exec: command='{}', timeout={:?}, custom_cwd={:?}",
+                        command, timeout_secs, custom_cwd
+                    );
+
+                    let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
+                    let resolved = resolve_spawn_command(&command, cwd_to_use);
+
+                    let mut cmd = tokio::process::Command::new(if cfg!(windows) {
+                        "cmd"
+                    } else {
+                        "sh"
+                    });
+
+                    if cfg!(windows) {
+                        cmd.args(["/C", &resolved]);
+                    } else {
+                        cmd.args(["-c", &resolved]);
                     }
-                    _ => return Err(mlua::Error::external(
-                        "exec requires string or table with 'command' field"
-                    )),
-                };
 
-                debug!("proc.exec: command='{}', capture={}", command, capture_output);
-                
-                let cwd_opt = proc_cwd.as_deref();
-                let resolved = resolve_spawn_command(&command, cwd_opt);
-                
-                let mut cmd = if cfg!(windows) {
-                    let mut c = Command::new("cmd");
-                    c.args(["/C", &resolved]);
-                    c
-                } else {
-                    let mut c = Command::new("sh");
-                    c.args(["-c", &resolved]);
-                    c
-                };
+                    if let Some(cwd) = cwd_to_use {
+                        cmd.current_dir(cwd);
+                    }
 
-                if let Some(cwd) = cwd_opt {
-                    cmd.current_dir(cwd);
+                    cmd.stdout(Stdio::piped())
+                        .stderr(Stdio::piped());
+
+                    let mut child = cmd.spawn().map_err(|e| {
+                        error!("proc.exec: failed to spawn '{}': {}", resolved, e);
+                        mlua::Error::external(e)
+                    })?;
+
+                    // Execute with optional timeout
+                    let status = if let Some(timeout_s) = timeout_secs {
+                        let timeout = Duration::from_secs(timeout_s);
+                        debug!("proc.exec: using timeout {:?}", timeout);
+                        match tokio::time::timeout(timeout, child.wait()).await {
+                            Ok(Ok(status)) => status,
+                            Ok(Err(e)) => {
+                                error!("proc.exec: wait failed for '{}': {}", resolved, e);
+                                return Err(mlua::Error::external(e));
+                            }
+                            Err(_) => {
+                                warn!("proc.exec: timeout for '{}', terminating", resolved);
+                                let _ = child.kill().await;
+                                return Err(mlua::Error::external("Process timeout"));
+                            }
+                        }
+                    } else {
+                        child.wait().await.map_err(|e| {
+                            error!("proc.exec: wait failed for '{}': {}", resolved, e);
+                            mlua::Error::external(e)
+                        })?
+                    };
+
+                    let result = lua.create_table()?;
+                    result.set("success", status.success())?;
+                    result.set("exit_code", status.code().unwrap_or(-1))?;
+
+                    debug!(
+                        "proc.exec: completed '{}' with status: {:?}",
+                        resolved, status
+                    );
+
+                    Ok(result)
                 }
-
-                let output = if capture_output {
-                    cmd.output()
-                } else {
-                    cmd.stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .output()
-                }.map_err(|e| {
-                    error!("proc.exec: failed to execute '{}': {}", resolved, e);
-                    mlua::Error::external(e)
-                })?;
-
-                let result = lua.create_table()?;
-                result.set("exit_code", output.status.code().unwrap_or(-1))?;
-                result.set("success", output.status.success())?;
-                
-                if capture_output {
-                    result.set("stdout", String::from_utf8_lossy(&output.stdout).to_string())?;
-                    result.set("stderr", String::from_utf8_lossy(&output.stderr).to_string())?;
-                }
-
-                Ok(result)
             }
         })?,
     )?;
-
-    proc_module.set("list", lua.create_table()?)?;
 
     debug!("make_proc_module: done");
     Ok(proc_module)

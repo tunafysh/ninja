@@ -21,8 +21,6 @@ use std::{
     str,
     sync::Arc,
 };
-
-use tokio::process::{Child, Command};
 use tokio::{
     fs::{self, File},
     io::{AsyncReadExt, AsyncWriteExt},
@@ -34,36 +32,6 @@ const MAGIC: &[u8; 6] = b"HSRZEG";
 
 /// A thin wrapper around a spawned process. We keep it simple: the
 /// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
-#[derive(Debug)]
-pub struct ManagedProcess {
-    pub child: Child,
-    pub cmd: String,
-    pub args: Vec<String>,
-}
-
-impl ManagedProcess {
-    pub fn id(&self) -> Option<u32> {
-        self.child.id()
-    }
-
-    pub fn is_running_sync(&mut self) -> bool {
-        match self.child.try_wait() {
-            Ok(Some(_)) => false,
-            Ok(None) => true,
-            Err(_) => false,
-        }
-    }
-
-    pub async fn kill_and_wait(&mut self) -> Result<()> {
-        if !self.is_running_sync() {
-            return Ok(());
-        }
-
-        self.child.kill().await?;
-        self.child.wait().await?;
-        Ok(())
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct ShurikenManager {
@@ -72,8 +40,6 @@ pub struct ShurikenManager {
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
     pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
     pub config: Arc<RwLock<crate::common::config::NinjaConfig>>,
-    /// Manage runtime processes for services started by Ninja
-    pub processes: Arc<RwLock<HashMap<String, Arc<Mutex<ManagedProcess>>>>>,
 }
 
 impl ShurikenManager {
@@ -117,7 +83,6 @@ impl ShurikenManager {
             shurikens: Arc::new(RwLock::new(shurikens)),
             states: Arc::new(RwLock::new(states)),
             config,
-            processes: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -569,109 +534,5 @@ impl ShurikenManager {
             }
         }
         Ok(entries)
-    }
-
-    // -------------------- Process management API --------------------
-
-    /// Spawn a process and track it under `proc_name`.
-    /// `cmd` is the executable, `args` are arguments. `cwd` and `envs` are optional.
-    pub async fn spawn_process(
-        &self,
-        proc_name: &str,
-        cmd: &str,
-        args: &[String],
-        cwd: Option<PathBuf>,
-        envs: Option<HashMap<String, String>>,
-    ) -> Result<()> {
-        let mut command = Command::new(cmd);
-        command.args(args);
-        if let Some(c) = cwd {
-            command.current_dir(c);
-        }
-        if let Some(map) = envs {
-            for (k, v) in map.into_iter() {
-                command.env(k, v);
-            }
-        }
-
-        let child = command.spawn().map_err(|e| Error::msg(e.to_string()))?;
-
-        let managed = ManagedProcess {
-            child,
-            cmd: cmd.to_string(),
-            args: args.to_vec(),
-        };
-
-        self.processes
-            .write()
-            .await
-            .insert(proc_name.to_string(), Arc::new(Mutex::new(managed)));
-        Ok(())
-    }
-
-    /// Stop (kill + wait) a named process and remove it from tracking.
-    pub async fn stop_process(&self, proc_name: &str) -> Result<()> {
-        let maybe = { self.processes.write().await.remove(proc_name) };
-        if let Some(proc_arc) = maybe {
-            let mut guard = proc_arc.lock().await;
-            let _ = guard.kill_and_wait().await;
-        }
-        Ok(())
-    }
-
-    pub async fn is_process_running(&self, proc_name: &str) -> Result<bool> {
-        let procs = self.processes.read().await;
-        if let Some(proc_arc) = procs.get(proc_name) {
-            let mut guard = proc_arc.lock().await;
-            let is_running = guard.is_running_sync();
-            drop(guard);
-            drop(procs);
-            
-            if !is_running {
-                self.processes.write().await.remove(proc_name);
-            }
-            
-            Ok(is_running)
-        } else {
-            Ok(false)
-        }
-    }
-
-    pub async fn list_processes(&self) -> Result<Vec<(String, Option<u32>, bool)>> {
-        let mut out = Vec::new();
-        let mut dead_processes = Vec::new();
-        
-        {
-            let procs = self.processes.read().await;
-            for (name, arc_proc) in procs.iter() {
-                let mut guard = arc_proc.lock().await;
-                let is_running = guard.is_running_sync();
-                out.push((name.clone(), guard.id(), is_running));
-                
-                if !is_running {
-                    dead_processes.push(name.clone());
-                }
-            }
-        }
-        
-        if !dead_processes.is_empty() {
-            let mut procs = self.processes.write().await;
-            for name in dead_processes {
-                procs.remove(&name);
-            }
-        }
-        
-        Ok(out)
-    }
-
-    pub async fn cleanup(&self) {
-        let keys: Vec<String> = {
-            let procs = self.processes.read().await;
-            procs.keys().cloned().collect()
-        };
-
-        for k in keys {
-            let _ = self.stop_process(&k).await;
-        }
     }
 }

@@ -77,3 +77,7 @@
 
 * Switched the embedded Lua runtime from Luau to Lua 5.4.
 * Restricted engine initialization to `StdLib::ALL_SAFE` for safer defaults because debug wouldn't work for some reason idk atp but whatever also i did so many changes internally because ok to be honest this whole thing is a mess please help me i need help THIS IS A CRY FOR HELP.
+
+## 1.12.3
+
+* Fixed (hopefully) some of the quirks of the proc module. anyway also hopefully now process execution is non-blocking please be plsplspls

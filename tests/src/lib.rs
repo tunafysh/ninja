@@ -175,7 +175,6 @@ mod ninja_api_integration_tests {
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
-            processes: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let list = manager.list(false).await.unwrap();
@@ -195,14 +194,12 @@ mod ninja_api_integration_tests {
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
-            processes: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Verify manager initialization
         assert_eq!(manager.root_path, dir.path());
         assert!(manager.shurikens.read().await.is_empty());
         assert!(manager.states.read().await.is_empty());
-        assert!(manager.processes.read().await.is_empty());
     }
 
     #[tokio::test]
