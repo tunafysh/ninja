@@ -754,16 +754,87 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                 }
 
                 #[cfg(windows)]
-                ///idgaf atp i hate this too much to care anyway this should spawn a process with CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | DETACHED_PROCESS flags but windows is a nightmare and i dont want to deal with it so just spawn normally for now and maybe fix later if it becomes an issue.
-                unsafe { 
-                    use windows::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CreateProcessW, DETACHED_PROCESS};
+                // Spawn a detached process via CreateProcessW, using PowerShell as the shell
+                unsafe {
+                    use std::ffi::OsStr;
+                    use std::os::windows::ffi::OsStrExt;
+                    use windows::core::{PCWSTR, PWSTR};
+                    use windows::Win32::Foundation::CloseHandle;
+                    use windows::Win32::System::Threading::{
+                        CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, DETACHED_PROCESS,
+                        CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW,
+                    };
+
                     debug!("proc.spawn windows: command='{}', custom_cwd={:?}", command, custom_cwd);
                     let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                     let resolved = resolve_spawn_command(&command, cwd_to_use);
-    
-                    
 
-                    
+                    // Use PowerShell (not cmd.exe) to execute the command.
+                    // Escape backtick (PowerShell escape char), $ (variable interpolation),
+                    // and double-quote so the command survives the outer double-quoted string.
+                    let ps_escaped = resolved
+                        .replace('`', "``")
+                        .replace('$', "`$")
+                        .replace('"', "`\"");
+                    let ps_cmd = format!(
+                        "powershell.exe -NoProfile -NonInteractive -Command \"{}\"",
+                        ps_escaped
+                    );
+
+                    // CreateProcessW requires a mutable null-terminated UTF-16 command line
+                    let mut cmd_line_wide: Vec<u16> = OsStr::new(&ps_cmd)
+                        .encode_wide()
+                        .chain(std::iter::once(0))
+                        .collect();
+
+                    let cwd_wide: Option<Vec<u16>> = cwd_to_use.map(|p| {
+                        OsStr::new(p).encode_wide().chain(std::iter::once(0)).collect()
+                    });
+
+                    let mut startup_info = STARTUPINFOW {
+                        cb: std::mem::size_of::<STARTUPINFOW>() as u32,
+                        ..Default::default()
+                    };
+                    let mut process_info = PROCESS_INFORMATION::default();
+
+                    let creation_flags =
+                        CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+
+                    let cwd_pcwstr = match cwd_wide.as_ref() {
+                        Some(v) => PCWSTR(v.as_ptr()),
+                        None => PCWSTR::null(),
+                    };
+
+                    CreateProcessW(
+                        PCWSTR::null(),
+                        PWSTR(cmd_line_wide.as_mut_ptr()),
+                        None,
+                        None,
+                        false,
+                        creation_flags,
+                        None,
+                        cwd_pcwstr,
+                        &startup_info,
+                        &mut process_info,
+                    )
+                    .map_err(|e| {
+                        error!("proc.spawn: CreateProcessW failed for '{}': {}", resolved, e);
+                        mlua::Error::external(format!("spawn failed: {}", e))
+                    })?;
+
+                    let pid = process_info.dwProcessId;
+                    if let Err(e) = CloseHandle(process_info.hProcess) {
+                        warn!("proc.spawn: failed to close process handle for pid={}: {}", pid, e);
+                    }
+                    if let Err(e) = CloseHandle(process_info.hThread) {
+                        warn!("proc.spawn: failed to close thread handle for pid={}: {}", pid, e);
+                    }
+
+                    debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                    let result_table = lua.create_table()?;
+                    result_table.set("pid", pid)?;
+                    Ok(result_table)
                 }
                 }
             }
