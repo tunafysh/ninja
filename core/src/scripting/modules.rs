@@ -769,10 +769,16 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                     let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                     let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                    // Use PowerShell (not cmd.exe) to execute the command
+                    // Use PowerShell (not cmd.exe) to execute the command.
+                    // Escape backtick (PowerShell escape char), $ (variable interpolation),
+                    // and double-quote so the command survives the outer double-quoted string.
+                    let ps_escaped = resolved
+                        .replace('`', "``")
+                        .replace('$', "`$")
+                        .replace('"', "`\"");
                     let ps_cmd = format!(
                         "powershell.exe -NoProfile -NonInteractive -Command \"{}\"",
-                        resolved.replace('"', "\\\"")
+                        ps_escaped
                     );
 
                     // CreateProcessW requires a mutable null-terminated UTF-16 command line
@@ -817,8 +823,12 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                     })?;
 
                     let pid = process_info.dwProcessId;
-                    let _ = CloseHandle(process_info.hProcess);
-                    let _ = CloseHandle(process_info.hThread);
+                    if let Err(e) = CloseHandle(process_info.hProcess) {
+                        warn!("proc.spawn: failed to close process handle for pid={}: {}", pid, e);
+                    }
+                    if let Err(e) = CloseHandle(process_info.hThread) {
+                        warn!("proc.spawn: failed to close thread handle for pid={}: {}", pid, e);
+                    }
 
                     debug!("proc.spawn: spawned detached process with pid={}", pid);
 
