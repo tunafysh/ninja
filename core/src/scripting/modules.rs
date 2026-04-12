@@ -754,7 +754,7 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                 }
 
                 #[cfg(windows)]
-                // Spawn a detached process via CreateProcessW, using PowerShell as the shell
+                // Spawn a detached process directly via CreateProcessW without any shell
                 unsafe {
                     use std::ffi::OsStr;
                     use std::os::windows::ffi::OsStrExt;
@@ -769,20 +769,8 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                     let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                     let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                    // Use PowerShell (not cmd.exe) to execute the command.
-                    // Escape backtick (PowerShell escape char), $ (variable interpolation),
-                    // and double-quote so the command survives the outer double-quoted string.
-                    let ps_escaped = resolved
-                        .replace('`', "``")
-                        .replace('$', "`$")
-                        .replace('"', "`\"");
-                    let ps_cmd = format!(
-                        "powershell.exe -NoProfile -NonInteractive -Command \"{}\"",
-                        ps_escaped
-                    );
-
                     // CreateProcessW requires a mutable null-terminated UTF-16 command line
-                    let mut cmd_line_wide: Vec<u16> = OsStr::new(&ps_cmd)
+                    let mut cmd_line_wide: Vec<u16> = OsStr::new(&resolved)
                         .encode_wide()
                         .chain(std::iter::once(0))
                         .collect();
