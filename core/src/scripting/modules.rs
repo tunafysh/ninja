@@ -712,118 +712,82 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         }
                     };
 
-                    #[cfg(unix)]{
-                    debug!("proc.spawn unix: command='{}', custom_cwd={:?}", command, custom_cwd);
-                    let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
-                    let resolved = resolve_spawn_command(&command, cwd_to_use);
+                    #[cfg(unix)]
+                    {
+                        debug!("proc.spawn unix: command='{}', custom_cwd={:?}", command, custom_cwd);
+                        let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
+                        let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                    let mut cmd = tokio::process::Command::new("sh");
+                        let mut cmd = tokio::process::Command::new("sh");
+                        cmd.args(["-c", &resolved]);
 
-                    // dont ask temporary value dropped error to go away
-                    cmd.args(["-c", &resolved]);
+                        if let Some(cwd) = cwd_to_use {
+                            cmd.current_dir(cwd);
+                        }
 
-                    if let Some(cwd) = cwd_to_use {
-                        cmd.current_dir(cwd);
+                        cmd.stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null());
+
+                        // Create a new session so the child is fully detached
+                        unsafe {
+                            cmd.pre_exec(|| {
+                                libc::setsid();
+                                Ok(())
+                            });
+                        }
+
+                        let child = cmd.spawn().map_err(|e| {
+                            error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
+                            mlua::Error::external(format!("spawn failed: {}", e))
+                        })?;
+
+                        let pid = child.id().unwrap_or(0);
+                        debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                        let result_table = lua.create_table()?;
+                        result_table.set("pid", pid)?;
+                        Ok(result_table)
                     }
 
-                    // Configure for detached process
-                    cmd.stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null());
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
 
-                    #[allow(unused_imports)]
-                    use std::os::unix::process::CommandExt;
-                    unsafe {
-                        cmd.pre_exec(|| {
-                            libc::setsid();
-                            Ok(())
-                        });
+                        debug!("proc.spawn windows: command='{}', custom_cwd={:?}", command, custom_cwd);
+                        let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
+                        let resolved = resolve_spawn_command(&command, cwd_to_use);
+
+                        // Use cmd /C so shell commands and scripts work, matching proc.exec behaviour
+                        let mut cmd = std::process::Command::new("cmd");
+                        cmd.args(["/C", &resolved]);
+
+                        if let Some(cwd) = cwd_to_use {
+                            cmd.current_dir(cwd);
+                        }
+
+                        cmd.stdin(std::process::Stdio::null())
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null());
+
+                        // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                        const DETACHED_PROCESS: u32 = 0x0000_0008;
+                        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+                        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+
+                        let child = cmd.spawn().map_err(|e| {
+                            error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
+                            mlua::Error::external(format!("spawn failed: {}", e))
+                        })?;
+
+                        let pid = child.id();
+                        debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                        let result_table = lua.create_table()?;
+                        result_table.set("pid", pid)?;
+                        Ok(result_table)
                     }
-
-                    let child = cmd.spawn().map_err(|e| {
-                        error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
-                        mlua::Error::external(format!("spawn failed: {}", e))
-                    })?;
-
-                    let pid = child.id().unwrap_or(0);
-                    debug!("proc.spawn: spawned detached process with pid={}", pid);
-
-                    let result_table = lua.create_table()?;
-                    result_table.set("pid", pid)?;
-                    Ok(result_table)
-                }
-
-                #[cfg(windows)]
-                // Spawn a detached process directly via CreateProcessW without any shell
-                unsafe {
-                    use std::ffi::OsStr;
-                    use std::os::windows::ffi::OsStrExt;
-                    use windows::core::{PCWSTR, PWSTR};
-                    use windows::Win32::Foundation::CloseHandle;
-                    use windows::Win32::System::Threading::{
-                        CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, DETACHED_PROCESS,
-                        CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW,
-                    };
-
-                    debug!("proc.spawn windows: command='{}', custom_cwd={:?}", command, custom_cwd);
-                    let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
-                    let resolved = resolve_spawn_command(&command, cwd_to_use);
-
-                    // CreateProcessW requires a mutable null-terminated UTF-16 command line
-                    let mut cmd_line_wide: Vec<u16> = OsStr::new(&resolved)
-                        .encode_wide()
-                        .chain(std::iter::once(0))
-                        .collect();
-
-                    let cwd_wide: Option<Vec<u16>> = cwd_to_use.map(|p| {
-                        OsStr::new(p).encode_wide().chain(std::iter::once(0)).collect()
-                    });
-
-                    let mut startup_info = STARTUPINFOW {
-                        cb: std::mem::size_of::<STARTUPINFOW>() as u32,
-                        ..Default::default()
-                    };
-                    let mut process_info = PROCESS_INFORMATION::default();
-
-                    let creation_flags =
-                        CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
-
-                    let cwd_pcwstr = match cwd_wide.as_ref() {
-                        Some(v) => PCWSTR(v.as_ptr()),
-                        None => PCWSTR::null(),
-                    };
-
-                    CreateProcessW(
-                        PCWSTR::null(),
-                        Some(PWSTR(cmd_line_wide.as_mut_ptr())),
-                        None,
-                        None,
-                        false,
-                        creation_flags,
-                        None,
-                        cwd_pcwstr,
-                        &startup_info,
-                        &mut process_info,
-                    )
-                    .map_err(|e| {
-                        error!("proc.spawn: CreateProcessW failed for '{}': {}", resolved, e);
-                        mlua::Error::external(format!("spawn failed: {}", e))
-                    })?;
-
-                    let pid = process_info.dwProcessId;
-                    if let Err(e) = CloseHandle(process_info.hProcess) {
-                        warn!("proc.spawn: failed to close process handle for pid={}: {}", pid, e);
-                    }
-                    if let Err(e) = CloseHandle(process_info.hThread) {
-                        warn!("proc.spawn: failed to close thread handle for pid={}: {}", pid, e);
-                    }
-
-                    debug!("proc.spawn: spawned detached process with pid={}", pid);
-
-                    let result_table = lua.create_table()?;
-                    result_table.set("pid", pid)?;
-                    Ok(result_table)
-                }
                 }
             }
         })?,
