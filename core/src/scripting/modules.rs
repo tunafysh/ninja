@@ -758,9 +758,11 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                         let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                        // Use cmd /C so shell commands and scripts work, matching proc.exec behaviour
-                        let mut cmd = std::process::Command::new("cmd");
-                        cmd.args(["/C", &resolved]);
+                        // Split resolved command into executable and arguments for direct execution
+                        let mut parts = resolved.split_whitespace();
+                        let exe = parts.next().unwrap_or("");
+                        let mut cmd = std::process::Command::new(exe);
+                        cmd.args(parts);
 
                         if let Some(cwd) = cwd_to_use {
                             cmd.current_dir(cwd);
@@ -776,13 +778,18 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
                         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
 
-                        let child = cmd.spawn().map_err(|e| {
+                        let mut child = cmd.spawn().map_err(|e| {
                             error!("proc.spawn: failed to spawn '{}': {}", resolved, e);
                             mlua::Error::external(format!("spawn failed: {}", e))
                         })?;
 
                         let pid = child.id();
                         debug!("proc.spawn: spawned detached process with pid={}", pid);
+
+                        // Wait on the child in a background thread so the current thread isn't blocked
+                        std::thread::spawn(move || {
+                            let _ = child.wait();
+                        });
 
                         let result_table = lua.create_table()?;
                         result_table.set("pid", pid)?;
