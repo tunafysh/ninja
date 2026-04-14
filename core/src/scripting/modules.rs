@@ -758,9 +758,11 @@ pub fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
                         let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
                         let resolved = resolve_spawn_command(&command, cwd_to_use);
 
-                        // Use cmd /C so shell commands and scripts work, matching proc.exec behaviour
-                        let mut cmd = std::process::Command::new("cmd");
-                        cmd.args(["/C", &resolved]);
+                        // Split resolved command into executable and arguments for direct execution
+                        let mut parts = resolved.split_whitespace();
+                        let exe = parts.next().unwrap_or("");
+                        let mut cmd = std::process::Command::new(exe);
+                        cmd.args(parts);
 
                         if let Some(cwd) = cwd_to_use {
                             cmd.current_dir(cwd);
