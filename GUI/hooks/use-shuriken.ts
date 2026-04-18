@@ -101,8 +101,9 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
       handleError(err, `startShuriken(${name})`)
       updateStatus(name, "stopped")
     }
-
-    refreshShurikens()
+    finally {
+      refreshShurikens()
+    }
   },
 
   // -------------------------
@@ -119,8 +120,9 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
       handleError(err, `stopShuriken(${name})`)
       updateStatus(name, "running")
     }
-
-    refreshShurikens()
+    finally{
+      refreshShurikens()
+    }
   },
 
   // -------------------------

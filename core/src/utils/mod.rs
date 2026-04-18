@@ -345,6 +345,7 @@ pub async fn load_shurikens(
         }
 
         let content: String = async_fs::read_to_string(&manifest_path).await?;
+        
         let mut shuriken: Shuriken = toml::from_str(&content)
             .map_err(|e| Error::msg(format!("TOML error in {}: {}", manifest_path.display(), e)))?;
 

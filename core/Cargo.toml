@@ -10,7 +10,7 @@ crate-type = ["staticlib", "rlib"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.175"
-nix = {version = "0.30.1", features = ["process", "signal", "user"]}
+nix = {version = "0.31.2", features = ["process", "signal", "user"]}
 shell-escape = "0.1.5"
 
 [target.'cfg(windows)'.dependencies]
@@ -25,21 +25,21 @@ serde_json = { version = "1.0.140" }
 regex = { version = "1.11.1", default-features = false }
 either = { version = "1.15.0", default-features = false }
 globwalk = { version = "0.9.1", default-features = false }
-tar = { version = "0.4.44", default-features = false }
+tar = { version = "0.4.45", default-features = false }
 flate2 = { version = "1.1.2" }
 anyhow = { version = "1.0.99", default-features = false }
 shlex = { version = "1.3.0", default-features = false }
-opendal = { version = "0.54.0", default-features = false, features = ["services-fs"] }
+opendal = { version = "0.55.0", default-features = false, features = ["services-fs"] }
 ignore = { version = "0.4.23", default-features = false}
-toml = { version = "0.8.23", default-features = false, features = ["parse", "display"]}
+toml = { version = "1.1.2", default-features = false, features = ["parse", "display", "serde"]}
 tokio = { version = "1.47.1", default-features = false, features = ["process", "fs", "sync", "io-util", "rt"]}
 serde_cbor = "0.11.2"
-tera = { version = "1.20.0" }
+tera = { version = "1.20.0", features = ["builtins"] }
 dirs-next = "2.0.0"
 lazy_static = "1.5.0"
 relative-path = "2.0.1"
-sha2 = "0.10.9"
-whoami = { version = "1.6.1", default-features = false }
+sha2 = "0.11.0"
+whoami = { version = "2.1.1", default-features = false }
 bytes = "1.11.1"
 futures-util = "0.3.31"
 reqwest = { version = "0.13.2", features = ["json", "stream"] }

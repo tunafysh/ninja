@@ -3,7 +3,7 @@ use ninja::backup::{create_backup, restore_backup, CompressionType};
 use ninja::common::config::NinjaConfig;
 use ninja::common::registry::ArmoryItem;
 use std::{collections::HashMap, io::Read, path::PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
 
@@ -27,21 +27,14 @@ pub struct ShurikenWithStatus {
 #[tauri::command]
 pub async fn start_shuriken(
     name: &str,
-    app: AppHandle,
+    manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     info!("Starting shuriken: {}", name);
-    let name = name.to_string();
-    let app = app.clone();
-
-    tauri::async_runtime::spawn(async move {
-        let manager: State<'_, Mutex<ShurikenManager>> = app.state();
-        let manager = manager.lock().await;
-
-        match manager.start(&name).await {
-            Ok(_) => info!("Shuriken {} started successfully.", name),
-            Err(e) => error!("Failed to start shuriken {}: {}", name, e),
-        }
-    });
+    let manager = manager.lock().await;
+    match manager.start(&name).await {
+        Ok(_) => info!("Shuriken {} started successfully.", name),
+        Err(e) => error!("Failed to start shuriken {}: {}", name, e),
+    }
 
     Ok(())
 }
@@ -49,21 +42,15 @@ pub async fn start_shuriken(
 #[tauri::command]
 pub async fn stop_shuriken(
     name: &str,
-    app: AppHandle,
+    manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     info!("Stopping shuriken: {}", name);
-    let name = name.to_string();
-    let app = app.clone();
+    let manager = manager.lock().await;
 
-    tauri::async_runtime::spawn(async move {
-        let manager: State<'_, Mutex<ShurikenManager>> = app.state();
-        let manager = manager.lock().await;
-
-        match manager.stop(&name).await {
-            Ok(_) => info!("Shuriken {} stopped successfully.", name),
-            Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
-        }
-    });
+    match manager.stop(&name).await {
+        Ok(_) => info!("Shuriken {} stopped successfully.", name),
+        Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
+    }
 
     Ok(())
 }
@@ -267,6 +254,7 @@ pub async fn install_shuriken(
     Ok(())
 }
 
+#[tauri::command]
 pub async fn remove_shuriken(
     manager: State<'_, Mutex<ShurikenManager>>,
     name: String,

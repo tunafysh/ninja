@@ -220,24 +220,30 @@ def build_cli(args):
         shutil.rmtree(release, ignore_errors=True)
         print_status("Rm", f"Cleaned {release}")
 
+def run_ps(command: str):
+    shell = shutil.which("pwsh") or "powershell"
+    return subprocess.call([
+        shell,
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-Command",
+        command
+    ])
 
 def build_gui(args):
     import platform
 
     print_status("Info", "Building GUI")
-
     if platform.system() == "Windows":
-        # Use cargo-installed Tauri CLI
-        ensure_tool("cargo")
-        cargo = find_cargo()
-        # Install tauri-cli if not already installed
-        try:
-            subprocess.check_call([cargo, "tauri", "--version"])
-        except subprocess.CalledProcessError:
-            print_status("Info", "Installing tauri-cli via cargo")
-            run([cargo, "install", "tauri-cli"], "Install tauri-cli")
-
-        run([cargo, "tauri", "build", "--"] + args, "GUI build")
+        # On windows use powershell + pnpm, as cargo tauri is very slow on windows for some reason
+        ensure_tool("pnpm", ["npm", "install", "-g", "pnpm"])
+        tauri_cmd = "pnpm dlx @tauri-apps/cli build " + " ".join(args)
+        if run_ps(tauri_cmd) != 0:
+            print_status("Warn", "pnpm failed, trying cargo tauri as fallback")
+            ensure_tool("cargo", ["cargo", "install", "tauri-cli"])
+            cargo = find_cargo()
+            fallback_cmd = f'cargo tauri build -- ' + " ".join(args)
+            run_ps(fallback_cmd)
     else:
         # On Linux/macOS, use pnpm for speed
         ensure_tool("pnpm", ["npm", "install", "-g", "pnpm"])

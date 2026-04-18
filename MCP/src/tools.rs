@@ -40,6 +40,7 @@ pub struct ScriptRequest {
 #[derive(Clone)]
 pub struct Manager {
     manager: ShurikenManager,
+    #[allow(dead_code)] // <-- if you don't directly use this field, the compiler will warn about it. This attribute suppresses that warning.
     tool_router: ToolRouter<Self>,
 }
 
@@ -202,20 +203,17 @@ impl Manager {
 #[tool_handler]
 impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                r#"This server provides resources and mostly tools
+        let capabilities = ServerCapabilities::builder()
+                .enable_tools()
+                .enable_logging()
+                .build();
+
+        ServerInfo::new(capabilities)
+            .with_instructions(r#"This server provides resources and mostly tools
                 for managing shurikens (arbitrary units of other dev software e.g Apache)
                 which are: start_shuriken, stop_shuriken, restart_shuriken, shuriken_status and provides tools 
                 to execute ninjascript (Luau with a few built-in libraries) and Ninja DSL (a domain-specific language for managing shurikens and interacting with them).
-                The cheatsheet for the ninjascript can be found as a resource."#
-                    .into(),
-            ),
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .enable_logging()
-                .build(),
-            ..Default::default()
-        }
+                The cheatsheet for the ninjascript can be found as a resource."#)
+            .with_protocol_version(ProtocolVersion::LATEST).into()
     }
 }

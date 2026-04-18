@@ -1,8 +1,9 @@
 use crate::common::types::FieldValue;
 use log::{debug, error, info};
 use std::{collections::HashMap, env, error::Error, fmt::Display, path::PathBuf};
-use tera::{Context, Error as TeraError, ErrorKind, Tera};
+use tera::{Context, Error as TeraError, ErrorKind, Function, Tera, Value};
 use tokio::{fs, sync::RwLock};
+use anyhow::Result;
 
 #[derive(Debug)]
 pub enum TemplateError {
@@ -67,9 +68,13 @@ impl Templater {
             .entry("ninja_root".into())
             .or_insert_with(|| FieldValue::String(ninja_root.display().to_string()));
 
+        let username = whoami::username().map_err(|e| {
+                TemplateError::Internal(format!("Failed to get username: {}", e))
+            })?;
+
         context
             .entry("user".into())
-            .or_insert_with(|| FieldValue::String(whoami::username()));
+            .or_insert_with(|| FieldValue::String(username));
 
         debug!(
             "Templater::new: context size after injection = {}",
@@ -84,13 +89,15 @@ impl Templater {
             pattern_str
         );
 
-        let tera = Tera::new(&pattern_str).map_err(|e| {
+        let mut tera = Tera::new(&pattern_str).map_err(|e| {
             error!(
                 "Templater::new: failed to compile templates (pattern '{}'): {}",
                 pattern_str, e
             );
             TemplateError::Internal(format!("Failed to compile templates: {}", e))
         })?;
+
+        tera.register_function("path", PathFunction);
 
         info!(
             "Templater::new: initialized successfully (root = {}, pattern = {})",
@@ -241,5 +248,59 @@ impl Templater {
             config_path.display()
         );
         Ok(())
+    }
+}
+
+#[allow(dead_code)]
+struct PathFunction;
+
+#[allow(dead_code)]
+fn path(args: &HashMap<String, Value>) -> Result<tera::Value> {
+    let root = args
+        .get("root")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let os_sep = std::path::MAIN_SEPARATOR.to_string();
+
+    let sep = args
+        .get("sep")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&os_sep);
+
+    let path = args
+        .get("path")
+        .ok_or_else(|| anyhow::anyhow!("path argument required"))?
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("path must be a string"))?;
+
+    let mut parts: Vec<&str> = Vec::new();
+
+    if !root.is_empty() {
+        #[cfg(windows)]
+        {
+            root.split('\\')
+                .filter(|s| !s.is_empty())
+                .for_each(|s| parts.push(s));
+        }
+    
+        #[cfg(not(windows))]
+        {
+            root.split('/')
+                .filter(|s| !s.is_empty())
+                .for_each(|s| parts.push(s));
+        }
+    }
+
+    parts.extend(
+        path.split('/')
+            .filter(|s| !s.is_empty())
+    );
+    Ok(tera::Value::String(parts.join(sep)))
+}
+
+impl Function for PathFunction {
+    fn call(&self, args: &HashMap<String, Value>) -> tera::Result<tera::Value> {
+        path(args).map_err(|e| TeraError::msg(e))
     }
 }

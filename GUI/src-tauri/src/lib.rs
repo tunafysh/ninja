@@ -172,7 +172,8 @@ pub fn run() {
             remove_registry,
             toggle_updates,
             config_exists,
-            registry_get_all_shurikens
+            registry_get_all_shurikens,
+            remove_shuriken
         ]);
 
     builder
