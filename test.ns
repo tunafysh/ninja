@@ -1,3 +1,1 @@
-for k, v in pairs(os) do
-    print(k, v)
-end
+shell.exec("type nul > test.txt", true)
