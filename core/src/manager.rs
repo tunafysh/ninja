@@ -498,6 +498,9 @@ impl ShurikenManager {
             engine.execute_file(pi_script, Some(&root_path), Some(self.clone()))?;
         }
 
+        // save config so the paths are correct when we launch.
+        self.refresh().await?;
+        self.configure(&metadata.name).await?;
         Ok(())
     }
 
