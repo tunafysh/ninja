@@ -88,7 +88,7 @@ impl NinjaEngine {
     }
 
     /// Execute a raw Lua script in the global environment.
-    pub fn execute(
+    pub async fn execute(
         &self,
         script: &str,
         cwd: Option<&Path>,
@@ -111,11 +111,11 @@ impl NinjaEngine {
         globals.set("proc", proc)?;
 
         info!("Executing lua script.");
-        self.lua.load(script).exec()
+        self.lua.load(script).exec_async().await
     }
 
     /// Execute a file in the global environment, resolving path optionally against `cwd`.
-    pub fn execute_file(
+    pub async fn execute_file(
         &self,
         path: &PathBuf,
         cwd: Option<&Path>,
@@ -143,14 +143,14 @@ impl NinjaEngine {
             fs::read_to_string(path)?
         };
 
-        self.lua.load(script).exec()
+        self.lua.load(script).exec_async().await
     }
 
     /// Execute a specific function from a script in an isolated environment.
     /// The script is loaded from `path` (optionally resolved against `cwd`),
     /// its globals live in a fresh env that inherits from `lua.globals()`,
     /// and then `function` is retrieved from that env and called.
-    pub fn execute_function(
+    pub async fn execute_function(
         &self,
         function: &str,
         path: &PathBuf,
@@ -190,7 +190,7 @@ impl NinjaEngine {
         let chunk = lua.load(&script).set_environment(env.clone());
 
         // Execute and capture the return value
-        let result: mlua::Value = chunk.eval()?;
+        let result: mlua::Value = chunk.eval_async().await?;
 
         // Try to get the function from the returned value first (if it's a table)
         let func: mlua::Function = if let mlua::Value::Table(table) = result {
@@ -202,6 +202,6 @@ impl NinjaEngine {
         };
 
         // Call the function with no arguments
-        func.call::<()>(())
+        func.call_async::<()>(()).await
     }
 }

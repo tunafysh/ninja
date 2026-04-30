@@ -81,3 +81,8 @@
 ## 1.12.3
 
 * Fixed (hopefully) some of the quirks of the proc module. anyway also hopefully now process execution is non-blocking please be plsplspls
+
+## 1.12.4
+* Added functionality so that when a shuriken is installed the config will be generated automatically upon installation.
+* Switched lua `call`, `exec` and `eval` functions into their async variants to support functions created with the `create_async_function` method.
+* a lot more stuff that i forgot.

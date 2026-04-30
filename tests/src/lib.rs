@@ -32,8 +32,8 @@ mod ninja_runtime_integration_tests {
     #[tokio::test]
     async fn test_execute_inline_script() {
         let engine = NinjaEngine::new().await.unwrap();
-        assert!(engine.execute("x = 2 + 2", None, None).is_ok());
-        assert!(engine.execute("error('fail')", None, None).is_err());
+        assert!(engine.execute("x = 2 + 2", None, None).await.is_ok());
+        assert!(engine.execute("error('fail')", None, None).await.is_err());
     }
 
     #[tokio::test]
@@ -46,6 +46,7 @@ mod ninja_runtime_integration_tests {
         assert!(
             engine
                 .execute_file(&tmp.path().to_path_buf(), None, None)
+                .await
                 .is_ok()
         );
     }
@@ -61,6 +62,7 @@ mod ninja_runtime_integration_tests {
         assert!(
             engine
                 .execute_function("greet", &path.to_path_buf(), None, None)
+                .await
                 .is_ok()
         );
     }
@@ -76,6 +78,7 @@ mod ninja_runtime_integration_tests {
         assert!(
             engine
                 .execute_function("greet", &path.to_path_buf(), None, None)
+                .await
                 .is_ok()
         );
     }
@@ -92,6 +95,7 @@ mod ninja_runtime_integration_tests {
         assert!(
             engine
                 .execute_function("add", &path.to_path_buf(), None, None)
+                .await
                 .is_ok()
         );
     }
@@ -108,6 +112,7 @@ mod ninja_runtime_integration_tests {
         assert!(
             engine
                 .execute_function("nonexistent", &path.to_path_buf(), None, None)
+                .await
                 .is_err()
         );
     }
@@ -117,10 +122,10 @@ mod ninja_runtime_integration_tests {
         let engine = NinjaEngine::new().await.unwrap();
 
         // Test that global modules are accessible
-        assert!(engine.execute("local x = fs", None, None).is_ok());
-        assert!(engine.execute("local x = env", None, None).is_ok());
-        assert!(engine.execute("local x = shell", None, None).is_ok());
-        assert!(engine.execute("local x = time", None, None).is_ok());
+        assert!(engine.execute("local x = fs", None, None).await.is_ok());
+        assert!(engine.execute("local x = env", None, None).await.is_ok());
+        assert!(engine.execute("local x = shell", None, None).await.is_ok());
+        assert!(engine.execute("local x = time", None, None).await.is_ok());
     }
 }
 

@@ -1,6 +1,8 @@
+use anyhow::Result;
 use log::{self, error, info};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use tokio::fs;
+use std::{collections::HashMap, path::Path};
 use url::Url;
 
 use crate::common::registry::{ArmoryItem, fetch_registry, is_absolute_url};
@@ -49,6 +51,15 @@ impl NinjaConfig {
         }
     }
 
+    pub async fn generate_default_config(&self, root_dir: &Path) -> Result<()> {
+        let config_path = root_dir.join("config.toml");
+        let serialized = toml::ser::to_string_pretty(&self)?;
+
+        fs::write(config_path, serialized).await?;
+
+        Ok(())
+    }
+
     pub fn add_registry(&mut self, name: String, url: String) {
         self.registries.insert(name, url);
     }
@@ -60,6 +71,7 @@ impl NinjaConfig {
     pub fn set_dev_mode(&mut self, dev_mode: bool) {
         self.dev_mode = dev_mode;
     }
+
     pub fn remove_registry(&mut self, registry: &str) {
         self.registries.remove(registry);
     }

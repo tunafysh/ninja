@@ -74,7 +74,9 @@ impl ShurikenManager {
                 .map_err(|e| Error::msg(format!("Failed to parse config.toml: {}", e)))?;
             Arc::new(RwLock::new(config))
         } else {
-            Arc::new(RwLock::new(NinjaConfig::new()))
+            let config = NinjaConfig::new();
+            config.generate_default_config(&exe_dir).await?;
+            Arc::new(RwLock::new(config))
         };
 
         Ok(Self {
@@ -494,8 +496,9 @@ impl ShurikenManager {
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {
             info!("Running postinstall script");
+            let path = root_path.join(pi_script);
             let engine = &self.engine.lock().await;
-            engine.execute_file(pi_script, Some(&root_path), Some(self.clone()))?;
+            engine.execute_file(&path, Some(&root_path), Some(self.clone())).await?;
         }
 
         // save config so the paths are correct when we launch.

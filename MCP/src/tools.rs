@@ -166,6 +166,7 @@ impl Manager {
                 Some(&self.manager.root_path),
                 Some(self.manager.clone()),
             )
+            .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             "Script executed successfully",

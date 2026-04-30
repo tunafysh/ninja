@@ -98,6 +98,7 @@ impl Shuriken {
             if let Some(mgr) = mgr {
                 engine
                     .execute_function("start", &compiled_path, Some(shuriken_dir), Some(mgr))
+                    .await
                     .map_err(|e| format!("Script start failed: {}", e))?;
             }
 
@@ -191,6 +192,7 @@ impl Shuriken {
 
             engine
                 .execute_function("import", &compiled_path, Some(shuriken_dir), mgr)
+                .await
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -229,6 +231,7 @@ impl Shuriken {
             if let Some(mgr) = mgr {
                 engine
                     .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
+                    .await
                     .map_err(|e| format!("Script stop failed: {}", e))?;
             }
 
