@@ -25,6 +25,7 @@ impl From<Output> for ShellCommandResult {
 
 #[cfg(windows)]
 fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
+    use runas::Command as RunasCommand;
     debug!(
         "run_windows_command: command='{}', cwd={:?}, admin={}",
         command,
@@ -32,21 +33,18 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
         admin
     );
 
-    let mut cmd = Command::new("powershell.exe");
-    cmd.arg("-NoProfile").arg("-WindowStyle").arg("Hidden");
+    let mut cmd = if admin {
+        RunasCommand::new("cmd")
+    } else {
+        Command::new("cmd")
+    };
 
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
 
-    if admin {
-        // NOTE: This is not a real -Verb RunAs usage on powershell.exe, but preserved
-        debug!("run_windows_command: admin=true (RunAs-like)");
-        cmd.arg("-Verb").arg("RunAs");
-    }
-
     {
-        cmd.arg("-Command")
+        cmd.arg("/C")
             .arg(command)
             .stdin(Stdio::inherit())
             .stdout(Stdio::piped())
@@ -67,7 +65,7 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
     Ok(ShellCommandResult::from(out))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
     use std::env;
     debug!(
@@ -79,11 +77,43 @@ fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Sh
     let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
 
     let mut cmd = if admin {
-        debug!("run_unix_command: admin=true, using pkexec");
-        let mut c = Command::new("pkexec");
-        c.arg("--keep-cwd");
-        c.arg(&shell);
-        c
+        #[cfg(target_os = "linux")]
+        {
+            use std::io::{self, IsTerminal};
+
+            let mut c = if !io::stdin().is_terminal() {
+                debug!("run_unix_command: admin=true, using pkexec");
+                let mut c = Command::new("pkexec");
+                c.arg("--keep-cwd");
+                c
+            } else {
+                debug!("run_unix_command: admin=true, using sudo");
+                let mut c = Command::new("sudo");
+                c.arg(&shell);
+                c
+            };
+            c.arg(&shell);
+            c
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use runas::Command as RunasCommand;
+            
+            debug!("run_unix_command: admin=true, using osascript");
+            RunasCommand::new(&shell)
+        }
+
+        #[cfg(target_os = "freebsd")]
+{
+    debug!("run_unix_command: admin=true, using sudo + askpass");
+
+    let mut c = Command::new("sudo");
+    c.env("SUDO_ASKPASS", "/usr/local/bin/ssh-askpass");
+    c.arg("-A");
+    c.arg(&shell);
+    c
+}
     } else {
         Command::new(&shell)
     };
@@ -147,7 +177,7 @@ pub(crate) fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Ta
                 {
                     run_windows_command(&command, cwd_opt, admin)
                 }
-                #[cfg(target_os = "linux")]
+                #[cfg(unix)]
                 {
                     run_unix_command(&command, cwd_opt, admin)
                 }

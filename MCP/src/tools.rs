@@ -215,6 +215,6 @@ impl ServerHandler for Manager {
                 which are: start_shuriken, stop_shuriken, restart_shuriken, shuriken_status and provides tools 
                 to execute ninjascript (Luau with a few built-in libraries) and Ninja DSL (a domain-specific language for managing shurikens and interacting with them).
                 The cheatsheet for the ninjascript can be found as a resource."#)
-            .with_protocol_version(ProtocolVersion::LATEST).into()
+            .with_protocol_version(ProtocolVersion::LATEST)
     }
 }

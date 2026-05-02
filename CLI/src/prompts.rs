@@ -121,7 +121,7 @@ pub(crate) fn collect_new_shuriken_input() -> Result<NewShurikenInput, dialoguer
     let shuriken_options = ["daemon", "executable"];
     let choice = Select::with_theme(&theme)
         .with_prompt("Enter the shuriken type")
-        .items(&shuriken_options)
+        .items(shuriken_options)
         .default(0)
         .interact()?;
 

@@ -31,7 +31,7 @@ pub async fn start_shuriken(
 ) -> Result<(), String> {
     info!("Starting shuriken: {}", name);
     let manager = manager.lock().await;
-    match manager.start(&name).await {
+    match manager.start(name).await {
         Ok(_) => info!("Shuriken {} started successfully.", name),
         Err(e) => error!("Failed to start shuriken {}: {}", name, e),
     }
@@ -47,7 +47,7 @@ pub async fn stop_shuriken(
     info!("Stopping shuriken: {}", name);
     let manager = manager.lock().await;
 
-    match manager.stop(&name).await {
+    match manager.stop(name).await {
         Ok(_) => info!("Shuriken {} stopped successfully.", name),
         Err(e) => error!("Failed to stop shuriken {}: {}", name, e),
     }
