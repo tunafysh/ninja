@@ -11,7 +11,7 @@ members = [
 
 package.version = "1.12.4"
 package.edition = "2024"
-
+package.license = "GNU Affero General Public License v3.0"
 [profile.release]
 opt-level = 3
 lto = "thin"

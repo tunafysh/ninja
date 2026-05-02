@@ -1,9 +1,9 @@
 [package]
 name = "ninja-app"
 description = "A control panel similar to XAMPP"
-authors = ["Hanan Smani"]
-license = "Ninja End User License Agreement (2025)"
+authors = ["tunafysh"]
 edition = "2021"
+license.workspace = true
 version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,26 +19,24 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "rustls-tls"] }
-tauri-plugin-opener = "2"
+tauri = { version = "2.11.0", features = ["macos-private-api", "rustls-tls"] }
+tauri-plugin-opener = "2.5.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-log = { version = "2", features = ["colored"] }
+tauri-plugin-log = { version = "2.8.0", features = ["colored"] }
 chrono = { version = "0.4.40", features = ["serde"] }
-log = "0.4.27"
-tokio = { version = "1.45.0", features = ["sync"] }
+log = "0.4.29"
+tokio = { version = "1.52.1", features = ["sync"] }
 ninja-core = { path = "../../core" }
-tauri-plugin-dialog = "2"
-tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2.7.1"
+tauri-plugin-shell = "2.3.5"
 tauri-plugin-deep-link = "2"
-tauri-plugin-fs = { version = "2", features = ["watch"] }
-url = "2.5.7"
-serde_cbor = "0.11.2"
+tauri-plugin-fs = { version = "2.5.1", features = ["watch"] }
+url = "2.5.8"
+serde_cbor = "0.11.1"
 dirs-next = "2.0.0"
-tauri-plugin-process = "2"
+tauri-plugin-process = "2.3.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = {version = "2", features = ["deep-link"] }
-tauri-plugin-updater = "2"
-
-
+tauri-plugin-single-instance = {version = "2.4.2", features = ["deep-link"] }
+tauri-plugin-updater = "2.10.1"

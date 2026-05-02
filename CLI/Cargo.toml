@@ -1,7 +1,8 @@
 [package]
 name = "ninja-cli"
+edition.workspace = true
 version.workspace = true
-edition = "2024"
+license.workspace = true
 
 [[bin]]
 path = "src/main.rs"   

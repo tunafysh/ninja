@@ -1,7 +1,8 @@
 [package]
 name = "ninja-mcp"
+edition.workspace = true
+license.workspace = true
 version.workspace = true
-edition = "2024"
 
 [dependencies]
 ninja-core = { path = "../core"}
