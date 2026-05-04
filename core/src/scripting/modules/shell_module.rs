@@ -65,62 +65,90 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
     Ok(ShellCommandResult::from(out))
 }
 
+#[cfg(target_os = "linux")]
+fn make_admin_command(shell: &str) -> Option<Command> {
+    use std::io::{self, IsTerminal};
+    
+    if !io::stdin().is_terminal() {
+        debug!("run_unix_command: admin=true, using pkexec on Linux");
+        let mut c = Command::new("pkexec");
+        c.arg("--keep-cwd");
+        c.arg(shell);
+        Some(c)
+    } else {
+        debug!("run_unix_command: admin=true, using sudo on Linux");
+        let mut c = Command::new("sudo");
+        c.arg(shell);
+        Some(c)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn make_admin_command_macos(shell: &str, cwd: Option<&Path>, command: &str) -> Result<ShellCommandResult> {
+    use runas::Command as RunasCommand;
+    
+    debug!("run_unix_command: admin=true, executing with runas on macOS");
+    let mut cmd = RunasCommand::new(shell);
+    
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+
+    let out = cmd
+        .arg("-c")
+        .arg(command)
+        .output()
+        .map_err(|e| {
+            error!("run_unix_command: failed to execute admin command: {}", e);
+            mlua::Error::external(e)
+        })?;
+
+    debug!(
+        "run_unix_command: admin exit_code={:?}, stdout_len={}, stderr_len={}",
+        out.status.code(),
+        out.stdout.len(),
+        out.stderr.len()
+    );
+
+    Ok(ShellCommandResult::from(out))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn make_admin_command(shell: &str) -> Option<Command> {
+    debug!("run_unix_command: admin=true, using sudo");
+    let mut c = Command::new("sudo");
+    c.arg(shell);
+    Some(c)
+}
+
 #[cfg(unix)]
 fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
     use std::env;
+    
     debug!(
         "run_unix_command: command='{}', cwd={:?}, admin={}",
         command,
         cwd.map(|p| p.display().to_string()),
         admin
     );
+    
     let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
 
+    // Handle macOS admin execution with runas
+    #[cfg(target_os = "macos")]
+    if admin {
+        return make_admin_command_macos(&shell, cwd, command);
+    }
+
+    // Standard execution path for non-admin or non-macOS
     let mut cmd = if admin {
-        #[cfg(target_os = "linux")]
-        {
-            use std::io::{self, IsTerminal};
-
-            let mut c = if !io::stdin().is_terminal() {
-                debug!("run_unix_command: admin=true, using pkexec");
-                let mut c = Command::new("pkexec");
-                c.arg("--keep-cwd");
-                c
-            } else {
-                debug!("run_unix_command: admin=true, using sudo");
-                let mut c = Command::new("sudo");
-                c.arg(&shell);
-                c
-            };
-            c.arg(&shell);
-            c
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            use runas::Command as RunasCommand;
-            
-            debug!("run_unix_command: admin=true, using osascript");
-            RunasCommand::new(&shell)
-        }
-
-        #[cfg(target_os = "freebsd")]
-{
-    debug!("run_unix_command: admin=true, using sudo + askpass");
-
-    let mut c = Command::new("sudo");
-    c.env("SUDO_ASKPASS", "/usr/local/bin/ssh-askpass");
-    c.arg("-A");
-    c.arg(&shell);
-    c
-}
+        make_admin_command(&shell).unwrap_or_else(|| Command::new(&shell))
     } else {
         Command::new(&shell)
     };
 
     cmd.arg("-c")
         .arg(command)
-        .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -140,9 +168,7 @@ fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Sh
         out.stderr.len()
     );
 
-    let out = ShellCommandResult::from(out);
-
-    Ok(out)
+    Ok(ShellCommandResult::from(out))
 }
 
 pub(crate) fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
