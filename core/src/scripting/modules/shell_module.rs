@@ -33,19 +33,43 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
         admin
     );
 
+    // Build the full command with cd if needed (runas doesn't support current_dir)
+    let full_command = if let Some(cwd) = cwd {
+        format!("cd /d \"{}\" && {}", cwd.display(), command)
+    } else {
+        command.to_string()
+    };
+
     let mut cmd = if admin {
         RunasCommand::new("cmd")
     } else {
-        Command::new("cmd")
+        let mut cmd = Command::new("cmd");
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
+        return {
+            cmd.arg("/C")
+                .arg(command)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let out = cmd.output().map_err(|e| {
+                error!("run_windows_command: failed to execute: {}", e);
+                mlua::Error::external(e)
+            })?;
+            debug!(
+                "run_windows_command: status={:?}, stdout_len={}, stderr_len={}",
+                out.status.code(),
+                out.stdout.len(),
+                out.stderr.len()
+            );
+            Ok(ShellCommandResult::from(out))
+        };
     };
-
-    if let Some(cwd) = cwd {
-        cmd.current_dir(cwd);
-    }
 
     {
         cmd.arg("/C")
-            .arg(command)
+            .arg(&full_command)
             .stdin(Stdio::inherit())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -88,15 +112,18 @@ fn make_admin_command_macos(shell: &str, cwd: Option<&Path>, command: &str) -> R
     use runas::Command as RunasCommand;
     
     debug!("run_unix_command: admin=true, executing with runas on macOS");
-    let mut cmd = RunasCommand::new(shell);
+    let cmd = RunasCommand::new(shell);
     
-    if let Some(cwd) = cwd {
-        cmd.current_dir(cwd);
-    }
+    // Build the full command with cd if needed (runas doesn't support current_dir)
+    let full_command = if let Some(cwd) = cwd {
+        format!("cd '{}' && {}", cwd.display(), command)
+    } else {
+        command.to_string()
+    };
 
     let out = cmd
         .arg("-c")
-        .arg(command)
+        .arg(&full_command)
         .output()
         .map_err(|e| {
             error!("run_unix_command: failed to execute admin command: {}", e);
@@ -140,6 +167,13 @@ fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Sh
         return make_admin_command_macos(&shell, cwd, command);
     }
 
+    // Build command with cd if using admin on Linux or other Unix systems
+    let final_command = if admin && cwd.is_some() {
+        format!("cd '{}' && {}", cwd.unwrap().display(), command)
+    } else {
+        command.to_string()
+    };
+
     // Standard execution path for non-admin or non-macOS
     let mut cmd = if admin {
         make_admin_command(&shell).unwrap_or_else(|| Command::new(&shell))
@@ -148,12 +182,15 @@ fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<Sh
     };
 
     cmd.arg("-c")
-        .arg(command)
+        .arg(&final_command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if let Some(cwd) = cwd {
-        cmd.current_dir(cwd);
+    // Only set current_dir for non-admin commands
+    if !admin {
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
     }
 
     let out = cmd.output().map_err(|e| {
