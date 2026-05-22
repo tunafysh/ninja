@@ -1,5 +1,5 @@
 [package]
-name = "ninja-app"
+name = "ninja-desktop"
 description = "A control panel similar to XAMPP"
 authors = ["tunafysh"]
 edition = "2021"

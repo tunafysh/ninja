@@ -38,8 +38,6 @@ def run(cmd: list[str], desc: str):
     if subprocess.call(cmd) != 0:
         sys.exit(f"{desc} failed")
 
-
-
 # ===== Build logic =====
 def target_dir(target: str | None, warn_missing: bool = True) -> Path:
     base = Path("target")
