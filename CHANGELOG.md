@@ -86,3 +86,9 @@
 * Added functionality so that when a shuriken is installed the config will be generated automatically upon installation.
 * Switched lua `call`, `exec` and `eval` functions into their async variants to support functions created with the `create_async_function` method.
 * a lot more stuff that i forgot.
+
+## 1.13.0
+* Fixed some typos in the config default link
+* Modified the install process to regenerate config everytime a shuriken is installed (most configs have paths in them)
+* Added an install section in the armory. 
+* Fixed shell module admin handling because it was horrible.
