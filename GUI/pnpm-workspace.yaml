@@ -2,3 +2,8 @@ onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - msw
   - sharp
+
+allowBuilds:
+  '@tailwindcss/oxide': true
+  msw: true
+  sharp: true
