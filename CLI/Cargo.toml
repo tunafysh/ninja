@@ -3,6 +3,9 @@ name = "ninja-cli"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+documentation = "https://ninja-rs.vercel.app/docs/reference/cli"
+repository = "https://github.com/tunafysh/ninja"
+readme = "../README.md"
 
 [[bin]]
 path = "src/main.rs"   
