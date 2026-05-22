@@ -14,9 +14,12 @@ import {
   Code2,
   ShieldCheck,
   Download,
+  Trash,
 } from "lucide-react";
+import { useShuriken } from "@/hooks/use-shuriken";
 
 export default function ArmoryCard({ shuriken }: { shuriken: ArmoryItem }) {
+  const { removeShuriken } = useShuriken();
   const [active, setActive] = useState<ArmoryItem | boolean | null>(null);
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -82,22 +85,19 @@ export default function ArmoryCard({ shuriken }: { shuriken: ArmoryItem }) {
                     <ExternalLink className="w-4 h-4" />
                     Repo
                   </a>
+                  {shuriken.installed ? (
+                    <Button variant={"destructive"} onClick={() => removeShuriken(shuriken.name)}>
+                      <Trash className="w-4 h-4" />
+                      <p>Remove</p>
+                    </Button>
+                  ) : (
                   <Button
                     onClick={() => alert(`Installing ${active.name}...`)}
-                    disabled={shuriken.installed}
                   >
-                    {shuriken.installed ? (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <p>Installed</p>
-                      </>
-                    ) : (
-                      <>
                         <Download className="w-4 h-4" />
                         <p>Install</p>
-                      </>
+                    </Button>
                     )}
-                  </Button>
                 </div>
               </div>
 

@@ -19,7 +19,8 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
   const [pendingRegistries, setPendingRegistries] = useState<[string, string][]>([]);
   const [path, setPath] = useState("");
   const [shurikens, setShurikens] = useState<ArmoryItem[]>([])
-   const [localShuriken, setLocalShuriken] = useState<ArmoryMetadata | null>(null);
+  const [installedShurikens, setInstalledShurikens] = useState<ArmoryItem[]>([]);
+  const [localShuriken, setLocalShuriken] = useState<ArmoryMetadata | null>(null);
 
    const installLocalFile = async () => {
      const file = await open({
@@ -55,38 +56,65 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
      }
    };
 
-   useEffect(() => {
+  const handleInstallComplete = () => {
+    // Refresh both registry and installed shurikens after installation
     invoke<ArmoryItem[]>("registry_get_all_shurikens")
       .then((e) => setShurikens(e))
-   })
+    invoke<ArmoryItem[]>("get_installed_shurikens")
+      .then((e) => setInstalledShurikens(e))
+  };
+
+  useEffect(() => {
+    invoke<ArmoryItem[]>("registry_get_all_shurikens")
+      .then((e) => setShurikens(e))
+    invoke<ArmoryItem[]>("get_installed_shurikens")
+      .then((e) => setInstalledShurikens(e))
+  })
 
     return (
-      <div className="relative w-screen h-screen overflow-hidden flex justify-center">
+      <div className="relative w-screen overflow-hidden flex justify-center">
         <div className="h-full w-5/6">
-          <div className="w-full flex justify-between items-center mt-10">
-            <h1 className="font-bold text-2xl select-none">Explore shurikens</h1>
-          </div>
-          <div id="search" className="w-full flex justify-center items-center my-10">
-            <div className="flex gap-2 w-full">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                <Input className="pl-10 w-full" placeholder="Search..." />
+          {/* Installed Shurikens Section */}
+          {installedShurikens.length > 0 && (
+            <div className="w-full mt-10">
+              <div className="w-full flex justify-between items-center mb-6">
+                <h1 className="font-bold text-2xl select-none">Installed Shurikens</h1>
               </div>
-              <Button onClick={installLocalFile}>Install local file</Button>
-            </div>
-          </div>
-  
-          {/* 👇 show the InstallCard if we have a local shuriken */}
-          {localShuriken && (
-            <div className="mt-4">
-              <InstallCard shuriken={localShuriken} path={path} onClose={() => setLocalShuriken(null)} />
+              <div className="grid gap-4 grid-cols-4 mb-16">
+                {installedShurikens.map((shuriken) => (
+                  <ArmoryCard shuriken={shuriken} key={shuriken.name} />
+                ))}
+              </div>
             </div>
           )}
-  
-          <div className="grid gap-4 grid-cols-4 mt-10">
-            {shurikens.map((shuriken) => (
-              <ArmoryCard shuriken={shuriken} key={shuriken.name} />
-            ))}
+
+          {/* Explore & Install Section */}
+          <div className="w-full">
+            <div className="w-full flex justify-between items-center mb-6">
+              <h1 className="font-bold text-2xl select-none">Explore shurikens</h1>
+            </div>
+            <div id="search" className="w-full flex justify-center items-center mb-6">
+              <div className="flex gap-2 w-full">
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <Input className="pl-10 w-full" placeholder="Search..." />
+                </div>
+                <Button onClick={installLocalFile}>Install local file</Button>
+              </div>
+            </div>
+    
+            {/* 👇 show the InstallCard if we have a local shuriken */}
+            {localShuriken && (
+              <div className="mt-4 mb-10">
+                <InstallCard shuriken={localShuriken} path={path} onClose={() => setLocalShuriken(null)} />
+              </div>
+            )}
+    
+            <div className="grid gap-4 grid-cols-4">
+              {shurikens.map((shuriken) => (
+                <ArmoryCard shuriken={shuriken} key={shuriken.name} />
+              ))}
+            </div>
           </div>
         </div>
       </div>

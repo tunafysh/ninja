@@ -20,9 +20,9 @@ import { UpdateInfo } from "@/lib/types";
 import { useConfig } from "@/hooks/config"
 
 export default function Page() {
-  const { config } = useConfig();
+  const { config, toggleDevMode, loading, fetchConfig } = useConfig();
 
-  const [devMode, setDevMode] = useState<boolean>(config?.devMode ?? false); // get initial value from Tauri command if needed
+  const [devMode, setDevMode] = useState<boolean>(false); // get initial value from Tauri command if needed
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [hoverStyle, setHoverStyle] = useState({})
@@ -41,6 +41,7 @@ export default function Page() {
 
   useKonami(() => { 
     setDevMode(!devMode)
+    toggleDevMode()
   })
 
   // Tab icons (add a Code icon for Developer tab)
@@ -106,6 +107,10 @@ export default function Page() {
         setActiveStyle({ left: `${offsetLeft}px`, width: `${offsetWidth}px` })
       }
     })
+
+    fetchConfig();
+
+    setDevMode(config?.devMode || false)
 
     if (config?.checkUpdates){
       checkForUpdates();
