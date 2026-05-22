@@ -43,7 +43,7 @@ impl NinjaConfig {
         Self {
             registries: HashMap::from([(
                 "ninja".to_string(),
-                "https://raw.githubusercontent.com/tunafysh/ninja-registry/main/registry.yaml"
+                "https://raw.githubusercontent.com/tunafysh/ninja-packages/main/registry.yml"
                     .to_string(),
             )]),
             check_updates: true,
@@ -116,7 +116,14 @@ pub fn resolve_shuriken_url(
 
     let base = Url::parse(registry_url)?;
     let resolved = base.join(shuriken_url)?;
-    Ok(resolved.into())
+
+
+    // Inject OS and ARCH in placeholders if present
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let resolved_str = resolved.as_str().replace("{{os}}", os).replace("{{arch}}", arch);
+
+    Ok(resolved_str)
 }
 
 /// Find a shuriken in the fetched registries by its reference (e.g., "official:my-shuriken")
