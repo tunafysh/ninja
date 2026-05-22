@@ -33,60 +33,62 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
         admin
     );
 
-    // Build the full command with cd if needed (runas doesn't support current_dir)
-    let full_command = if let Some(cwd) = cwd {
-        format!("cd /d \"{}\" && {}", cwd.display(), command)
-    } else {
-        command.to_string()
-    };
+    if admin {
+        // For admin commands, runas::Command only supports .status(), not .output()
+        // Build the full command with cd if needed
+        let full_command = if let Some(cwd) = cwd {
+            format!("cd /d \"{}\" && {}", cwd.display(), command)
+        } else {
+            command.to_string()
+        };
 
-    let mut cmd = if admin {
-        RunasCommand::new("cmd")
+        let mut cmd = RunasCommand::new("cmd");
+        let status = cmd
+            .arg("/C")
+            .arg(&full_command)
+            .status()
+            .map_err(|e| {
+                error!("run_windows_command: failed to execute admin command: {}", e);
+                mlua::Error::external(e)
+            })?;
+
+        debug!(
+            "run_windows_command: admin status={:?}",
+            status.code()
+        );
+
+        Ok(ShellCommandResult {
+            code: status.code().unwrap_or(-1),
+            stdout: String::new(),
+            stderr: String::new(),
+        })
     } else {
+        // Non-admin commands can capture output
         let mut cmd = Command::new("cmd");
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);
         }
-        return {
-            cmd.arg("/C")
-                .arg(command)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            let out = cmd.output().map_err(|e| {
-                error!("run_windows_command: failed to execute: {}", e);
-                mlua::Error::external(e)
-            })?;
-            debug!(
-                "run_windows_command: status={:?}, stdout_len={}, stderr_len={}",
-                out.status.code(),
-                out.stdout.len(),
-                out.stderr.len()
-            );
-            Ok(ShellCommandResult::from(out))
-        };
-    };
 
-    {
         cmd.arg("/C")
-            .arg(&full_command)
+            .arg(command)
             .stdin(Stdio::inherit())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        let out = cmd.output().map_err(|e| {
+            error!("run_windows_command: failed to execute: {}", e);
+            mlua::Error::external(e)
+        })?;
+
+        debug!(
+            "run_windows_command: status={:?}, stdout_len={}, stderr_len={}",
+            out.status.code(),
+            out.stdout.len(),
+            out.stderr.len()
+        );
+
+        Ok(ShellCommandResult::from(out))
     }
-    let out = cmd.output().map_err(|e| {
-        error!("run_windows_command: failed to execute: {}", e);
-        mlua::Error::external(e)
-    })?;
-
-    debug!(
-        "run_windows_command: status={:?}, stdout_len={}, stderr_len={}",
-        out.status.code(),
-        out.stdout.len(),
-        out.stderr.len()
-    );
-
-    Ok(ShellCommandResult::from(out))
 }
 
 #[cfg(target_os = "linux")]
@@ -112,7 +114,6 @@ fn make_admin_command_macos(shell: &str, cwd: Option<&Path>, command: &str) -> R
     use runas::Command as RunasCommand;
     
     debug!("run_unix_command: admin=true, executing with runas on macOS");
-    let cmd = RunasCommand::new(shell);
     
     // Build the full command with cd if needed (runas doesn't support current_dir)
     let full_command = if let Some(cwd) = cwd {
@@ -121,23 +122,26 @@ fn make_admin_command_macos(shell: &str, cwd: Option<&Path>, command: &str) -> R
         command.to_string()
     };
 
-    let out = cmd
+    let mut cmd = RunasCommand::new(shell);
+    let status = cmd
         .arg("-c")
         .arg(&full_command)
-        .output()
+        .status()
         .map_err(|e| {
             error!("run_unix_command: failed to execute admin command: {}", e);
             mlua::Error::external(e)
         })?;
 
     debug!(
-        "run_unix_command: admin exit_code={:?}, stdout_len={}, stderr_len={}",
-        out.status.code(),
-        out.stdout.len(),
-        out.stderr.len()
+        "run_unix_command: admin exit_code={:?}",
+        status.code()
     );
 
-    Ok(ShellCommandResult::from(out))
+    Ok(ShellCommandResult {
+        code: status.code().unwrap_or(-1),
+        stdout: String::new(),
+        stderr: String::new(),
+    })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
