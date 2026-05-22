@@ -4,213 +4,200 @@ use mlua::{Lua, Result, Table};
 use std::{
     path::Path,
     path::PathBuf,
-    process::{Command, Stdio, Output},
+    process::Command,
 };
 
 struct ShellCommandResult {
     code: i32,
-    stdout: String,
-    stderr: String,
 }
 
-impl From<Output> for ShellCommandResult {
-    fn from(output: Output) -> Self {
-        ShellCommandResult {
-            code: output.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+// Helper: Build command with cd prepended
+fn build_command_with_cwd(command: &str, cwd: Option<&Path>) -> String {
+    if let Some(cwd) = cwd {
+        match cfg!(target_os = "windows") {
+            true => format!("cd /d \"{}\" && {}", cwd.display(), command),
+            false => format!("cd '{}' && {}", cwd.display(), command),
         }
+    } else {
+        command.to_string()
     }
+}
+
+// ============================================================================
+// WINDOWS
+// ============================================================================
+
+#[cfg(windows)]
+fn run_windows_admin(command: &str, cwd: Option<&Path>) -> Result<ShellCommandResult> {
+    use runas::Command as RunasCommand;
+    
+    let full_cmd = build_command_with_cwd(command, cwd);
+    debug!("run_windows_admin: {}", full_cmd);
+    
+    let status = RunasCommand::new("cmd")
+        .arg("/C")
+        .arg(&full_cmd)
+        .status()
+        .map_err(|e| {
+            error!("run_windows_admin: {}", e);
+            mlua::Error::external(e)
+        })?;
+
+    let code = status.code().unwrap_or(-1);
+    debug!("run_windows_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
+}
+
+#[cfg(windows)]
+fn run_windows_non_admin(command: &str, cwd: Option<&Path>) -> Result<ShellCommandResult> {
+    let mut cmd = Command::new("cmd");
+    
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    
+    cmd.arg("/C").arg(command);
+    
+    debug!("run_windows_non_admin: {}", command);
+    
+    let status = cmd.status().map_err(|e| {
+        error!("run_windows_non_admin: {}", e);
+        mlua::Error::external(e)
+    })?;
+
+    let code = status.code().unwrap_or(-1);
+    debug!("run_windows_non_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
 }
 
 #[cfg(windows)]
 fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
-    use runas::Command as RunasCommand;
-    debug!(
-        "run_windows_command: command='{}', cwd={:?}, admin={}",
-        command,
-        cwd.map(|p| p.display().to_string()),
-        admin
-    );
-
     if admin {
-        // For admin commands, runas::Command only supports .status(), not .output()
-        // Build the full command with cd if needed
-        let full_command = if let Some(cwd) = cwd {
-            format!("cd /d \"{}\" && {}", cwd.display(), command)
-        } else {
-            command.to_string()
-        };
-
-        let mut cmd = RunasCommand::new("cmd");
-        let status = cmd
-            .arg("/C")
-            .arg(&full_command)
-            .status()
-            .map_err(|e| {
-                error!("run_windows_command: failed to execute admin command: {}", e);
-                mlua::Error::external(e)
-            })?;
-
-        debug!(
-            "run_windows_command: admin status={:?}",
-            status.code()
-        );
-
-        Ok(ShellCommandResult {
-            code: status.code().unwrap_or(-1),
-            stdout: String::new(),
-            stderr: String::new(),
-        })
+        run_windows_admin(command, cwd)
     } else {
-        // Non-admin commands can capture output
-        let mut cmd = Command::new("cmd");
-        if let Some(cwd) = cwd {
-            cmd.current_dir(cwd);
-        }
+        run_windows_non_admin(command, cwd)
+    }
+}
 
-        cmd.arg("/C")
-            .arg(command)
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+// ============================================================================
+// UNIX/MACOS
+// ============================================================================
 
-        let out = cmd.output().map_err(|e| {
-            error!("run_windows_command: failed to execute: {}", e);
+#[cfg(target_os = "macos")]
+fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
+    use runas::Command as RunasCommand;
+    let full_cmd = build_command_with_cwd(command, cwd);
+    
+    debug!("run_unix_admin (macOS): {}", full_cmd);
+    
+    let status = RunasCommand::new(shell)
+        .arg("-c")
+        .arg(&full_cmd)
+        .status()
+        .map_err(|e| {
+            error!("run_unix_admin: {}", e);
             mlua::Error::external(e)
         })?;
 
-        debug!(
-            "run_windows_command: status={:?}, stdout_len={}, stderr_len={}",
-            out.status.code(),
-            out.stdout.len(),
-            out.stderr.len()
-        );
-
-        Ok(ShellCommandResult::from(out))
-    }
+    let code = status.code().unwrap_or(-1);
+    debug!("run_unix_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
 }
 
 #[cfg(target_os = "linux")]
-fn make_admin_command(shell: &str) -> Option<Command> {
+fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
     use std::io::{self, IsTerminal};
+    let full_cmd = build_command_with_cwd(command, cwd);
     
-    if !io::stdin().is_terminal() {
-        debug!("run_unix_command: admin=true, using pkexec on Linux");
+    let mut cmd = if !io::stdin().is_terminal() {
+        debug!("run_unix_admin (Linux non-interactive): using pkexec");
         let mut c = Command::new("pkexec");
         c.arg("--keep-cwd");
-        c.arg(shell);
-        Some(c)
+        c
     } else {
-        debug!("run_unix_command: admin=true, using sudo on Linux");
-        let mut c = Command::new("sudo");
-        c.arg(shell);
-        Some(c)
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn make_admin_command_macos(shell: &str, cwd: Option<&Path>, command: &str) -> Result<ShellCommandResult> {
-    use runas::Command as RunasCommand;
-    
-    debug!("run_unix_command: admin=true, executing with runas on macOS");
-    
-    // Build the full command with cd if needed (runas doesn't support current_dir)
-    let full_command = if let Some(cwd) = cwd {
-        format!("cd '{}' && {}", cwd.display(), command)
-    } else {
-        command.to_string()
+        debug!("run_unix_admin (Linux interactive): using sudo");
+        Command::new("sudo")
     };
+    
+    cmd.arg(shell).arg("-c").arg(&full_cmd);
+    
+    debug!("run_unix_admin: {}", full_cmd);
+    
+    let status = cmd.status().map_err(|e| {
+        error!("run_unix_admin: {}", e);
+        mlua::Error::external(e)
+    })?;
 
-    let mut cmd = RunasCommand::new(shell);
-    let status = cmd
-        .arg("-c")
-        .arg(&full_command)
-        .status()
-        .map_err(|e| {
-            error!("run_unix_command: failed to execute admin command: {}", e);
-            mlua::Error::external(e)
-        })?;
-
-    debug!(
-        "run_unix_command: admin exit_code={:?}",
-        status.code()
-    );
-
-    Ok(ShellCommandResult {
-        code: status.code().unwrap_or(-1),
-        stdout: String::new(),
-        stderr: String::new(),
-    })
+    let code = status.code().unwrap_or(-1);
+    debug!("run_unix_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn make_admin_command(shell: &str) -> Option<Command> {
-    debug!("run_unix_command: admin=true, using sudo");
-    let mut c = Command::new("sudo");
-    c.arg(shell);
-    Some(c)
+fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
+    let full_cmd = build_command_with_cwd(command, cwd);
+    
+    debug!("run_unix_admin: using sudo");
+    
+    let status = Command::new("sudo")
+        .arg(shell)
+        .arg("-c")
+        .arg(&full_cmd)
+        .status()
+        .map_err(|e| {
+            error!("run_unix_admin: {}", e);
+            mlua::Error::external(e)
+        })?;
+
+    let code = status.code().unwrap_or(-1);
+    debug!("run_unix_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
+}
+
+#[cfg(unix)]
+fn run_unix_non_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
+    let mut cmd = Command::new(shell);
+    
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    
+    cmd.arg("-c").arg(command);
+    
+    debug!("run_unix_non_admin: {}", command);
+    
+    let status = cmd.status().map_err(|e| {
+        error!("run_unix_non_admin: {}", e);
+        mlua::Error::external(e)
+    })?;
+
+    let code = status.code().unwrap_or(-1);
+    debug!("run_unix_non_admin: exit={}", code);
+    Ok(ShellCommandResult { code })
 }
 
 #[cfg(unix)]
 fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
     use std::env;
-    
-    debug!(
-        "run_unix_command: command='{}', cwd={:?}, admin={}",
-        command,
-        cwd.map(|p| p.display().to_string()),
-        admin
-    );
-    
     let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-
-    // Handle macOS admin execution with runas
-    #[cfg(target_os = "macos")]
-    if admin {
-        return make_admin_command_macos(&shell, cwd, command);
-    }
-
-    // Build command with cd if using admin on Linux or other Unix systems
-    let final_command = if admin && cwd.is_some() {
-        format!("cd '{}' && {}", cwd.unwrap().display(), command)
-    } else {
-        command.to_string()
-    };
-
-    // Standard execution path for non-admin or non-macOS
-    let mut cmd = if admin {
-        make_admin_command(&shell).unwrap_or_else(|| Command::new(&shell))
-    } else {
-        Command::new(&shell)
-    };
-
-    cmd.arg("-c")
-        .arg(&final_command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    // Only set current_dir for non-admin commands
-    if !admin {
-        if let Some(cwd) = cwd {
-            cmd.current_dir(cwd);
-        }
-    }
-
-    let out = cmd.output().map_err(|e| {
-        error!("run_unix_command: failed to execute: {}", e);
-        mlua::Error::external(e)
-    })?;
-
+    
     debug!(
-        "run_unix_command: status={:?}, stdout_len={}, stderr_len={}",
-        out.status.code(),
-        out.stdout.len(),
-        out.stderr.len()
+        "run_unix_command: command='{}', admin={}, cwd={:?}",
+        command,
+        admin,
+        cwd.map(|p| p.display().to_string())
     );
-
-    Ok(ShellCommandResult::from(out))
+    
+    if admin {
+        run_unix_admin(command, cwd, &shell)
+    } else {
+        run_unix_non_admin(command, cwd, &shell)
+    }
 }
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
 
 pub(crate) fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Table> {
     debug!(
@@ -252,26 +239,12 @@ pub(crate) fn make_shell_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Ta
 
             match output {
                 Ok(cmd_output) => {
-                    let code = cmd_output.code;
-                    let stdout = cmd_output.stdout;
-                    let stderr = cmd_output.stderr;
-
-                    debug!(
-                        "shell.exec: exit_code={}, stdout_len={}, stderr_len={}",
-                        code,
-                        stdout.len(),
-                        stderr.len()
-                    );
-
-                    result_table.set("code", code)?;
-                    result_table.set("stdout", stdout)?;
-                    result_table.set("stderr", stderr)?;
+                    debug!("shell.exec: exit_code={}", cmd_output.code);
+                    result_table.set("code", cmd_output.code)?;
                 }
                 Err(e) => {
                     error!("shell.exec: failed to execute '{}': {}", command, e);
                     result_table.set("code", -1)?;
-                    result_table.set("stdout", "")?;
-                    result_table.set("stderr", format!("Failed: {}", e))?;
                 }
             }
 
