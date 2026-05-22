@@ -1,11 +1,7 @@
 use super::shared::canonicalize_cwd;
 use log::{debug, error};
 use mlua::{Lua, Result, Table};
-use std::{
-    path::Path,
-    path::PathBuf,
-    process::Command,
-};
+use std::{path::Path, path::PathBuf, process::Command};
 
 struct ShellCommandResult {
     code: i32,
@@ -30,10 +26,10 @@ fn build_command_with_cwd(command: &str, cwd: Option<&Path>) -> String {
 #[cfg(windows)]
 fn run_windows_admin(command: &str, cwd: Option<&Path>) -> Result<ShellCommandResult> {
     use runas::Command as RunasCommand;
-    
+
     let full_cmd = build_command_with_cwd(command, cwd);
     debug!("run_windows_admin: {}", full_cmd);
-    
+
     let status = RunasCommand::new("cmd")
         .arg("/C")
         .arg(&full_cmd)
@@ -51,15 +47,15 @@ fn run_windows_admin(command: &str, cwd: Option<&Path>) -> Result<ShellCommandRe
 #[cfg(windows)]
 fn run_windows_non_admin(command: &str, cwd: Option<&Path>) -> Result<ShellCommandResult> {
     let mut cmd = Command::new("cmd");
-    
+
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    
+
     cmd.arg("/C").arg(command);
-    
+
     debug!("run_windows_non_admin: {}", command);
-    
+
     let status = cmd.status().map_err(|e| {
         error!("run_windows_non_admin: {}", e);
         mlua::Error::external(e)
@@ -71,7 +67,11 @@ fn run_windows_non_admin(command: &str, cwd: Option<&Path>) -> Result<ShellComma
 }
 
 #[cfg(windows)]
-fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
+fn run_windows_command(
+    command: &str,
+    cwd: Option<&Path>,
+    admin: bool,
+) -> Result<ShellCommandResult> {
     if admin {
         run_windows_admin(command, cwd)
     } else {
@@ -87,9 +87,9 @@ fn run_windows_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result
 fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
     use runas::Command as RunasCommand;
     let full_cmd = build_command_with_cwd(command, cwd);
-    
+
     debug!("run_unix_admin (macOS): {}", full_cmd);
-    
+
     let status = RunasCommand::new(shell)
         .arg("-c")
         .arg(&full_cmd)
@@ -108,7 +108,7 @@ fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<Shel
 fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
     use std::io::{self, IsTerminal};
     let full_cmd = build_command_with_cwd(command, cwd);
-    
+
     let mut cmd = if !io::stdin().is_terminal() {
         debug!("run_unix_admin (Linux non-interactive): using pkexec");
         let mut c = Command::new("pkexec");
@@ -118,11 +118,11 @@ fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<Shel
         debug!("run_unix_admin (Linux interactive): using sudo");
         Command::new("sudo")
     };
-    
+
     cmd.arg(shell).arg("-c").arg(&full_cmd);
-    
+
     debug!("run_unix_admin: {}", full_cmd);
-    
+
     let status = cmd.status().map_err(|e| {
         error!("run_unix_admin: {}", e);
         mlua::Error::external(e)
@@ -136,9 +136,9 @@ fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<Shel
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
     let full_cmd = build_command_with_cwd(command, cwd);
-    
+
     debug!("run_unix_admin: using sudo");
-    
+
     let status = Command::new("sudo")
         .arg(shell)
         .arg("-c")
@@ -155,17 +155,21 @@ fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<Shel
 }
 
 #[cfg(unix)]
-fn run_unix_non_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
+fn run_unix_non_admin(
+    command: &str,
+    cwd: Option<&Path>,
+    shell: &str,
+) -> Result<ShellCommandResult> {
     let mut cmd = Command::new(shell);
-    
+
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    
+
     cmd.arg("-c").arg(command);
-    
+
     debug!("run_unix_non_admin: {}", command);
-    
+
     let status = cmd.status().map_err(|e| {
         error!("run_unix_non_admin: {}", e);
         mlua::Error::external(e)
@@ -180,14 +184,14 @@ fn run_unix_non_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<
 fn run_unix_command(command: &str, cwd: Option<&Path>, admin: bool) -> Result<ShellCommandResult> {
     use std::env;
     let shell = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-    
+
     debug!(
         "run_unix_command: command='{}', admin={}, cwd={:?}",
         command,
         admin,
         cwd.map(|p| p.display().to_string())
     );
-    
+
     if admin {
         run_unix_admin(command, cwd, &shell)
     } else {

@@ -34,7 +34,7 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                         _ => {
                             return Err(mlua::Error::external(
                                 "spawn requires string or table with 'command' field",
-                            ))
+                            ));
                         }
                     };
 
@@ -92,8 +92,7 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
 
                         let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
 
-                        let command =
-                            resolve_spawn_command(&command, cwd_to_use, Some(true))?;
+                        let command = resolve_spawn_command(&command, cwd_to_use, Some(true))?;
                         debug!(
                             "proc.spawn windows: command='{}', custom_cwd={:?}",
                             command, custom_cwd
@@ -132,15 +131,14 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                         .map_err(|e| {
                             mlua::Error::ExternalError(std::sync::Arc::new(std::io::Error::new(
                                 std::io::ErrorKind::Other,
-                                format!(
-                                    "Error code: {}, with message: {}",
-                                    e.code(),
-                                    e.message()
-                                ),
+                                format!("Error code: {}, with message: {}", e.code(), e.message()),
                             )))
                         })?;
 
-                        info!("proc.spawn: spawned detached process with pid={}", pi.dwProcessId);
+                        info!(
+                            "proc.spawn: spawned detached process with pid={}",
+                            pi.dwProcessId
+                        );
 
                         let result_table = lua.create_table()?;
                         result_table.set("pid", pi.dwProcessId)?;
@@ -178,21 +176,24 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
             move |lua, args: mlua::Value| {
                 let proc_cwd = proc_cwd.clone();
                 async move {
-                    let (command, timeout_secs, custom_cwd): (String, Option<u64>, Option<PathBuf>) =
-                        match args {
-                            mlua::Value::String(s) => (s.to_str()?.to_string(), None, None),
-                            mlua::Value::Table(t) => {
-                                let cmd: String = t.get("command").or_else(|_| t.get(1))?;
-                                let timeout: Option<u64> = t.get("timeout").ok();
-                                let cwd: Option<PathBuf> = t.get("cwd").ok();
-                                (cmd, timeout, cwd)
-                            }
-                            _ => {
-                                return Err(mlua::Error::external(
-                                    "exec requires string or table with 'command' field",
-                                ))
-                            }
-                        };
+                    let (command, timeout_secs, custom_cwd): (
+                        String,
+                        Option<u64>,
+                        Option<PathBuf>,
+                    ) = match args {
+                        mlua::Value::String(s) => (s.to_str()?.to_string(), None, None),
+                        mlua::Value::Table(t) => {
+                            let cmd: String = t.get("command").or_else(|_| t.get(1))?;
+                            let timeout: Option<u64> = t.get("timeout").ok();
+                            let cwd: Option<PathBuf> = t.get("cwd").ok();
+                            (cmd, timeout, cwd)
+                        }
+                        _ => {
+                            return Err(mlua::Error::external(
+                                "exec requires string or table with 'command' field",
+                            ));
+                        }
+                    };
 
                     debug!(
                         "proc.exec: command='{}', timeout={:?}, custom_cwd={:?}",
@@ -204,11 +205,8 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                     let resolved =
                         resolve_spawn_command(&command, cwd_to_use, Some(use_backslash))?;
 
-                    let mut cmd = tokio::process::Command::new(if cfg!(windows) {
-                        "cmd"
-                    } else {
-                        "sh"
-                    });
+                    let mut cmd =
+                        tokio::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" });
 
                     if cfg!(windows) {
                         cmd.args(["/C", &resolved]);
@@ -253,7 +251,10 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                     result.set("success", status.success())?;
                     result.set("exit_code", status.code().unwrap_or(-1))?;
 
-                    debug!("proc.exec: completed '{}' with status: {:?}", resolved, status);
+                    debug!(
+                        "proc.exec: completed '{}' with status: {:?}",
+                        resolved, status
+                    );
 
                     Ok(result)
                 }

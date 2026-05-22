@@ -1,8 +1,8 @@
 use anyhow::Result;
 use log::{self, error, info};
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 use std::{collections::HashMap, path::Path};
+use tokio::fs;
 use url::Url;
 
 use crate::common::registry::{ArmoryItem, fetch_registry, is_absolute_url};
@@ -117,11 +117,13 @@ pub fn resolve_shuriken_url(
     let base = Url::parse(registry_url)?;
     let resolved = base.join(shuriken_url)?;
 
-
     // Inject OS and ARCH in placeholders if present
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
-    let resolved_str = resolved.as_str().replace("{{os}}", os).replace("{{arch}}", arch);
+    let resolved_str = resolved
+        .as_str()
+        .replace("{{os}}", os)
+        .replace("{{arch}}", arch);
 
     Ok(resolved_str)
 }

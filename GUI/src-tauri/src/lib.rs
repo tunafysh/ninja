@@ -85,11 +85,13 @@ pub fn run() {
                 tauri::async_runtime::block_on(ShurikenManager::new())
                     .expect("Failed to spawn a shuriken manager"),
             );
+
             app.manage(manager);
 
             let resource_dir = app.path().resource_dir()?;
             let home = home_dir().ok_or("Cannot determine home directory")?;
 
+            // this is just a joke
             if let Err(e) = ensure_assets_exist(&resource_dir, &home) {
                 app.dialog()
                     .message(format!("{e}\nReinstall or restore the file."))
@@ -98,12 +100,13 @@ pub fn run() {
                     .blocking_show();
             }
 
+            
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 app.deep_link().register_all()?;
             }
-
+            
             #[cfg(target_os = "macos")]
             {
                 let window = app.get_webview_window("main").unwrap();
@@ -173,7 +176,8 @@ pub fn run() {
             toggle_updates,
             config_exists,
             registry_get_all_shurikens,
-            remove_shuriken
+            remove_shuriken,
+            open_devtools
         ]);
 
     builder

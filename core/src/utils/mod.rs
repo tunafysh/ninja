@@ -117,7 +117,7 @@ pub fn kill_process_by_name(name: &str) -> bool {
             Ok(s) => s,
             Err(_) => return false,
         };
-        
+
         if snapshot.is_invalid() {
             return false;
         }
@@ -173,13 +173,11 @@ pub fn kill_process_by_pid(pid: u32) -> bool {
                     }
                 }
             }
-            
+
             kill(pid, Signal::SIGKILL).is_ok()
         }
         Err(Errno::ESRCH) => false,
-        Err(Errno::EPERM) => {
-            kill(pid, Signal::SIGKILL).is_ok()
-        }
+        Err(Errno::EPERM) => kill(pid, Signal::SIGKILL).is_ok(),
         Err(_) => false,
     }
 }
@@ -345,7 +343,7 @@ pub async fn load_shurikens(
         }
 
         let content: String = async_fs::read_to_string(&manifest_path).await?;
-        
+
         let mut shuriken: Shuriken = toml::from_str(&content)
             .map_err(|e| Error::msg(format!("TOML error in {}: {}", manifest_path.display(), e)))?;
 

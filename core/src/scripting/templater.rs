@@ -1,9 +1,9 @@
 use crate::common::types::FieldValue;
+use anyhow::Result;
 use log::{debug, error, info};
 use std::{collections::HashMap, env, error::Error, fmt::Display, path::PathBuf};
 use tera::{Context, Error as TeraError, ErrorKind, Function, Tera, Value};
 use tokio::{fs, sync::RwLock};
-use anyhow::Result;
 
 #[derive(Debug)]
 pub enum TemplateError {
@@ -68,9 +68,8 @@ impl Templater {
             .entry("ninja_root".into())
             .or_insert_with(|| FieldValue::String(ninja_root.display().to_string()));
 
-        let username = whoami::username().map_err(|e| {
-                TemplateError::Internal(format!("Failed to get username: {}", e))
-            })?;
+        let username = whoami::username()
+            .map_err(|e| TemplateError::Internal(format!("Failed to get username: {}", e)))?;
 
         context
             .entry("user".into())
@@ -256,17 +255,11 @@ struct PathFunction;
 
 #[allow(dead_code)]
 fn path(args: &HashMap<String, Value>) -> Result<tera::Value> {
-    let root = args
-        .get("root")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
 
     let os_sep = std::path::MAIN_SEPARATOR.to_string();
 
-    let sep = args
-        .get("sep")
-        .and_then(|v| v.as_str())
-        .unwrap_or(&os_sep);
+    let sep = args.get("sep").and_then(|v| v.as_str()).unwrap_or(&os_sep);
 
     let path = args
         .get("path")
@@ -283,7 +276,7 @@ fn path(args: &HashMap<String, Value>) -> Result<tera::Value> {
                 .filter(|s| !s.is_empty())
                 .for_each(|s| parts.push(s));
         }
-    
+
         #[cfg(not(windows))]
         {
             root.split('/')
@@ -292,10 +285,7 @@ fn path(args: &HashMap<String, Value>) -> Result<tera::Value> {
         }
     }
 
-    parts.extend(
-        path.split('/')
-            .filter(|s| !s.is_empty())
-    );
+    parts.extend(path.split('/').filter(|s| !s.is_empty()));
     Ok(tera::Value::String(parts.join(sep)))
 }
 

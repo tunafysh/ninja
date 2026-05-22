@@ -316,7 +316,7 @@ impl ShurikenManager {
 
         // ---- 3) Compute signature = SHA256(archive) ----
         let mut hasher = Sha256::new();
-        
+
         hasher.update(&archive);
         let signature = hasher.finalize(); // 32 bytes
 
@@ -498,7 +498,9 @@ impl ShurikenManager {
             info!("Running postinstall script");
             let path = root_path.join(pi_script);
             let engine = &self.engine.lock().await;
-            engine.execute_file(&path, Some(&root_path), Some(self.clone())).await?;
+            engine
+                .execute_file(&path, Some(&root_path), Some(self.clone()))
+                .await?;
         }
 
         // save config so the paths are correct when we launch.

@@ -17,9 +17,12 @@ import { useKonami } from "react-konami-code"
 import Backup from "@/components/pages/backup"
 import Tools from "@/components/pages/tools"
 import { UpdateInfo } from "@/lib/types";
+import { useConfig } from "@/hooks/config"
 
 export default function Page() {
-  const [devMode, setDevMode] = useState<boolean>(false);
+  const { config } = useConfig();
+
+  const [devMode, setDevMode] = useState<boolean>(config?.devMode ?? false); // get initial value from Tauri command if needed
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [hoverStyle, setHoverStyle] = useState({})
@@ -36,7 +39,9 @@ export default function Page() {
   const baseTabs = ["Dashboard", "Configuration", "Logs", "Tools", "Backups", "Armory"];
   const tabs = devMode ? [...baseTabs, "Developer"] : baseTabs;
 
-  useKonami(() => setDevMode(!devMode))
+  useKonami(() => { 
+    setDevMode(!devMode)
+  })
 
   // Tab icons (add a Code icon for Developer tab)
   const baseTabIcons = [
@@ -102,8 +107,10 @@ export default function Page() {
       }
     })
 
-     checkForUpdates();
-  }, [])
+    if (config?.checkUpdates){
+      checkForUpdates();
+    }
+  })
 
   // Hover effect
   useEffect(() => {

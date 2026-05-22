@@ -40,7 +40,8 @@ pub struct ScriptRequest {
 #[derive(Clone)]
 pub struct Manager {
     manager: ShurikenManager,
-    #[allow(dead_code)] // <-- if you don't directly use this field, the compiler will warn about it. This attribute suppresses that warning.
+    #[allow(dead_code)]
+    // <-- if you don't directly use this field, the compiler will warn about it. This attribute suppresses that warning.
     tool_router: ToolRouter<Self>,
 }
 
@@ -205,9 +206,9 @@ impl Manager {
 impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
         let capabilities = ServerCapabilities::builder()
-                .enable_tools()
-                .enable_logging()
-                .build();
+            .enable_tools()
+            .enable_logging()
+            .build();
 
         ServerInfo::new(capabilities)
             .with_instructions(r#"This server provides resources and mostly tools

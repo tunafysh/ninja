@@ -3,7 +3,7 @@ use ninja::backup::{create_backup, restore_backup, CompressionType};
 use ninja::common::config::NinjaConfig;
 use ninja::common::registry::ArmoryItem;
 use std::{collections::HashMap, io::Read, path::PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
 
@@ -260,10 +260,7 @@ pub async fn remove_shuriken(
     name: String,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager
-        .remove(&name)
-        .await
-        .map_err(|e| e.to_string())?;
+    manager.remove(&name).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -370,4 +367,25 @@ pub async fn registry_get_all_shurikens(
     let manager = manager.lock().await;
     let result = manager.registry_get_all_shurikens().await;
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn open_devtools(
+    app: AppHandle,
+    manager: State<'_, Mutex<ShurikenManager>>
+) -> Result<(), String> {
+    let manager = manager.lock().await;
+
+    let dev_mode = manager.config.read().await.dev_mode;
+
+    if dev_mode {
+        match app.webview_windows().get("main") {
+            Some(window) => {
+                window.open_devtools();
+            }
+            None => error!("Main window not found, cannot open devtools."),
+        }
+    }
+
+    Ok(())
 }

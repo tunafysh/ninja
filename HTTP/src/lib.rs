@@ -56,10 +56,7 @@ fn err_response(status: StatusCode, message: String) -> Response {
 }
 
 // Handler to start a shuriken
-async fn start_shuriken(
-    Path(name): Path<String>,
-    State(state): State<AppState>,
-) -> Response {
+async fn start_shuriken(Path(name): Path<String>, State(state): State<AppState>) -> Response {
     match state.manager.start(&name).await {
         Ok(()) => ok_response::<()>(None),
         Err(e) => err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
