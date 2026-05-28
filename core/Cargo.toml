@@ -1,7 +1,7 @@
 [package]
 name = "ninja-core"
 version = "1.14.0"
-edition = "2021"
+edition = "2024"
 license = "AGPL-3.0-only"
 authors = ["tunafysh"]
 description = "A powerful, cross-platform package manager and runtime for managing tools and plugins (shurikens)"
@@ -12,6 +12,7 @@ keywords = ["package-manager", "shuriken", "scripting", "lua", "cross-platform"]
 categories = ["command-line-utilities", "development-tools", "os"]
 readme = "README.md"
 exclude = ["assets/", "tests/"]
+
 
 [lib]
 name = "ninja"
