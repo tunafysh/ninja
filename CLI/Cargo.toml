@@ -19,13 +19,13 @@ log = { version = "0.4.27", default-features = false }
 fern = { version = "0.7.1", default-features = false, features = ["colored", "chrono"] }
 chrono = { version = "0.4.41", default-features = false }
 file-rotate = { version = "0.8.0", default-features = false }
-ninja-core = { path = "../core", version = "1.13.0" }
-ninja-mcp = { path = "../MCP", version = "1.13.0" }
+ninja-core = { path = "../core", version = "1.14.0" }
+ninja-mcp = { path = "../MCP", version = "1.14.0" }
 clap-verbosity-flag = { version = "3.0.3", default-features = true }
 serde = { version = "1.0.219", default-features = false }
 toml = { version = "1.1.2", default-features = false, features = ["display", "serde"] }
 dialoguer = { version = "0.12.0", default-features = false }
-ninja-http = { path = "../HTTP", version = "1.13.0" }
+ninja-http = { path = "../HTTP", version = "1.14.0" }
 serde_json = "1.0.145"
 anyhow = "1.0.100"
 dirs-next = "2.0.0"

@@ -11,7 +11,6 @@ Ninja Core is a Rust library that provides a comprehensive framework for install
 * **Shuriken Management**: Install, configure, and run packages ("shurikens") with ease
 * **State Management**: Track and manage shuriken states (running, idle, error)
 * **Lua Scripting**: Embedded Lua scripting engine for dynamic configuration and automation
-* **HTTP Server**: Built-in HTTP server for remote management and control
 * **Backup & Restore**: Backup and restore shuriken configurations and states
 * **Cross-Platform**: Full support for Linux, macOS, and Windows
 * **Template Engine**: Tera-powered templating for configuration files
@@ -21,14 +20,14 @@ Ninja Core is a Rust library that provides a comprehensive framework for install
 
 ## Architecture
 
-### Core Modules
+The library is organized into modular components:
 
-- **`manager`**: Central management system for shurikens and processes
-- **`shuriken`**: Package representation and execution logic
-- **`scripting`**: Lua scripting engine, DSL parser, and template engine
+- **`manager`**: Central system for managing shurikens and processes
+- **`shuriken`**: Package representation and execution
+- **`scripting`**: Lua engine, DSL parser, and template engine
 - **`common`**: Shared types, configuration, error handling, and registry
 - **`backup`**: Backup and restore functionality
-- **`utils`**: Helper functions for downloads, file operations, and more
+- **`utils`**: Helper functions for downloads and file operations
 
 ## Key Concepts
 
@@ -48,23 +47,20 @@ Each shuriken can be in one of three states:
 * **Idle**: Installed but not running
 * **Error**: Failed state with error message
 
-The .shuriken file format is not a zip file renamed (exhibit A: osu skins, minecraft bedrock .mc* files (.mcworld, .mcmeta, etc)) to a .shuriken. It's a custom file format in it's entirety and is constructed as following:
+### File Format
 
-[Magic bytes (6 bytes) - HSRZEG(My initials, A friend's initials that gave me a laptop when mine was broken for a month solid, another friend's initials that shared HIS OPENAI ACCOUNT for ChatGPT Plus. The level of trust he had in me is crazy.)]
-[Metadata length (4 byte 32 bit unsigned integer (metadata length cannot be -1))]
-[Actual metadata (CBOR)]
-[Archive length (4 byte 32 bit unsigned integer again)]
-[Archive (Gzippped TAR archive)]
-[Archive hash (32 byte SHA-256 hash)]
+The `.shuriken` file is a custom binary format with the following structure:
 
-For debugging/development purposes it is recommended to use the shuriken.hexpat file in the assets dir in here or in the installation since every installation of ninja provides a copy of the file. To share. omg i need to stop referencing Cave Johnson. Anyway yea load that file in ImHex, arguably one of the best hex editors, trust me, et voila all the bytes make sense bc they're sectioned.
+```
+[Magic bytes (6 bytes)]
+[Metadata length (4 byte u32)]
+[Metadata (CBOR)]
+[Archive length (4 byte u32)]
+[Archive (Gzip TAR)]
+[Archive hash (32 byte SHA-256)]
+```
 
-### States
-
-Each shuriken can be in one of three states:
-- **Running**: Active and executing
-- **Idle**: Stopped
-- **Error**: Failed state with error message
+For debugging, use `shuriken.hexpat` in the assets directory with ImHex to inspect the binary structure.
 
 ## Usage
 
@@ -81,6 +77,7 @@ ninja-core = { path = "path/to/ninja-core" }
 
 ```rust
 use ninja::manager::ShurikenManager;
+use std::path::Path;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -88,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
     let manager = ShurikenManager::new().await?;
     
     // Install a shuriken
-    manager.install_shuriken(path).await?;
+    manager.install(Path::new("path/to/shuriken.shuriken")).await?;
     
     // Start it
     manager.start("my-shuriken").await?;
@@ -102,15 +99,21 @@ async fn main() -> anyhow::Result<()> {
 The built-in DSL supports various commands:
 
 ```
-select <name>          # Select a shuriken
-start                  # Start selected shuriken
-stop                   # Stop selected shuriken
-configure              # Configure selected shuriken
-set <key> <value>      # Set configuration value
-list                   # List all shurikens
-list-state             # List shurikens with states
-install <path>         # Install a shuriken
-execute <path>         # Execute a script
+select <name>            # Select a shuriken
+start                    # Start selected shuriken
+stop                     # Stop selected shuriken
+configure                # Configure selected shuriken
+configure { k = v }      # Apply config assignments
+get <key>                # Get a config value
+set <key> <value>        # Set a config value
+toggle <key>             # Toggle a boolean config value
+install <path>           # Install a shuriken from file
+list                     # List all shurikens
+list state               # List shurikens with states
+execute <script>         # Execute a Ninja script file
+http start <port>        # Start the HTTP server (via CLI)
+exit                     # Deselect current shuriken
+help                     # Show help message
 ```
 
 ## Platform Support
@@ -127,8 +130,7 @@ execute <path>         # Execute a script
 - UAC integration for elevated permissions
 - Windows API process management
 
-### FreeBSD
-- This is what's holding me back from adding FreeBSD support
+
 
 ## Dependencies
 

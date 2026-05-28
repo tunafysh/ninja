@@ -1,13 +1,22 @@
 [package]
 name = "ninja-core"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
+version = "1.14.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["tunafysh"]
+description = "A powerful, cross-platform package manager and runtime for managing tools and plugins (shurikens)"
+repository = "https://github.com/tunafysh/ninja"
+documentation = "https://docs.rs/ninja-core"
+homepage = "https://github.com/tunafysh/ninja"
+keywords = ["package-manager", "shuriken", "scripting", "lua", "cross-platform"]
+categories = ["command-line-utilities", "development-tools", "os"]
+readme = "README.md"
+exclude = ["assets/", "tests/"]
 
 [lib]
 name = "ninja"
 path = "src/lib.rs"
-crate-type = ["staticlib", "rlib"]
+crate-type = ["rlib"]
 
 
 [target.'cfg(unix)'.dependencies]
