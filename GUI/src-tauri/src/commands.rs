@@ -1,7 +1,9 @@
-use log::{error, info};
+use log::{debug, error, info};
 use ninja::backup::{create_backup, restore_backup, CompressionType};
 use ninja::common::config::NinjaConfig;
 use ninja::common::registry::ArmoryItem;
+use ninja::shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata, Tool};
+use serde::{Serialize, Deserialize};
 use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -11,17 +13,32 @@ use ninja::{
     common::types::{ArmoryMetadata, FieldValue, ShurikenState},
     manager::ShurikenManager,
     scripting::dsl::{execute_commands, DslContext},
-    shuriken::{LogsConfig, ShurikenConfig, ShurikenMetadata},
 };
-use serde::{Deserialize, Serialize};
 use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ShurikenWithStatus {
-    pub metadata: ShurikenMetadata,
-    pub config: Option<ShurikenConfig>,
-    pub logs: Option<LogsConfig>,
-    pub status: ShurikenState,
+pub struct DopedShuriken {
+    metadata: ShurikenMetadata,
+    config: Option<ShurikenConfig>,
+    logs: Option<LogsConfig>,
+    tools: Option<Vec<Tool>>,
+    state: ShurikenState,
+}
+
+pub trait IntoDoped {
+    async fn into_doped(self) -> DopedShuriken;
+}
+
+impl IntoDoped for Shuriken {
+    async fn into_doped(self) -> DopedShuriken {
+        DopedShuriken {
+            metadata: self.metadata,
+            config: self.config,
+            logs: self.logs,
+            tools: self.tools,
+            state: self.state.lock().await.clone(),
+        }
+    }
 }
 
 #[tauri::command]
@@ -74,7 +91,7 @@ pub async fn refresh_shurikens(manager: State<'_, Mutex<ShurikenManager>>) -> Re
 #[tauri::command]
 pub async fn get_all_shurikens(
     manager: State<'_, Mutex<ShurikenManager>>,
-) -> Result<Vec<ShurikenWithStatus>, String> {
+) -> Result<Vec<DopedShuriken>, String> {
     info!("Retrieving all shurikens...");
     let mut output = Vec::new();
     let manager = manager.lock().await;
@@ -84,18 +101,23 @@ pub async fn get_all_shurikens(
         .map_err(|e| e.to_string())?
         .right()
     {
+        info!("Found {} shurikens: {:?}", list.len(), list);
         for name in list {
-            let shuriken = manager.get(name.clone()).await.map_err(|e| e.to_string())?;
-            if let Some(partial_status) = manager.states.read().await.get(&name) {
-                let status = partial_status.clone();
-                output.push(ShurikenWithStatus {
-                    metadata: shuriken.metadata,
-                    config: shuriken.config,
-                    logs: shuriken.logs,
-                    status,
-                });
+            match manager.get(name.clone()).await {
+                Ok(shuriken) => {
+                    debug!("Retrieved shuriken: name={}, has_metadata={:#?}", name, shuriken.metadata);
+                    output.push(shuriken.into_doped().await);
+                }
+                Err(e) => {
+                    error!("Failed to get shuriken '{}': {}", name, e);
+                    return Err(format!("Failed to get shuriken '{}': {}", name, e));
+                }
             }
         }
+
+        // sort shurikens by name
+        output.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
+        info!("Successfully retrieved {} shurikens", output.len());
         Ok(output)
     } else {
         error!("No shurikens found or an internal issue occurred.");
@@ -106,7 +128,7 @@ pub async fn get_all_shurikens(
 #[tauri::command]
 pub async fn get_running_shurikens(
     manager: State<'_, Mutex<ShurikenManager>>,
-) -> Result<Vec<ShurikenWithStatus>, String> {
+) -> Result<Vec<DopedShuriken>, String> {
     info!("Retrieving running shurikens...");
     let mut output = Vec::new();
     let manager = manager.lock().await;
@@ -114,11 +136,12 @@ pub async fn get_running_shurikens(
         for (name, status) in list {
             if status == ShurikenState::Running {
                 let shuriken = manager.get(name).await.map_err(|e| e.to_string())?;
-                output.push(ShurikenWithStatus {
+                output.push(DopedShuriken {
                     metadata: shuriken.metadata,
                     config: shuriken.config,
                     logs: shuriken.logs,
-                    status,
+                    tools: shuriken.tools,
+                    state: status,
                 });
             }
         }
@@ -370,9 +393,22 @@ pub async fn registry_get_all_shurikens(
 }
 
 #[tauri::command]
+pub async fn registry_get_shuriken(
+    manager: tauri::State<'_, Mutex<ShurikenManager>>,
+    name: String,
+) -> Result<ArmoryItem, String> {
+    let manager = manager.lock().await;
+    let result = manager
+        .registry_get_shuriken(name)
+        .await
+        .ok_or_else(|| "Shuriken not found in registries".to_string())?;
+    Ok(result)
+}
+
+#[tauri::command]
 pub async fn open_devtools(
     app: AppHandle,
-    manager: State<'_, Mutex<ShurikenManager>>
+    manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
 
@@ -388,4 +424,37 @@ pub async fn open_devtools(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn read_logs(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    shuriken_name: &str,
+) -> Result<Vec<String>, String> {
+    let manager = manager.lock().await;
+    let shuriken = manager
+        .get(shuriken_name.to_string())
+        .await
+        .map_err(|e| e.to_string())?;
+    let log_path = &shuriken
+        .logs
+        .as_ref()
+        .ok_or("Shuriken does not have logs configured")?
+        .log_path;
+    let full_path = manager
+        .root_path
+        .join("shurikens")
+        .join(shuriken_name)
+        .join(&log_path);
+
+    log::info!("Reading logs from path: {}", full_path.display());
+
+    match fs::read_to_string(&full_path).await {
+        Ok(content) => {
+            // Get last 50 lines
+            let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+            Ok(lines)
+        }
+        Err(e) => Err(format!("Failed to read logs: {}", e)),
+    }
 }

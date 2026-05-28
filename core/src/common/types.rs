@@ -4,11 +4,15 @@ use toml::{Value, map::Map};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShurikenState {
-    #[serde(rename = "running")]
     Running,
-    #[serde(rename = "idle")]
     Idle,
     Error(String),
+}
+
+impl Default for ShurikenState {
+    fn default() -> Self {
+        ShurikenState::Idle
+    }
 }
 
 // Unified platform-aware path type

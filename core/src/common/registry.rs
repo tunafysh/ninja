@@ -117,3 +117,17 @@ pub async fn get_shurikens_from_registries(urls: &[String]) -> Vec<ArmoryItem> {
 
     all_shurikens
 }
+
+pub async fn get_shuriken_from_registries(
+    name: String,
+    registries: &[String],
+) -> Option<ArmoryItem> {
+    let shurikens = get_shurikens_from_registries(registries).await;
+
+    shurikens.into_iter().find(|item| match item {
+        ArmoryItem::Shuriken {
+            name: item_name, ..
+        } => item_name == &name,
+        _ => false,
+    })
+}

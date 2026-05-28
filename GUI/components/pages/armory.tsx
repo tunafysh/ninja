@@ -59,19 +59,21 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
   const handleInstallComplete = () => {
     // Refresh both registry and installed shurikens after installation
     invoke<ArmoryItem[]>("registry_get_all_shurikens")
-      .then((e) => setShurikens(e))
-    invoke<ArmoryItem[]>("get_installed_shurikens")
-      .then((e) => setInstalledShurikens(e))
+      .then((items) => {
+        setShurikens(items);
+        setInstalledShurikens(items.filter((item) => item.installed));
+      });
   };
 
   useEffect(() => {
     invoke<ArmoryItem[]>("registry_get_all_shurikens")
-      .then((e) => setShurikens(e))
-    invoke<ArmoryItem[]>("get_installed_shurikens")
-      .then((e) => setInstalledShurikens(e))
-  })
+      .then((items) => {
+        setShurikens(items);
+        setInstalledShurikens(items.filter((item) => item.installed));
+      });
+  }, []);
 
-    return (
+  return (
       <div className="relative w-screen overflow-hidden flex justify-center">
         <div className="h-full w-5/6">
           {/* Installed Shurikens Section */}

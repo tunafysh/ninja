@@ -92,3 +92,9 @@
 * Modified the install process to regenerate config everytime a shuriken is installed (most configs have paths in them)
 * Added an install section in the armory. 
 * Fixed shell module admin handling because it was horrible.
+
+## 1.14.0
+* Added a `ports` field in manifest for checking if the ports are occupied before shuriken startup.
+* Moved `test.c` from root to test.
+* Fixed the UI logs to work.
+* Some fixed in the `useShuriken` hook.

@@ -115,7 +115,7 @@ export default function Page() {
     if (config?.checkUpdates){
       checkForUpdates();
     }
-  })
+  }, [devMode])
 
   // Hover effect
   useEffect(() => {

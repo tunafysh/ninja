@@ -1,13 +1,17 @@
 use crate::{
     common::{
         config::NinjaConfig,
-        registry::{ArmoryItem, download_shuriken, get_shurikens_from_registries},
+        registry::{
+            ArmoryItem, download_shuriken, get_shuriken_from_registries,
+            get_shurikens_from_registries,
+        },
         types::{ArmoryMetadata, FieldValue, ShurikenState},
     },
     scripting::{NinjaEngine, dsl::DslContext},
     shuriken::{Shuriken, ShurikenConfig},
     utils::{create_tar_gz_bytes, load_shurikens, normalize_shuriken_name},
 };
+use futures_util::future::join_all;
 use anyhow::{Context, Error, Result};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
@@ -38,7 +42,6 @@ pub struct ShurikenManager {
     pub root_path: PathBuf,
     pub engine: Arc<Mutex<NinjaEngine>>,
     pub shurikens: Arc<RwLock<HashMap<String, Shuriken>>>,
-    pub states: Arc<RwLock<HashMap<String, ShurikenState>>>,
     pub config: Arc<RwLock<crate::common::config::NinjaConfig>>,
 }
 
@@ -62,7 +65,7 @@ impl ShurikenManager {
             fs::create_dir(&projects_dir).await?;
         }
 
-        let (shurikens, states) = load_shurikens(&exe_dir).await?;
+        let shurikens = load_shurikens(&exe_dir).await?;
 
         let engine = NinjaEngine::new()
             .await
@@ -83,33 +86,39 @@ impl ShurikenManager {
             root_path: exe_dir,
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(shurikens)),
-            states: Arc::new(RwLock::new(states)),
             config,
         })
     }
 
-    async fn update_state(&self, name: &str, new_state: ShurikenState) {
-        let mut state_map = self.states.write().await;
-        state_map.insert(name.to_string(), new_state);
+    async fn update_state(&self, shuriken: Shuriken, new_state: ShurikenState) {
+        let mut state_lock = shuriken.state.lock().await;
+        *state_lock = new_state;
     }
 
     pub async fn start(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
+        info!("Starting shuriken: {}", name);
+        
         let shurikens = self.shurikens.read().await;
         let shuriken = shurikens
             .get(&normalized_name)
-            .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
+            .ok_or_else(|| {
+                warn!("Shuriken not found: {}", name);
+                anyhow::Error::msg(format!("No such shuriken: {}", name))
+            })?
             .clone();
         drop(shurikens);
 
         let shuriken_dir = self.root_path.join("shurikens").join(&normalized_name);
         if !shuriken_dir.exists() {
+            warn!("Shuriken directory not found: {}", shuriken_dir.display());
             return Err(anyhow::Error::msg(format!(
                 "Shuriken directory not found: {}",
                 shuriken_dir.display()
             )));
         }
 
+        debug!("Starting process for shuriken: {}", normalized_name);
         if let Err(e) = shuriken
             .start(
                 &*self.engine.lock().await,
@@ -118,51 +127,62 @@ impl ShurikenManager {
             )
             .await
         {
+            warn!("Failed to start shuriken '{}': {}", name, e);
             return Err(anyhow::Error::msg(format!(
                 "Failed to start shuriken '{}': {}",
                 name, e
             )));
         }
 
-        self.update_state(&normalized_name, ShurikenState::Running)
-            .await;
+        self.update_state(shuriken, ShurikenState::Running).await;
+        info!("Successfully started shuriken: {}", name);
         Ok(())
     }
 
     pub async fn refresh(&self) -> Result<()> {
-        let (new_shurikens, new_states) = load_shurikens(&self.root_path).await?;
+        info!("Refreshing shurikens from disk");
+        let new_shurikens = load_shurikens(&self.root_path).await?;
+        let count = new_shurikens.len();
         *self.shurikens.write().await = new_shurikens;
-        *self.states.write().await = new_states;
-        debug!("Shuriken manager refreshed.");
+        info!("Shuriken manager refreshed. Found {} shurikens.", count);
         Ok(())
     }
 
     pub async fn configure(&self, name: &str) -> Result<()> {
+        info!("Configuring shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(&normalized_name);
 
         if let Some(shuriken) = shuriken {
             let path = &self.root_path;
-            shuriken.configure(path).await?;
+            shuriken
+                .configure(path, &*self.engine.lock().await, Some(self.clone()))
+                .await?
+        } else {
+            warn!("Shuriken not found for configuration: {}", name);
         }
         Ok(())
     }
 
     pub async fn lockpick(&self, name: &str) -> Result<()> {
+        info!("Lockpicking shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(&normalized_name);
 
         if let Some(shuriken) = shuriken {
             let path = &self.root_path;
-            shuriken.lockpick(path).await?;
+            shuriken.lockpick(path).await?
+        } else {
+            warn!("Shuriken not found for lockpick: {}", name);
         }
         Ok(())
     }
 
     pub async fn save_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
-        println!("{:#?}", data);
+        info!("Saving config for shuriken: {}", name);
+        debug!("Config data: {:#?}", data);
         let normalized_name = normalize_shuriken_name(name);
 
         // Update in-memory config
@@ -207,7 +227,7 @@ impl ShurikenManager {
     pub async fn stop(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         let shurikens = self.shurikens.read().await;
-        let shuriken = shurikens
+        let mut shuriken = shurikens
             .get(&normalized_name)
             .ok_or_else(|| anyhow::Error::msg(format!("No such shuriken: {}", name)))?
             .clone();
@@ -235,17 +255,29 @@ impl ShurikenManager {
             )));
         }
 
-        self.update_state(&normalized_name, ShurikenState::Idle)
-            .await;
+        self.update_state(shuriken, ShurikenState::Idle).await;
         Ok(())
     }
 
     pub async fn get(&self, name: String) -> Result<Shuriken> {
+        debug!("Getting shuriken: {}", name);
         let partial_shuriken = &self.shurikens.read().await;
         let maybe_shuriken = partial_shuriken.get(&name);
+        info!(
+            "Getting shuriken '{}' from shurikens: {}",
+            name,
+            partial_shuriken
+                .keys()
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
         if let Some(shuriken) = maybe_shuriken {
+            debug!("Shuriken metadata: {:?}", shuriken.metadata);
+            debug!("Shuriken config: {:?}", shuriken.config);
             Ok(shuriken.clone())
         } else {
+            warn!("Shuriken '{}' not found", name);
             Err(anyhow::Error::msg(format!(
                 "No shuriken of name {} found",
                 name
@@ -258,13 +290,23 @@ impl ShurikenManager {
         state: bool,
     ) -> Result<Either<Vec<(String, ShurikenState)>, Vec<String>>> {
         if state {
-            let states = self.states.read().await;
-            let values: Vec<(String, ShurikenState)> =
-                states.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let shurikens = self.shurikens.read().await;
+            let futures = shurikens
+                .iter()
+                .map(async |(name, shuriken)| {
+                    let state = shuriken.state.lock().await;
+                    (name.clone(), state.clone())
+                })
+                .collect::<Vec<_>>();
+
+            let values = join_all(futures).await;
+
+            debug!("Listing shurikens with state: {:?}", values);
             Ok(Left(values))
         } else {
             let shurikens = self.shurikens.read().await;
             let keys: Vec<String> = shurikens.keys().cloned().collect();
+            debug!("Listing shuriken names: {:?}", keys);
             Ok(Right(keys))
         }
     }
@@ -352,6 +394,7 @@ impl ShurikenManager {
     }
 
     pub async fn remove(&self, name: &str) -> Result<()> {
+        info!("Removing shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
         warn!("Deleting {}.", name);
         fs::remove_dir_all(format!("shurikens/{}", normalized_name)).await?;
@@ -520,6 +563,12 @@ impl ShurikenManager {
             .collect::<Vec<_>>();
         let shurikens = get_shurikens_from_registries(&registries).await;
         shurikens
+    }
+
+    pub async fn registry_get_shuriken(&self, name: String) -> Option<ArmoryItem> {
+        let partial_registries = &self.config.read().await.registries;
+        let registries: Vec<String> = partial_registries.values().cloned().collect::<Vec<_>>();
+        get_shuriken_from_registries(name, &registries).await
     }
 
     // -------------------- Project management API --------------------

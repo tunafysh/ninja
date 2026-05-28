@@ -22,9 +22,10 @@ use std::{
     io::Write,
     path::PathBuf,
     process::exit,
+    sync::Arc,
 };
 
-use tokio::fs;
+use tokio::{fs, sync::Mutex};
 
 mod log;
 use log::setup_logger;
@@ -284,9 +285,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     name: input.name.clone(),
                     id: input.id,
                     version: input.version,
-                    script_path: Some(input.script_path.clone()),
-                    import_script: None,
+                    script_path: input.script_path.clone(),
+                    check_ports: input.check_ports,
                     shuriken_type: input.shuriken_type,
+                    ports: input.ports,
                 },
                 config: input.config_path.map(|path| ShurikenConfig {
                     config_path: path,
@@ -294,6 +296,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }),
                 logs: None,
                 tools: None,
+
+                state: Arc::new(Mutex::new(ShurikenState::Idle)),
+                dirty: Arc::new(Mutex::new(false)),
             };
 
             create_dir_all(format!("shurikens/{}/.ninja", shuriken_name)).unwrap_or_else(|_| {
@@ -321,14 +326,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit(1);
             });
 
-            if let Some(parent) = input.script_path.parent() {
-                fs::create_dir_all(parent).await?;
+            if let Some(script_path) = &input.script_path {
+                if let Some(parent) = script_path.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+
+                fs::write(
+                        script_path,
+                        "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
+                    )
+                    .await?;
             }
-            fs::write(
-                    &input.script_path,
-                    "function start()\n\t-- Start procedure goes here\nend\n\nfunction stop()\n\t-- Stop procedure goes here\nend",
-                )
-                .await?;
 
             let toml_content = toml::to_string(&manifest).unwrap_or_else(|_| {
                 eprintln!(

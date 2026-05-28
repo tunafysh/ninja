@@ -1,19 +1,18 @@
 import { create } from "zustand"
 import { invoke } from "@tauri-apps/api/core"
-import { Shuriken } from "@/lib/types"
+import { Shuriken, ShurikenState } from "@/lib/types"
 import { toast } from "sonner"
 
-type ShurikenState = {
+type UseShuriken = {
   loading: boolean
   error: string | null
   allShurikens: Shuriken[]
-  loadingTimeout: NodeJS.Timeout | null
 
   // actions
-  setLoadingDebounced: (value: boolean) => void
+  setLoading: (value: boolean) => void
   handleError: (err: unknown, context?: string) => void
   refreshShurikens: () => Promise<void>
-  updateStatus: (name: string, status: "running" | "stopped") => void
+  updateStatus: (name: string, status: ShurikenState) => void
   startShuriken: (name: string) => Promise<void>
   stopShuriken: (name: string) => Promise<void>
   configureShuriken: (name: string) => Promise<void>
@@ -21,11 +20,10 @@ type ShurikenState = {
   clearError: () => void
 }
 
-export const useShuriken = create<ShurikenState>((set, get) => ({
+export const useShuriken = create<UseShuriken>((set, get) => ({
   loading: false,
   error: null,
   allShurikens: [],
-  loadingTimeout: null,
 
   // -------------------------
   // ERROR HANDLER
@@ -38,51 +36,54 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
   },
 
   // -------------------------
-  // LOADING (DEBOUNCED)
+  // LOADING
   // -------------------------
-  setLoadingDebounced: (value: boolean) => {
-    const timeout = get().loadingTimeout
-
-    if (timeout) {
-      clearTimeout(timeout)
-      set({ loadingTimeout: null })
-    }
-
-    if (value) {
-      const newTimeout = setTimeout(() => set({ loading: true }), 200)
-      set({ loadingTimeout: newTimeout })
-    } else {
-      set({ loading: false })
-    }
+  setLoading: (value: boolean) => {
+    set({ loading: value })
   },
 
   // -------------------------
   // REFRESH ALL SHURIKENS
   // -------------------------
   refreshShurikens: async () => {
-    const { handleError, setLoadingDebounced } = get()
-    setLoadingDebounced(true)
+  const { handleError, setLoading } = get()
 
-    try {
-      await invoke("refresh_shurikens")
-      const temp_data = await invoke<Shuriken[]>("get_all_shurikens")
-      let data = temp_data.sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
-      set({ allShurikens: data })
-    } catch (err) {
-      handleError(err, "refreshShurikens")
-      set({ allShurikens: [] })
-    } finally {
-      setLoadingDebounced(false)
-    }
-  },
+  console.log("[useShuriken] Refreshing shurikens...")
+  setLoading(true)
+
+  try {
+    await invoke("refresh_shurikens")
+
+    const data = await invoke<Shuriken[]>("get_all_shurikens")
+
+    console.log(
+      `[useShuriken] Retrieved ${data.length} shurikens:`,
+      data
+    )
+
+    set({ allShurikens: data ?? [] })
+
+    console.log(
+      "[useShuriken] Store updated:",
+      get().allShurikens
+    )
+
+  } catch (err) {
+    handleError(err, "refreshShurikens")
+    set({ allShurikens: [] })
+  } finally {
+    setLoading(false)
+  }
+},
 
   // -------------------------
   // UPDATE STATUS LOCALLY
   // -------------------------
   updateStatus: (name, status) => {
+    console.log(`[useShuriken] Updating ${name} status to ${status}`)
     set(state => ({
       allShurikens: state.allShurikens.map(s =>
-        s.metadata.name === name ? { ...s, status } : s
+        s.metadata.name === name ? { ...s, state: status } : s
       ),
     }))
   },
@@ -91,18 +92,17 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
   // START SHURIKEN
   // -------------------------
   startShuriken: async (name: string) => {
-    const { updateStatus, refreshShurikens, handleError } = get()
+    console.log(`[useShuriken] Starting shuriken: ${name}`)
+    const { updateStatus, handleError } = get()
 
-    updateStatus(name, "running") // optimistic
+    updateStatus(name, "Running") // optimistic
 
     try {
       await invoke("start_shuriken", { name })
+      console.log(`[useShuriken] Successfully started ${name}`)
     } catch (err) {
       handleError(err, `startShuriken(${name})`)
-      updateStatus(name, "stopped")
-    }
-    finally {
-      refreshShurikens()
+      updateStatus(name, "Idle")
     }
   },
 
@@ -110,18 +110,17 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
   // STOP SHURIKEN
   // -------------------------
   stopShuriken: async (name: string) => {
-    const { updateStatus, refreshShurikens, handleError } = get()
+    console.log(`[useShuriken] Stopping shuriken: ${name}`)
+    const { updateStatus, handleError } = get()
 
-    updateStatus(name, "stopped") // optimistic
+    updateStatus(name, "Idle") // optimistic
 
     try {
       await invoke("stop_shuriken", { name })
+      console.log(`[useShuriken] Successfully stopped ${name}`)
     } catch (err) {
       handleError(err, `stopShuriken(${name})`)
-      updateStatus(name, "running")
-    }
-    finally{
-      refreshShurikens()
+      updateStatus(name, "Running")
     }
   },
 
@@ -129,36 +128,43 @@ export const useShuriken = create<ShurikenState>((set, get) => ({
   // CONFIGURE SHURIKEN
   // -------------------------
   configureShuriken: async (name: string) => {
-    const { handleError, setLoadingDebounced, refreshShurikens } = get()
+    console.log(`[useShuriken] Configuring shuriken: ${name}`)
+    const { handleError, setLoading, refreshShurikens } = get()
     
-    setLoadingDebounced(true)
+    setLoading(true)
     try {
       await invoke("configure_shuriken", { name })
+      console.log(`[useShuriken] Successfully configured ${name}`)
       toast.success(`Configuration applied for ${name}`)
     } catch (err) {
       handleError(err, `configureShuriken(${name})`)
     } finally {
-      setLoadingDebounced(false)
-      refreshShurikens()
+      setLoading(false)
+      await refreshShurikens()
     }
   },
 
   removeShuriken: async (name: string) => {
-    const { handleError, setLoadingDebounced, refreshShurikens } = get()
+    console.log(`[useShuriken] Removing shuriken: ${name}`)
+    const { handleError, setLoading, refreshShurikens } = get()
     
-    setLoadingDebounced(true)
+    setLoading(true)
     try {
       await invoke("remove_shuriken", { name })
+      console.log(`[useShuriken] Successfully removed ${name}`)
       toast.success(`Removed ${name}`)
     } catch (err) {
       handleError(err, `removeShuriken(${name})`)
     } finally {
-      setLoadingDebounced(false)
-      refreshShurikens()
+      setLoading(false)
+      await refreshShurikens()
     }
   },
   // -------------------------
   // CLEAR ERROR
   // -------------------------
-  clearError: () => set({ error: null }),
+  clearError: () => {
+    console.log("[useShuriken] Clearing error")
+    set({ error: null })
+  },
 }))

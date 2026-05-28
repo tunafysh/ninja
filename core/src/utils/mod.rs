@@ -11,9 +11,10 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tar::Builder as TarBuilder;
-use tokio::fs as async_fs;
+use tokio::{fs as async_fs, sync::Mutex};
 
 pub fn get_http_port() -> Result<u16> {
     let apache_conf = "shurikens/Apache/conf/httpd.conf";
@@ -310,17 +311,14 @@ pub fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
 }
 
 // Shared logic for loading shurikens from disk
-pub async fn load_shurikens(
-    root_path: &Path,
-) -> Result<(HashMap<String, Shuriken>, HashMap<String, ShurikenState>)> {
+pub async fn load_shurikens(root_path: &Path) -> Result<HashMap<String, Shuriken>> {
     let shurikens_dir = root_path.join("shurikens");
     let mut shurikens = HashMap::new();
-    let mut states = HashMap::new();
 
     // Only iterate immediate children of `shurikens/`
     let mut dir = match async_fs::read_dir(&shurikens_dir).await {
         Ok(d) => d,
-        Err(_) => return Ok((shurikens, states)), // no shurikens dir = empty
+        Err(_) => return Ok(shurikens), // no shurikens dir = empty
     };
 
     while let Some(entry) = dir.next_entry().await? {
@@ -355,6 +353,8 @@ pub async fn load_shurikens(
             ShurikenState::Idle
         };
 
+        shuriken.state = Arc::new(Mutex::new(state.clone()));
+
         // 3. Load options (optional)
         let options_path = ninja_dir.join("options.toml");
         if options_path.exists() {
@@ -381,8 +381,144 @@ pub async fn load_shurikens(
         // but normalize it to be sure
         let normalized_name = normalize_shuriken_name(&name);
         shurikens.insert(normalized_name.clone(), shuriken);
-        states.insert(normalized_name, state);
     }
 
-    Ok((shurikens, states))
+    Ok(shurikens)
+}
+
+pub struct PortOwner {
+    pub pid: u32,
+    pub name: Option<String>,
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_port_owner(port: u16) -> Option<PortOwner> {
+    use std::fs;
+
+    let content = fs::read_to_string("/proc/net/tcp").ok()?;
+
+    let port_hex = format!("{:04X}", port);
+
+    for line in content.lines().skip(1) {
+        let cols: Vec<_> = line.split_whitespace().collect();
+        if cols.len() < 10 {
+            continue;
+        }
+
+        let local_address = cols[1]; // IP:PORT in hex
+        if local_address.ends_with(&port_hex) {
+            let inode = cols[9];
+
+            // map inode → pid via /proc/*/fd
+            if let Some(pid) = find_pid_by_inode(inode) {
+                return Some(PortOwner { pid, name: None });
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn find_pid_by_inode(inode: &str) -> Option<u32> {
+    use std::fs;
+
+    for entry in fs::read_dir("/proc").ok()? {
+        let entry = entry.ok()?;
+        let pid_str = entry.file_name().to_string_lossy().to_string();
+
+        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+
+        let fd_path = format!("/proc/{pid_str}/fd");
+
+        if let Ok(fds) = fs::read_dir(fd_path) {
+            for fd in fds.flatten() {
+                if let Ok(link) = fs::read_link(fd.path()) {
+                    if link.to_string_lossy().contains(inode) {
+                        return pid_str.parse().ok();
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_port_owner(port: u16) -> Option<PortOwner> {
+    use std::process::Command;
+
+    let output = Command::new("netstat")
+        .args(["-anv", "-p", "tcp"])
+        .output()
+        .ok()?;
+
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    for line in text.lines() {
+        if line.contains(&format!(".{}", port)) {
+            // macOS does not reliably expose PID here without root
+            return Some(PortOwner { pid: 0, name: None });
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_port_owner(port: u16) -> Option<PortOwner> {
+    use windows::Win32::NetworkManagement::IpHelper::*;
+    use windows::Win32::Foundation::*;
+
+    unsafe {
+        let mut size = 0u32;
+
+        GetExtendedTcpTable(
+            std::ptr::null_mut(),
+            &mut size,
+            false.into(),
+            AF_INET.0 as u32,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        );
+
+        let mut buffer = vec![0u8; size as usize];
+
+        let res = GetExtendedTcpTable(
+            buffer.as_mut_ptr() as *mut _,
+            &mut size,
+            false.into(),
+            AF_INET.0 as u32,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        );
+
+        if res != NO_ERROR.0 as i32 {
+            return None;
+        }
+
+        let table = buffer.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+        let table = &*table;
+
+        let rows = std::slice::from_raw_parts(
+            table.table.as_ptr(),
+            table.dwNumEntries as usize,
+        );
+
+        for row in rows {
+            let local_port = u16::from_be((*row).dwLocalPort as u16);
+
+            if local_port == port {
+                return Some(PortOwner {
+                    pid: row.dwOwningPid,
+                    name: None,
+                });
+            }
+        }
+    }
+
+    None
 }

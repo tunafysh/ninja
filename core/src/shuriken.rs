@@ -1,14 +1,17 @@
+use crate::common::types::ShurikenState;
 use crate::manager::ShurikenManager;
+use crate::utils::get_port_owner;
 use crate::{common::types::FieldValue, scripting::NinjaEngine, scripting::templater::Templater};
 use anyhow::Result;
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tokio::fs;
+use tokio::{fs, sync::Mutex};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Tool {
@@ -29,10 +32,11 @@ pub struct ShurikenMetadata {
     pub name: String,
     pub id: String,
     pub version: String,
+    pub ports: Option<Vec<u16>>,
+    #[serde(rename = "check-ports")]
+    pub check_ports: Option<bool>,
     #[serde(rename = "script-path")]
     pub script_path: Option<PathBuf>,
-    #[serde(rename = "import-script")]
-    pub import_script: Option<PathBuf>,
     #[serde(rename = "type")]
     pub shuriken_type: String,
 }
@@ -60,12 +64,25 @@ async fn atomic_write_json(path: &Path, value: &JsonValue) -> Result<(), String>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShurikenToml {
+    pub shuriken: ShurikenMetadata,
+    pub config: Option<ShurikenConfig>,
+    pub logs: Option<LogsConfig>,
+    pub tools: Option<Vec<Tool>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shuriken {
     #[serde(rename = "shuriken")]
     pub metadata: ShurikenMetadata,
     pub config: Option<ShurikenConfig>,
     pub logs: Option<LogsConfig>,
     pub tools: Option<Vec<Tool>>,
+
+    #[serde(skip)]
+    pub state: Arc<Mutex<ShurikenState>>,
+    #[serde(skip)]
+    pub dirty: Arc<Mutex<bool>>,
 }
 
 impl Shuriken {
@@ -82,6 +99,25 @@ impl Shuriken {
             .await
             .map_err(|e| format!("Failed to create .ninja directory: {}", e))?;
         let lock_path = lock_dir.join("shuriken.lck");
+
+        if self.metadata.check_ports.unwrap_or(false) {
+            info!("Checking ports for shuriken {}", self.metadata.name);
+            if let Some(ports) = &self.metadata.ports {
+                for port in ports {
+                    let port_owner = get_port_owner(*port);
+                    if let Some(owner) = port_owner {
+                        let name = owner.name.unwrap_or_else(|| "Unknown".into());
+                        return Err(format!(
+                            "Port {} is already in use by process {}. Please free the port and try again.",
+                            port, name
+                        ));
+                    }
+                    else {
+                        info!("Port {} is free", port);
+                    }
+                }
+            }
+        }
 
         if self.metadata.shuriken_type == "daemon"
             && let Some(script_path) = &self.metadata.script_path
@@ -108,6 +144,9 @@ impl Shuriken {
             });
 
             atomic_write_json(&lock_path, &lockfile_data).await?;
+
+            let mut state = self.state.lock().await;
+            *state = ShurikenState::Running;
         }
         Ok(())
     }
@@ -125,8 +164,15 @@ impl Shuriken {
         Ok(())
     }
 
-    pub async fn configure(&self, root_path: &Path) -> anyhow::Result<()> {
-        if let Some(ctx) = &self.config {
+    pub async fn configure(
+        &self,
+        root_path: &Path,
+        engine: &NinjaEngine,
+        mgr: Option<ShurikenManager>,
+    ) -> anyhow::Result<()> {
+        if let Some(ctx) = &self.config
+            && let Some(script_path) = &self.metadata.script_path
+        {
             let shuriken_fields = ctx.options.clone();
             let mut fields = HashMap::new();
             if let Some(partial_fields) = shuriken_fields {
@@ -158,9 +204,17 @@ impl Shuriken {
                 .generate_config(config_full_path)
                 .await
                 .map_err(|e| anyhow::Error::msg(e.to_string()))?;
-        }
 
-        Ok(())
+            engine
+                .execute_function("post_config", script_path, Some(root_path), mgr)
+                .await?;
+
+            Ok(())
+        } else {
+            Err(anyhow::Error::msg(
+                "Shuriken does not have a config or script path",
+            ))
+        }
     }
 
     pub async fn import(
@@ -174,13 +228,8 @@ impl Shuriken {
             &self.metadata.name
         );
 
-        let lock_dir = shuriken_dir.join(".ninja");
-        tokio::fs::create_dir_all(&lock_dir)
-            .await
-            .map_err(|e| format!("Failed to create .ninja directory: {}", e))?;
-
-        if let Some(import_script) = &self.metadata.import_script {
-            let full_script_path = self.resolve_script_path(import_script, shuriken_dir);
+        if let Some(script_path) = &self.metadata.script_path {
+            let full_script_path = self.resolve_script_path(script_path, shuriken_dir);
 
             let stem = full_script_path
                 .file_stem()
@@ -190,12 +239,16 @@ impl Shuriken {
             let lock_dir = shuriken_dir.join(".ninja");
             let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
-            engine
-                .execute_function("import", &compiled_path, Some(shuriken_dir), mgr)
-                .await
-                .map_err(|e| e.to_string())?;
+            if let Some(mgr) = mgr {
+                engine
+                    .execute_function("import", &compiled_path, Some(shuriken_dir), Some(mgr))
+                    .await
+                    .map_err(|e| format!("Script import failed: {}", e))?;
+            }
+            Ok(())
+        } else {
+            Err("Shuriken does not have a script path".to_string())
         }
-        Ok(())
     }
 
     fn resolve_script_path(&self, script_path: &Path, shuriken_dir: &Path) -> PathBuf {
@@ -207,7 +260,7 @@ impl Shuriken {
     }
 
     pub async fn stop(
-        &self,
+        &mut self,
         engine: &NinjaEngine,
         shuriken_dir: &Path,
         mgr: Option<ShurikenManager>,
@@ -229,10 +282,16 @@ impl Shuriken {
             let compiled_path = lock_dir.join(format!("{stem}.ns"));
 
             if let Some(mgr) = mgr {
-                engine
-                    .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
-                    .await
-                    .map_err(|e| format!("Script stop failed: {}", e))?;
+                {
+                    let mut state = self.state.lock().await;
+                    engine
+                        .execute_function("stop", &compiled_path, Some(shuriken_dir), Some(mgr))
+                        .await
+                        .map_err(|e| {
+                            *state = ShurikenState::Error(e.to_string());
+                            format!("Script stop failed: {}", e)
+                        })?;
+                } // Lock released here
             }
 
             if lock_path.exists() {
@@ -240,7 +299,13 @@ impl Shuriken {
                     .await
                     .map_err(|e| format!("Failed to remove lockfile: {}", e))?;
             }
+
+            let mut state = self.state.lock().await;
+            *state = ShurikenState::Idle;
+            Ok(())
         }
-        Ok(())
+        else {
+            return Err("Shuriken does not have a script path or is not a daemon".to_string());
+        }
     }
 }

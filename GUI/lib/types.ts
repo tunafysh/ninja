@@ -1,9 +1,12 @@
+export type ShurikenState = "Running" | "Idle" | { Error: string }
+
 export type Shuriken = {
     metadata: ShurikenMetadata
     config?: ShurikenConfig
     logs?: LogsConfig
     tools?: Tool[]
-    status: "running" | "stopped"
+    state: ShurikenState
+    dirty: boolean
 }
 
 export type ShurikenConfig = {
@@ -20,23 +23,11 @@ export type ShurikenMetadata = {
   name: string
   id: string
   version: string
-  "script-path": string
+  ports?: number[]
+  "check-ports"?: boolean
+  "script-path"?: string
   type: "daemon" | "executable"
 }
-
-// Rust: pub enum MaintenanceType
-// Matches serde(tag = "maintenance")
-type MaintenanceType =
-  | {
-      type: "native";
-      bin_path: string;
-      config_path?: string;
-      args?: string[];
-    }
-  | {
-      type: "script";
-      script_path: string;
-    };
 
 export type Value =
   | { type: "String"; value: string }
@@ -47,7 +38,7 @@ export type Value =
 
 // Rust: pub struct LogsConfig
 export interface LogsConfig {
-    log_path?: string; // PlatformPath as string
+    "log-path"?: string; // PlatformPath as string
 }
 
 export type ArmoryItem = {

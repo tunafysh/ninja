@@ -51,10 +51,6 @@ export default function Configuration() {
 
   const [optionsState, setOptionsState] = useState<Record<string, Record<string, any>>>({})
 
-  useEffect(() => {
-    refreshShurikens()
-  }, [refreshShurikens])
-
   // Initialize local state
   useEffect(() => {
     const newState: Record<string, Record<string, any>> = {}

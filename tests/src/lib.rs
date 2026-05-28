@@ -133,7 +133,7 @@ mod ninja_runtime_integration_tests {
 mod ninja_api_integration_tests {
     use crate::ninja_runtime_integration_tests::write_stub_script;
     use ninja::{
-        common::config::NinjaConfig,
+        common::{config::NinjaConfig, types::ShurikenState},
         manager::ShurikenManager,
         scripting::NinjaEngine,
         shuriken::{Shuriken, ShurikenMetadata},
@@ -157,13 +157,16 @@ mod ninja_api_integration_tests {
                 name: "test_script".into(),
                 id: "id2".into(),
                 version: "1.0.0".to_string(),
+                ports: None,
+                check_ports: None,
                 script_path: Some(PathBuf::from("dummy.ns")),
                 shuriken_type: "daemon".into(),
-                import_script: None,
             },
             config: None,
             logs: None,
             tools: None,
+            state: Arc::new(Mutex::new(ShurikenState::Idle)),
+            dirty: Arc::new(Mutex::new(false)),
         };
 
         shuriken.start(&engine, dir.path(), None).await.unwrap();
@@ -179,7 +182,6 @@ mod ninja_api_integration_tests {
             root_path: dir.path().to_path_buf(),
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
-            states: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let list = manager.list(false).await.unwrap();
@@ -198,13 +200,11 @@ mod ninja_api_integration_tests {
             root_path: dir.path().to_path_buf(),
             engine: Arc::new(Mutex::new(engine)),
             shurikens: Arc::new(RwLock::new(HashMap::new())),
-            states: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Verify manager initialization
         assert_eq!(manager.root_path, dir.path());
         assert!(manager.shurikens.read().await.is_empty());
-        assert!(manager.states.read().await.is_empty());
     }
 
     #[tokio::test]
@@ -213,14 +213,16 @@ mod ninja_api_integration_tests {
             name: "test".into(),
             id: "test-id".into(),
             version: "1.0.0".to_string(),
+            ports: Some(vec![8080, 9090]),
+            check_ports: Some(true),
             script_path: Some(PathBuf::from("script.ns")),
             shuriken_type: "daemon".into(),
-            import_script: None,
         };
 
         assert_eq!(metadata.name, "test");
         assert_eq!(metadata.id, "test-id");
         assert_eq!(metadata.version, "1.0.0");
+        assert_eq!(metadata.ports, Some(vec![8080, 9090]));
     }
 
     #[tokio::test]

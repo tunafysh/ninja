@@ -1,7 +1,6 @@
 // components/LogsDisplay.tsx
 import { useEffect, useRef, useState } from "react";
-import { readTextFile, watch } from "@tauri-apps/plugin-fs";
-import { resolve } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { Shuriken } from "@/lib/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -27,49 +26,39 @@ const parseLogLine = (line: string): LogEntry | null => {
 
 export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastLength = useRef(0);
 
   useEffect(() => {
-    const startWatching = async () => {
-      const logFilePath = await resolve(
-        `shurikens/${shuriken.metadata.name}/${shuriken.logs?.log_path}`
-      );
-
-      const content = await readTextFile(logFilePath);
-      const initialLogs = content
-        .split("\n")
-        .map(parseLogLine)
-        .filter(Boolean) as LogEntry[];
-      setLogs(initialLogs);
-      lastLength.current = content.length;
-
-      const unwatch = await watch(logFilePath, async () => {
-        const updatedContent = await readTextFile(logFilePath);
-
-        if (updatedContent.length > lastLength.current) {
-          const diff = updatedContent.slice(lastLength.current);
-          const newLines = diff
-            .split("\n")
-            .map(parseLogLine)
-            .filter(Boolean) as LogEntry[];
-
-          if (newLines.length > 0) {
-            setLogs((prev) => [...prev, ...newLines]);
-          }
+    const loadLogs = async () => {
+      setLoading(true);
+      try {
+        if (!shuriken.logs?.["log-path"]) {
+          console.log("No log path defined for this shuriken: ", shuriken);
+          setLoading(false);
+          return;
         }
 
-        lastLength.current = updatedContent.length;
-      });
+        const content = await invoke<string[]>("read_logs", {
+          shurikenName: shuriken.metadata.name.toLowerCase()
+        });
 
-      return () => {
-        unwatch();
-      };
+        const initialLogs = content
+          .map(parseLogLine)
+          .filter(Boolean) as LogEntry[];
+        setLogs(initialLogs);
+        lastLength.current = content.length;
+      } catch (error) {
+        console.error("Failed to read logs:", error);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    startWatching();
-  }, []);
+    loadLogs();
+  }, [shuriken.metadata.name, shuriken.logs]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -127,7 +116,14 @@ export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
           ref={containerRef}
           className="h-96 overflow-y-auto font-mono text-sm p-2 bg-gray-950"
         >
-          {logs.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border border-gray-600 border-t-blue-400 mx-auto"></div>
+                <p className="text-gray-500 text-sm">Loading logs...</p>
+              </div>
+            </div>
+          ) : logs.length === 0 ? (
             <p className="text-gray-600 italic text-center py-8">
               No logs yet...
             </p>
@@ -140,11 +136,11 @@ export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
                   getLogStyle(log.level)
                 )}
               >
-                <span className="text-gray-500 text-xs whitespace-nowrap min-w-[125px]">
+                <span className="text-gray-500 text-xs whitespace-nowrap min-w-31.25">
                   {log.timestamp}
                 </span>
                 <span className={getLevelBadge(log.level)}>{log.level}</span>
-                <span className="flex-1 whitespace-pre-wrap break-words">
+                <span className="flex-1 whitespace-pre-wrap wrap-break-word">
                   {log.message}
                 </span>
               </div>

@@ -100,13 +100,12 @@ pub fn run() {
                     .blocking_show();
             }
 
-            
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 app.deep_link().register_all()?;
             }
-            
+
             #[cfg(target_os = "macos")]
             {
                 let window = app.get_webview_window("main").unwrap();
@@ -177,7 +176,9 @@ pub fn run() {
             config_exists,
             registry_get_all_shurikens,
             remove_shuriken,
-            open_devtools
+            open_devtools,
+            read_logs,
+            registry_get_shuriken,
         ]);
 
     builder

@@ -3,9 +3,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LogsDisplay } from "../ui/logs-display"
 import { Shuriken } from "@/lib/types"
+import { Suspense } from "react"
 
 export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
-  const withLogs = shurikens.filter(s => typeof s.logs == undefined)
+  const withLogs = shurikens.filter(s => s.logs !== undefined)
 
   return (
     <div className="space-y-6">
@@ -21,7 +22,7 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
           className="w-full"
           defaultValue={withLogs[0].metadata.name} // <-- ensures first tab shows
         >
-          <TabsList className="grid grid-cols-3 max-w-md mb-6">
+          <TabsList className={`grid grid-cols-${withLogs.length} max-w-md mb-6`}>
             {withLogs.map((value) => (
               <TabsTrigger
                 key={value.metadata.name}
@@ -38,7 +39,9 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
               key={value.metadata.name}
               value={value.metadata.name}
             >
-              <LogsDisplay shuriken={value} />
+              <Suspense fallback={<div className="p-4 text-gray-500">Loading logs...</div>}>
+                <LogsDisplay shuriken={value} />
+              </Suspense>
             </TabsContent>
           ))}
         </Tabs>

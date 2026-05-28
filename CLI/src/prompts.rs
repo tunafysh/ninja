@@ -7,7 +7,9 @@ pub(crate) struct NewShurikenInput {
     pub name: String,
     pub id: String,
     pub version: String,
-    pub script_path: PathBuf,
+    pub script_path: Option<PathBuf>,
+    pub ports: Option<Vec<u16>>,
+    pub check_ports: Option<bool>,
     pub shuriken_type: String,
     pub config_path: Option<PathBuf>,
     pub options: Option<HashMap<String, FieldValue>>,
@@ -116,7 +118,10 @@ pub(crate) fn collect_new_shuriken_input() -> Result<NewShurikenInput, dialoguer
         "Enter the version of the shuriken (this is required if you're planning to upload to Armory)",
         true,
     )?;
-    let script_path = PathBuf::from(prompt_required(&theme, "Enter the script path")?);
+    let script_path = prompt_optional_path(
+        &theme,
+        "Enter the script path (optional if the shuriken type is not daemon and no need for import or additional config logic.)",
+    )?;
 
     let shuriken_options = ["daemon", "executable"];
     let choice = Select::with_theme(&theme)
@@ -136,6 +141,32 @@ pub(crate) fn collect_new_shuriken_input() -> Result<NewShurikenInput, dialoguer
         (None, None)
     };
 
+    let ports = if prompt_confirm(&theme, "Add ports?", false)? {
+        let ports_str = prompt_required(
+            &theme,
+            "Enter ports this shuriken uses (comma-separated, e.g. '80, 443')",
+        )?;
+        let ports = ports_str
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse::<u16>().ok())
+            .collect::<Vec<_>>();
+
+        if ports.is_empty() { None } else { Some(ports) }
+    } else {
+        None
+    };
+
+    let port_check = prompt_confirm(
+        &theme,
+        &format!(
+            "Should Ninja check if ports {:#?} are available everytime this shuriken starts?",
+            ports
+        ),
+        true,
+    )?;
+
     Ok(NewShurikenInput {
         name,
         id,
@@ -144,6 +175,12 @@ pub(crate) fn collect_new_shuriken_input() -> Result<NewShurikenInput, dialoguer
         shuriken_type: shuriken_options[choice].to_string(),
         config_path,
         options,
+        check_ports: if ports.is_some() {
+            Some(port_check)
+        } else {
+            None
+        },
+        ports,
     })
 }
 

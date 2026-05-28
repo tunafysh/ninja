@@ -336,7 +336,14 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                     let mut shurikens = ctx.manager.shurikens.write().await;
                     if let Some(shuriken) = shurikens.get_mut(name) {
                         let path = &ctx.manager.root_path;
-                        shuriken.configure(path).await.map_err(Error::msg)?;
+                        shuriken
+                            .configure(
+                                path,
+                                &*ctx.manager.engine.lock().await,
+                                Some(ctx.manager.clone()),
+                            )
+                            .await
+                            .map_err(Error::msg)?;
 
                         output.push(format!(
                             "Generated configuration for shuriken {} successfully.",
