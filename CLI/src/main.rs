@@ -128,8 +128,8 @@ pub struct ListArgs {
 
 #[derive(Args)]
 pub struct InstallArgs {
-    /// The path of the .shuriken file to install
-    pub path: PathBuf,
+    /// The name of the shuriken to install (can be a path, a registry reference or a url)
+    pub name: String,
 }
 
 #[derive(Args)]
@@ -373,7 +373,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Install(args)) => {
             info!("Installing a shuriken");
-            manager.install(&args.path).await?;
+            manager.install(&args.name).await?;
         }
         Some(Commands::Forge(args)) => {
             use serde_json::from_str;

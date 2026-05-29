@@ -13,36 +13,62 @@ use std::{
 };
 use tokio::{fs, sync::Mutex};
 
+/// Represents a tool script associated with a Shuriken.
+///
+/// Tools are executable scripts that can be invoked to perform
+/// specific tasks related to the Shuriken.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Tool {
+    /// The name of the tool
     pub name: String,
+    /// Path to the tool's script file
     pub script: PathBuf,
+    /// Optional human-readable description
     pub description: Option<String>,
 }
 
+/// Configuration settings for a Shuriken.
+///
+/// Specifies the path to configuration templates and runtime options.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenConfig {
+    /// Path to the configuration file template (relative to Shuriken directory)
     #[serde(rename = "config-path")]
     pub config_path: PathBuf,
+    /// Runtime configuration options applied during execution
     pub options: Option<HashMap<String, FieldValue>>,
 }
 
+/// Metadata describing a Shuriken in shuriken.toml.
+///
+/// Contains identifying information, type, version, and optional startup details.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenMetadata {
+    /// Human-readable name of the Shuriken
     pub name: String,
+    /// Unique identifier for the Shuriken
     pub id: String,
+    /// Version string (e.g., "1.0.0")
     pub version: String,
+    /// Optional list of TCP ports used by the service
     pub ports: Option<Vec<u16>>,
+    /// Whether to verify ports are free before starting (default: false)
     #[serde(rename = "check-ports")]
     pub check_ports: Option<bool>,
+    /// Path to the main startup script
     #[serde(rename = "script-path")]
     pub script_path: Option<PathBuf>,
+    /// Type of Shuriken: "daemon", "binary", "library", etc.
     #[serde(rename = "type")]
     pub shuriken_type: String,
 }
 
+/// Logging configuration for a Shuriken.
+///
+/// Specifies where the Shuriken should write its log files.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LogsConfig {
+    /// Path where logs should be written
     #[serde(rename = "log-path")]
     pub log_path: PathBuf,
 }
@@ -63,29 +89,60 @@ async fn atomic_write_json(path: &Path, value: &JsonValue) -> Result<(), String>
     Ok(())
 }
 
+/// Represents the complete TOML structure of a shuriken.toml file.
+///
+/// This is the raw representation before being parsed into a `Shuriken` struct.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShurikenToml {
+    /// Required: Shuriken metadata section
     pub shuriken: ShurikenMetadata,
+    /// Optional: Configuration section
     pub config: Option<ShurikenConfig>,
+    /// Optional: Logging configuration
     pub logs: Option<LogsConfig>,
+    /// Optional: Available tools
     pub tools: Option<Vec<Tool>>,
 }
 
+/// A loaded and managed Shuriken service instance.
+///
+/// Represents an installed Shuriken with metadata, configuration, logging, and runtime state.
+/// The `state` and `dirty` flags are not serialized.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shuriken {
+    /// Shuriken metadata
     #[serde(rename = "shuriken")]
     pub metadata: ShurikenMetadata,
+    /// Configuration settings
     pub config: Option<ShurikenConfig>,
+    /// Logging configuration
     pub logs: Option<LogsConfig>,
+    /// Available tools
     pub tools: Option<Vec<Tool>>,
 
+    /// Current runtime state (Running, Idle, or Error)
     #[serde(skip)]
     pub state: Arc<Mutex<ShurikenState>>,
+    /// Whether in-memory state differs from disk
     #[serde(skip)]
     pub dirty: Arc<Mutex<bool>>,
 }
 
 impl Shuriken {
+    /// Starts this Shuriken by executing its startup script.
+    ///
+    /// Performs port availability checks if configured, creates necessary directories,
+    /// compiles and executes the startup script, and writes a lock file.
+    /// Updates internal state to `Running` on success.
+    ///
+    /// # Arguments
+    /// - `engine`: Reference to the Lua scripting engine
+    /// - `shuriken_dir`: Directory containing the Shuriken's files
+    /// - `mgr`: Optional manager reference for script context
+    ///
+    /// # Returns
+    /// - `Ok(())` if startup succeeded
+    /// - `Err(msg)` if port check fails, script execution fails, or I/O fails
     pub async fn start(
         &self,
         engine: &NinjaEngine,
@@ -151,6 +208,16 @@ impl Shuriken {
         Ok(())
     }
 
+    /// Removes the lock file for this Shuriken (without stopping it).
+    ///
+    /// Useful for recovering from crashes where the lock file wasn't cleaned up.
+    ///
+    /// # Arguments
+    /// - `root_path`: The root Ninja directory
+    ///
+    /// # Returns
+    /// - `Ok(())` if lock file removed or didn't exist
+    /// - `Err` if operation fails
     pub async fn lockpick(&self, root_path: &Path) -> anyhow::Result<()> {
         let root_path = root_path
             .join("shurikens")
@@ -164,6 +231,19 @@ impl Shuriken {
         Ok(())
     }
 
+    /// Configures this Shuriken by templating its configuration file.
+    ///
+    /// Uses the `Templater` to render configuration templates with provided field values,
+    /// then executes the `post_config` function if a script path is defined.
+    ///
+    /// # Arguments
+    /// - `root_path`: The root Ninja directory
+    /// - `engine`: Reference to the Lua scripting engine
+    /// - `mgr`: Optional manager reference for script context
+    ///
+    /// # Returns
+    /// - `Ok(())` if configuration succeeded
+    /// - `Err` if no config/script path exists or template/script execution fails
     pub async fn configure(
         &self,
         root_path: &Path,
@@ -217,6 +297,19 @@ impl Shuriken {
         }
     }
 
+    /// Imports data for this Shuriken by executing its import script.
+    ///
+    /// Executes the `import` function if a script path is defined.
+    /// Used to prepare or initialize data before the Shuriken starts.
+    ///
+    /// # Arguments
+    /// - `engine`: Reference to the Lua scripting engine
+    /// - `shuriken_dir`: Directory containing the Shuriken's files
+    /// - `mgr`: Optional manager reference for script context
+    ///
+    /// # Returns
+    /// - `Ok(())` if import succeeded
+    /// - `Err(msg)` if no script path exists or script execution fails
     pub async fn import(
         &self,
         engine: &NinjaEngine,
@@ -251,6 +344,17 @@ impl Shuriken {
         }
     }
 
+    /// Resolves a script path, handling both absolute and relative paths.
+    ///
+    /// If the path is absolute, returns it as-is.
+    /// Otherwise, joins it with the shuriken directory.
+    ///
+    /// # Arguments
+    /// - `script_path`: The script path to resolve
+    /// - `shuriken_dir`: The Shuriken's directory for relative resolution
+    ///
+    /// # Returns
+    /// The resolved absolute path
     fn resolve_script_path(&self, script_path: &Path, shuriken_dir: &Path) -> PathBuf {
         if script_path.is_absolute() {
             script_path.to_path_buf()
@@ -259,6 +363,19 @@ impl Shuriken {
         }
     }
 
+    /// Stops this running Shuriken by executing its stop script.
+    ///
+    /// Calls the `stop` function if defined, removes the lock file,
+    /// and updates internal state to `Idle`.
+    ///
+    /// # Arguments
+    /// - `engine`: Reference to the Lua scripting engine
+    /// - `shuriken_dir`: Directory containing the Shuriken's files
+    /// - `mgr`: Optional manager reference for script context
+    ///
+    /// # Returns
+    /// - `Ok(())` if stop succeeded
+    /// - `Err(msg)` if script execution fails or lock file removal fails
     pub async fn stop(
         &mut self,
         engine: &NinjaEngine,

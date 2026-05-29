@@ -1,3 +1,14 @@
+//! Lua scripting engine and DSL support.
+//!
+//! Provides a Lua-based scripting environment for executing Shuriken startup, stop,
+//! configuration, and custom scripts. Includes:
+//!
+//! - [`dsl`]: Domain-specific language for command execution
+//! - [`templater`]: Template rendering for configuration files
+//! - Lua modules: fs, env, shell, time, json, http, log, proc
+//!
+//! The engine compiles scripts to bytecode and manages execution context.
+
 pub mod dsl;
 pub mod templater;
 

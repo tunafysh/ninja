@@ -1,6 +1,6 @@
 use log::{error, info, warn};
 use ninja::{manager::ShurikenManager, scripting::dsl::execute_commands};
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 use tauri::State;
 use tokio::sync::Mutex;
 use url::Url;
@@ -29,7 +29,7 @@ pub async fn handle_shurikenctl(url: &str, manager: State<'_, Mutex<ShurikenMana
         "install" => {
             if let Some(pkg) = query.get("pkg") {
                 info!("Installing Shuriken: {}", pkg);
-                if let Err(e) = manager.install(&PathBuf::from(pkg)).await {
+                if let Err(e) = manager.install(&pkg).await {
                     error!("Failed to install '{}': {}", pkg, e);
                 }
             } else {

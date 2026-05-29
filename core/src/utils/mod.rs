@@ -1,3 +1,13 @@
+//! Utility functions for common operations.
+//!
+//! Provides helper functions for:
+//!
+//! - [`download`]: Downloading files from URLs with progress tracking
+//! - File operations: Creating tar.gz archives, loading Shurikens from disk
+//! - Process management: Killing processes by PID or name
+//! - Port detection: Finding which process is using a given port
+//! - Configuration parsing: Extracting ports from Apache/Nginx configs
+
 pub mod download;
 
 use crate::{

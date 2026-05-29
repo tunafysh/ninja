@@ -1,13 +1,24 @@
-// Simplified error handling with automatic conversions
+/// Error types specific to Shuriken operations.
+///
+/// Provides detailed error information for various failure scenarios
+/// when working with Shurikens and configuration.
 #[derive(Debug)]
 pub enum ShurikenError {
+    /// A requested Shuriken service was not found
     ServiceNotFound(String),
+    /// Failed to spawn a process for a service
     SpawnFailed(String, std::io::Error),
+    /// Could not retrieve the process ID
     NoPid,
+    /// Configuration-related error
     ConfigError(String),
+    /// The Shurikens directory does not exist
     ShurikensDirectoryNotFound,
+    /// The provided service name is invalid
     InvalidServiceName,
+    /// Failed to parse configuration from TOML
     ConfigParseError(String, toml::de::Error),
+    /// I/O operation failed
     IoError(std::io::Error),
 }
 

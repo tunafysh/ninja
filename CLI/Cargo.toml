@@ -19,7 +19,7 @@ log = { version = "0.4.27", default-features = false }
 fern = { version = "0.7.1", default-features = false, features = ["colored", "chrono"] }
 chrono = { version = "0.4.41", default-features = false }
 file-rotate = { version = "0.8.0", default-features = false }
-ninja-core = { path = "../core", version = "1.14.0" }
+ninja-core = { version = "1.14.0", path = "../core" }
 ninja-mcp = { path = "../MCP", version = "1.14.0" }
 clap-verbosity-flag = { version = "3.0.3", default-features = true }
 serde = { version = "1.0.219", default-features = false }

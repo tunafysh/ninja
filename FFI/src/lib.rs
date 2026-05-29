@@ -441,17 +441,17 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
 /// Install a shuriken from a path.
 ///
 /// # Safety
-/// `mgr` must be valid. `path_ptr` must be a valid C string. `out_err` can be null.
+/// `mgr` must be valid. `name_ptr` must be a valid C string. `out_err` can be null.
 pub unsafe extern "C" fn ninja_install_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
-    path_ptr: *const c_char,
+    name_ptr: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
-    let path = match path_from_c(path_ptr) {
+    let path = match str_from_c(name_ptr) {
         Some(p) => p,
         None => {
             if !out_err.is_null() {
-                unsafe { *out_err = CString::new("Path was null").unwrap().into_raw() };
+                unsafe { *out_err = CString::new("String was null").unwrap().into_raw() };
             }
             return -1;
         }

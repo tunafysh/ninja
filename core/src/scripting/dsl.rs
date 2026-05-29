@@ -10,24 +10,42 @@ use std::{io, path::PathBuf, process::Stdio};
 use tokio::process::Command as SubprocessCommand;
 use tokio::sync::RwLock;
 
-/// Commands (added ConfigureBlock)
+/// Commands that can be executed within the Ninja DSL.
+///
+/// These commands are parsed from DSL scripts and executed to manage Shurikens.
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Start an HTTP API server on the specified port
     HttpStart(u16),
+    /// Start the currently selected Shuriken
     Start,
+    /// Stop the currently selected Shuriken
     Stop,
+    /// Select a Shuriken by name for subsequent operations
     Select(String),
+    /// Get a configuration value by key
     Get(String),
+    /// Deselect the current Shuriken
     Exit,
+    /// Configure the currently selected Shuriken
     Configure,
+    /// Configure the currently selected Shuriken with specific key-value pairs
     ConfigureBlock(Vec<(String, FieldValue)>),
+    /// Set a configuration key to a value
     Set { key: String, value: FieldValue },
+    /// List all available Shurikens
     List,
+    /// List all Shurikens with their current states
     ListState,
-    Install(PathBuf),
+    /// Install a new Shuriken from a URL, registry entry, or file path
+    Install(String),
+    /// Toggle a boolean configuration value
     Toggle(String),
+    /// Execute a Ninja script file
     Execute(PathBuf),
+    /// Display help information
     Help,
+    /// No-op command
     None,
 }
 
@@ -35,7 +53,10 @@ pub enum Command {
 // Parsing helpers
 // -----------------
 
-// strip single-line comments (// or #)
+/// Removes single-line comments from a line of code.
+///
+/// Supports both `//` and `#` comment delimiters.
+/// Returns the text up to the first comment marker.
 fn strip_comments(line: &str) -> &str {
     if let Some(i) = line.find("//") {
         &line[..i]
@@ -46,7 +67,10 @@ fn strip_comments(line: &str) -> &str {
     }
 }
 
-// detect and parse a single value into FieldValue with basic type detection
+/// Parses a raw string into a typed `FieldValue`.
+///
+/// Supports quoted strings, booleans (`true`/`false`), and integers.
+/// Falls back to a string if no specific type matches.
 fn parse_value(raw: &str) -> FieldValue {
     let v = raw.trim();
 
@@ -72,7 +96,12 @@ fn parse_value(raw: &str) -> FieldValue {
     FieldValue::String(v.to_string())
 }
 
-// parse a single "key = value" text into (key, FieldValue)
+/// Parses a single key-value assignment (e.g., `key = value`).
+///
+/// # Returns
+/// - `Ok(Some((key, value)))` if a valid assignment is found
+/// - `Ok(None)` if the line is empty or not an assignment
+/// - `Err` if the assignment is malformed (e.g., empty key)
 fn parse_kv(text: &str) -> Result<Option<(String, FieldValue)>> {
     let t = text.trim();
     if t.is_empty() {
@@ -96,7 +125,18 @@ fn parse_kv(text: &str) -> Result<Option<(String, FieldValue)>> {
     }
 }
 
-// collect block content after the '{' and until matching '}'. Supports inline and multiline.
+/// Collects the content of a block delimited by `{` and `}`.
+///
+/// Supports both inline blocks (`{ content }`) and multiline blocks.
+/// Skips comments while collecting lines.
+///
+/// # Arguments
+/// - `first_after_brace`: Content on the same line after the opening `{`
+/// - `lines`: Iterator over remaining lines
+///
+/// # Returns
+/// - `Ok(content)` if the block was successfully collected
+/// - `Err` if no closing `}` is found
 fn collect_block<'a, I>(first_after_brace: &'a str, lines: &mut I) -> Result<String>
 where
     I: Iterator<Item = &'a str>,
@@ -134,7 +174,14 @@ where
     bail!("Missing closing '}}' for block");
 }
 
-// ---- Parser: keeps your previous fallback but adds rich configure block handling ----
+/// Parses a DSL script into a sequence of `Command` objects.
+///
+/// Handles comments, block syntax for configure, and token-based command parsing.
+/// Supports both legacy and rich configure block syntax.
+///
+/// # Returns
+/// - `Ok(commands)` with the parsed command sequence
+/// - `Err` if parsing fails
 fn command_parser(script: &str) -> Result<Vec<Command>> {
     let mut commands = Vec::new();
 
@@ -228,7 +275,7 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
                 }
                 "install" => {
                     if tokens.len() > 1 {
-                        Command::Install(PathBuf::from(tokens[1].clone()))
+                        Command::Install(tokens[1].clone())
                     } else {
                         Command::None
                     }
@@ -263,6 +310,13 @@ fn command_parser(script: &str) -> Result<Vec<Command>> {
 // Helper Function
 // ==================
 
+/// Locates the ninja CLI executable (`shurikenctl` or `shurikenctl.exe`).
+///
+/// Searches in the same directory as the current executable.
+///
+/// # Returns
+/// - `Ok(path)` if the CLI executable is found
+/// - `Err` if the executable cannot be found or the current executable location is unknown
 fn locate_ninja_cli() -> Result<PathBuf> {
     let exe_path = env::current_exe()?;
     if let Some(root) = exe_path.parent() {
@@ -284,12 +338,24 @@ fn locate_ninja_cli() -> Result<PathBuf> {
     }
 }
 
+/// Context for executing Ninja DSL commands.
+///
+/// Maintains the manager reference and currently selected Shuriken.
 pub struct DslContext {
+    /// Reference to the Shuriken manager
     pub manager: ShurikenManager,
+    /// Currently selected Shuriken name (if any)
     pub selected: Arc<RwLock<Option<String>>>,
 }
 
 impl DslContext {
+    /// Creates a new DSL context with the given manager.
+    ///
+    /// # Arguments
+    /// - `manager`: The Shuriken manager
+    ///
+    /// # Returns
+    /// A new `DslContext` with no Shuriken selected
     pub fn new(manager: ShurikenManager) -> Self {
         Self {
             manager,
@@ -298,6 +364,18 @@ impl DslContext {
     }
 }
 
+/// Parses and executes a series of DSL commands.
+///
+/// Processes the DSL script, executing each command in sequence
+/// and collecting output messages.
+///
+/// # Arguments
+/// - `ctx`: DSL execution context with manager and selected Shuriken
+/// - `script`: The DSL script string to execute
+///
+/// # Returns
+/// - `Ok(output)` with a vector of output messages from command execution
+/// - `Err` if parsing or execution fails
 pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<String>> {
     let parsed_commands = command_parser(script.as_str())?;
 
@@ -390,7 +468,7 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                   toggle <key>             - Toggle a boolean config key
                   start                    - Start the selected shuriken
                   stop                     - Stop the selected shuriken
-                  install <path>           - Install a new shuriken from a file
+                  install <url | registry_entry | path>           - Install a new shuriken from a file, url or a registry entry
                   list                     - List all shurikens
                   list state               - List shurikens with their states
                   execute <script>         - Run a Ninja script file

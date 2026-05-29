@@ -9,7 +9,7 @@ members = [
     "tests",
     "FFI"]
 
-package.version = "1.14.0"
+package.version = "1.14.1"
 package.edition = "2024"
 package.license = "GNU Affero General Public License v3.0"
 [profile.release]

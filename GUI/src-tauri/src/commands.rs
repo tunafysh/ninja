@@ -267,11 +267,11 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
 #[tauri::command]
 pub async fn install_shuriken(
     manager: State<'_, Mutex<ShurikenManager>>,
-    path: String,
+    name: String,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
     manager
-        .install(&PathBuf::from(path))
+        .install(&name)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())

@@ -1,6 +1,6 @@
 use crate::{common::types::ShurikenState, manager::ShurikenManager};
 use mlua::{Either, Error as LuaError, Lua, Result, Table};
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<Table> {
     let ninja_module = lua.create_table()?;
@@ -127,12 +127,11 @@ pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<T
         lua.create_async_function({
             let mgr = mgr.clone();
 
-            move |_, path: String| {
+            move |_, name: String| {
                 let mgr = mgr.clone();
 
                 async move {
-                    let path = PathBuf::from(path);
-                    mgr.install(path.as_path()).await?;
+                    mgr.install(&name).await?;
                     Ok(())
                 }
             }

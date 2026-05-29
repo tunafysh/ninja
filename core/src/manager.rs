@@ -1,6 +1,6 @@
 use crate::{
     common::{
-        config::NinjaConfig,
+        config::{NinjaConfig, ShurikenReference},
         registry::{
             ArmoryItem, download_shuriken, get_shuriken_from_registries,
             get_shurikens_from_registries,
@@ -37,6 +37,17 @@ const MAGIC: &[u8; 6] = b"HSRZEG";
 /// A thin wrapper around a spawned process. We keep it simple: the
 /// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
 
+/// The main orchestrator for managing Shurikens and their lifecycle.
+///
+/// `ShurikenManager` handles all operations related to Shuriken services,
+/// including startup, configuration, installation, and lifecycle management.
+/// It maintains the scripting engine, configuration, and in-memory state.
+///
+/// # Fields
+/// - `root_path`: Base directory where Ninja stores data (~/.ninja)
+/// - `engine`: Lua scripting engine for executing Shuriken scripts
+/// - `shurikens`: Cached map of loaded Shurikens by name
+/// - `config`: Global Ninja configuration including registries
 #[derive(Clone, Debug)]
 pub struct ShurikenManager {
     pub root_path: PathBuf,
@@ -46,6 +57,17 @@ pub struct ShurikenManager {
 }
 
 impl ShurikenManager {
+    /// Creates a new `ShurikenManager` instance.
+    ///
+    /// Initializes the Ninja directory structure (~/.ninja), loads existing Shurikens,
+    /// creates a Lua scripting engine, and loads or generates the global configuration.
+    ///
+    /// # Returns
+    /// - `Ok(ShurikenManager)` on success
+    /// - `Err` if home directory cannot be found or initialization fails
+    ///
+    /// # Panics
+    /// None - all errors are returned as Results
     pub async fn new() -> Result<Self> {
         let exe_dir = dirs::home_dir()
             .ok_or_else(|| Error::msg("Could not find home directory"))?
@@ -90,11 +112,27 @@ impl ShurikenManager {
         })
     }
 
+    /// Updates the state of a Shuriken (internal helper).
+    ///
+    /// # Arguments
+    /// - `shuriken`: The Shuriken instance to update
+    /// - `new_state`: The new state to set
     async fn update_state(&self, shuriken: Shuriken, new_state: ShurikenState) {
         let mut state_lock = shuriken.state.lock().await;
         *state_lock = new_state;
     }
 
+    /// Starts a Shuriken by name.
+    ///
+    /// Executes the Shuriken's startup script and begins running the service.
+    /// Updates the Shuriken's state to `Running` on success.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to start
+    ///
+    /// # Returns
+    /// - `Ok(())` if startup completed successfully
+    /// - `Err` if Shuriken not found, script execution fails, or startup errors occur
     pub async fn start(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         info!("Starting shuriken: {}", name);
@@ -139,6 +177,14 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Reloads all Shurikens from disk.
+    ///
+    /// Rescans the ~/.ninja/shurikens directory and updates the in-memory cache.
+    /// Useful after manual file changes or to get latest state from disk.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success
+    /// - `Err` if file system operations fail
     pub async fn refresh(&self) -> Result<()> {
         info!("Refreshing shurikens from disk");
         let new_shurikens = load_shurikens(&self.root_path).await?;
@@ -148,6 +194,17 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Configures a Shuriken using its configuration script.
+    ///
+    /// Executes the Shuriken's `post_config` function to apply configuration settings.
+    /// Configuration values are templated and written to the Shuriken's config file.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to configure
+    ///
+    /// # Returns
+    /// - `Ok(())` if configuration completed successfully
+    /// - `Err` if Shuriken not found or configuration fails
     pub async fn configure(&self, name: &str) -> Result<()> {
         info!("Configuring shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
@@ -165,6 +222,17 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Removes the lock file for a Shuriken.
+    ///
+    /// Forces the Shuriken to be considered "not running" by removing its lock file.
+    /// Useful for recovering from crashed processes.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken
+    ///
+    /// # Returns
+    /// - `Ok(())` if lock file successfully removed or didn't exist
+    /// - `Err` if operation fails
     pub async fn lockpick(&self, name: &str) -> Result<()> {
         info!("Lockpicking shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
@@ -180,6 +248,18 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Saves configuration options for a Shuriken.
+    ///
+    /// Persists configuration to disk as TOML and updates the in-memory cache.
+    /// Creates necessary directories if they don't exist.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken
+    /// - `data`: Configuration key-value pairs to save
+    ///
+    /// # Returns
+    /// - `Ok(())` if configuration saved successfully
+    /// - `Err` if file operations fail
     pub async fn save_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
         info!("Saving config for shuriken: {}", name);
         debug!("Config data: {:#?}", data);
@@ -224,6 +304,17 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Stops a running Shuriken.
+    ///
+    /// Executes the Shuriken's stop script and halts the service.
+    /// Updates the Shuriken's state to `Idle` on success.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to stop
+    ///
+    /// # Returns
+    /// - `Ok(())` if stop completed successfully
+    /// - `Err` if Shuriken not found or stop script fails
     pub async fn stop(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         let shurikens = self.shurikens.read().await;
@@ -259,6 +350,14 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Retrieves a Shuriken by name.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to retrieve
+    ///
+    /// # Returns
+    /// - `Ok(Shuriken)` if found
+    /// - `Err` if Shuriken not found
     pub async fn get(&self, name: String) -> Result<Shuriken> {
         debug!("Getting shuriken: {}", name);
         let partial_shuriken = &self.shurikens.read().await;
@@ -285,6 +384,15 @@ impl ShurikenManager {
         }
     }
 
+    /// Lists all available Shurikens.
+    ///
+    /// # Arguments
+    /// - `state`: If `true`, returns names with their current state; if `false`, returns only names
+    ///
+    /// # Returns
+    /// - `Ok(Left(vec))` with state information if `state` is true
+    /// - `Ok(Right(vec))` with just names if `state` is false
+    /// - `Err` if operation fails
     pub async fn list(
         &self,
         state: bool,
@@ -311,6 +419,10 @@ impl ShurikenManager {
         }
     }
 
+    /// Creates a new DSL context for script execution.
+    ///
+    /// # Returns
+    /// A `DslContext` that can be used to interpret Ninja DSL commands
     pub fn dsl_ctx(&self) -> DslContext {
         DslContext {
             selected: Arc::new(RwLock::new(None)),
@@ -318,6 +430,19 @@ impl ShurikenManager {
         }
     }
 
+    /// Packages a Shuriken into a distributable `.shuriken` file.
+    ///
+    /// Creates a signed archive containing metadata, the Shuriken directory, and SHA256 checksum.
+    /// Format: MAGIC + metadata_length + metadata + archive_length + archive + signature
+    ///
+    /// # Arguments
+    /// - `meta`: Metadata for the packaged Shuriken
+    /// - `path`: Path to the Shuriken directory to package
+    /// - `output`: Optional output directory (defaults to ~/.ninja/blacksmith)
+    ///
+    /// # Returns
+    /// - `Ok(())` if packaging succeeded
+    /// - `Err` if metadata is too large, archive creation fails, or I/O fails
     pub async fn forge(
         &self,
         meta: ArmoryMetadata,
@@ -393,6 +518,16 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Removes a Shuriken from the system.
+    ///
+    /// Deletes the Shuriken directory and removes it from the cache.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to remove
+    ///
+    /// # Returns
+    /// - `Ok(())` if removal succeeded
+    /// - `Err` if Shuriken not found or deletion fails
     pub async fn remove(&self, name: &str) -> Result<()> {
         info!("Removing shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
@@ -405,6 +540,14 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Resets and reinitializes the Lua scripting engine.
+    ///
+    /// Useful when you need to clear engine state between operations.
+    /// Creates a new engine instance with all modules.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success
+    /// - `Err` if engine initialization fails
     pub async fn reset_engine(&self) -> Result<()> {
         let new_engine = NinjaEngine::new()
             .await
@@ -415,10 +558,40 @@ impl ShurikenManager {
 
     // -------------------- Installation functions --------------------
 
-    pub async fn install(&self, path: &Path) -> Result<()> {
-        self.install_file(path).await
+    /// Installs a Shuriken from various sources.
+    ///
+    /// Automatically detects the source type and installs accordingly:
+    /// - Registry reference (e.g., "registry:shuriken")
+    /// - Direct URL
+    /// - Local file path
+    ///
+    /// # Arguments
+    /// - `name`: The Shuriken source (reference, URL, or file path)
+    ///
+    /// # Returns
+    /// - `Ok(())` if installation completed
+    /// - `Err` if source is invalid or installation fails
+    pub async fn install(&self, name: &str) -> Result<()> {
+        if ShurikenReference::parse(&name).is_ok() {
+            let reference = ShurikenReference::parse(&name)?;
+            self.install_from_registry(&reference).await
+        } else if url::Url::parse(&name).is_ok() {
+            self.install_url(&name).await
+        } else {
+            self.install_file(&PathBuf::from(name)).await
+        }
     }
 
+    /// Installs a Shuriken from a direct URL.
+    ///
+    /// Downloads the .shuriken file and installs it.
+    ///
+    /// # Arguments
+    /// - `url`: The download URL for the .shuriken file
+    ///
+    /// # Returns
+    /// - `Ok(())` if installation succeeded
+    /// - `Err` if download or installation fails
     pub async fn install_url(&self, url: &str) -> Result<()> {
         let temp_path = self.root_path.join("temp_shuriken.shuriken");
         download_shuriken(&temp_path, url).await?;
@@ -427,7 +600,7 @@ impl ShurikenManager {
         result
     }
 
-    /// Install a shuriken from a registry reference (e.g., "official:my-shuriken")
+    /// Install a shuriken from a registry reference (e.g., "my-registry:my-shuriken")
     pub async fn install_from_registry(
         &self,
         reference: &crate::common::config::ShurikenReference,
@@ -442,6 +615,25 @@ impl ShurikenManager {
         self.install_url(&download_url).await
     }
 
+    /// Installs a Shuriken from a local file.
+    ///
+    /// Validates the .shuriken file format (magic bytes, metadata, checksum),
+    /// extracts the archive, verifies platform compatibility, and runs postinstall hooks.
+    ///
+    /// # Arguments
+    /// - `path`: Path to the .shuriken file
+    ///
+    /// # Returns
+    /// - `Ok(())` if installation succeeded
+    /// - `Err` if file is invalid, corrupted, incompatible, or extraction fails
+    ///
+    /// # File Format
+    /// - MAGIC (6 bytes): "HSRZEG"
+    /// - metadata_length (u16 LE)
+    /// - metadata (CBOR encoded)
+    /// - archive_length (u32 LE)  
+    /// - archive (tar.gz)
+    /// - signature (32 bytes SHA256)
     pub async fn install_file(&self, path: &Path) -> Result<(), anyhow::Error> {
         use sha2::{Digest, Sha256};
         use std::io::Cursor;
@@ -552,6 +744,10 @@ impl ShurikenManager {
         Ok(())
     }
 
+    /// Fetches all available Shurikens from all configured registries.
+    ///
+    /// # Returns
+    /// A vector of `ArmoryItem` entries from all registries
     pub async fn registry_get_all_shurikens(&self) -> Vec<ArmoryItem> {
         let registries: Vec<String> = self
             .config
@@ -565,6 +761,14 @@ impl ShurikenManager {
         shurikens
     }
 
+    /// Fetches a specific Shuriken from any configured registry.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the Shuriken to fetch
+    ///
+    /// # Returns
+    /// - `Some(ArmoryItem)` if found in a registry
+    /// - `None` if not found
     pub async fn registry_get_shuriken(&self, name: String) -> Option<ArmoryItem> {
         let partial_registries = &self.config.read().await.registries;
         let registries: Vec<String> = partial_registries.values().cloned().collect::<Vec<_>>();
@@ -573,6 +777,11 @@ impl ShurikenManager {
 
     // -------------------- Project management API --------------------
 
+    /// Lists all projects in the projects directory.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<String>)` with project names
+    /// - `Err` if directory access fails
     pub async fn get_projects(&self) -> Result<Vec<String>> {
         let path = &self.root_path.join("projects");
         let mut entries: Vec<String> = Vec::new();

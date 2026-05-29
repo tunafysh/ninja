@@ -1,3 +1,9 @@
+//! Backup and restore functionality for Ninja projects.
+//!
+//! Provides functionality to create compressed backups of all projects
+//! and restore from backups. Supports scheduling backups using cron (Unix)
+//! or Task Scheduler (Windows).
+
 use crate::manager::ShurikenManager;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -12,20 +18,47 @@ use std::{path::Path, process::Command};
 use tar::{Archive, Builder as TarBuilder};
 use tokio::task;
 
+/// Compression level for backup archives.
+///
+/// - `Fast`: Compression level 1 (fastest, larger file)
+/// - `Normal`: Default compression level
+/// - `Best`: Maximum compression level (slowest, smallest file)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CompressionType {
+    /// Fast compression
     Fast,
+    /// Normal compression
     Normal,
+    /// Best compression
     Best,
 }
 
+/// Frequency for scheduled backups.
+///
+/// - `Daily`: Every day at 3 AM
+/// - `Weekly`: Every Monday at 3 AM
+/// - `Monthly`: First of each month at 3 AM
 #[derive(Debug, Clone, Copy)]
 pub enum BackupFrequency {
+    /// Daily backups
     Daily,
+    /// Weekly backups
     Weekly,
+    /// Monthly backups
     Monthly,
 }
 
+/// Installs a scheduled backup job.
+///
+/// On Windows: Uses Task Scheduler to schedule the `ninja backup` command.
+/// On Unix: Uses cron to schedule backups.
+///
+/// # Arguments
+/// - `frequency`: How often to run backups (daily, weekly, or monthly)
+///
+/// # Returns
+/// - `Ok(())` if installation succeeded
+/// - `Err` if system command fails
 pub fn install_backup_schedule(frequency: BackupFrequency) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -76,6 +109,14 @@ pub fn install_backup_schedule(frequency: BackupFrequency) -> std::io::Result<()
     Ok(())
 }
 
+/// Removes the scheduled backup job.
+///
+/// On Windows: Removes the NinjaBackup task from Task Scheduler.
+/// On Unix: Removes the cron job.
+///
+/// # Returns
+/// - `Ok(())` if removal succeeded
+/// - `Err` if system command fails
 pub fn uninstall_backup_schedule() -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -99,6 +140,18 @@ pub fn uninstall_backup_schedule() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Creates a backup of all projects.
+///
+/// Compresses all projects into a tar.gz file with a timestamp in the filename.
+/// Stored in ~/.ninja/backups/ directory.
+///
+/// # Arguments
+/// - `manager`: Reference to the ShurikenManager
+/// - `compression`: Optional compression level (defaults to Normal if None)
+///
+/// # Returns
+/// - `Ok(())` if backup succeeded
+/// - `Err` if file operations or compression fails
 pub async fn create_backup(
     manager: &ShurikenManager,
     compression: Option<CompressionType>,
@@ -185,6 +238,17 @@ pub async fn create_backup(
     Ok(())
 }
 
+/// Restores projects from a backup archive.
+///
+/// Extracts a tar.gz backup file to the projects directory.
+///
+/// # Arguments
+/// - `manager`: Reference to the ShurikenManager
+/// - `file`: Path to the backup file to restore
+///
+/// # Returns
+/// - `Ok(())` if restore succeeded
+/// - `Err` if file operations or extraction fails
 pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()> {
     let backup_file_path = file.to_path_buf();
     let projects_path = manager.root_path.join("projects");
