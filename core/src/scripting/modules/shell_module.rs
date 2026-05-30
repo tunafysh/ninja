@@ -133,7 +133,7 @@ fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<Shel
     Ok(ShellCommandResult { code })
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn run_unix_admin(command: &str, cwd: Option<&Path>, shell: &str) -> Result<ShellCommandResult> {
     let full_cmd = build_command_with_cwd(command, cwd);
 

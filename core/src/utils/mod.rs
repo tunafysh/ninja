@@ -482,12 +482,13 @@ pub fn get_port_owner(port: u16) -> Option<PortOwner> {
 pub fn get_port_owner(port: u16) -> Option<PortOwner> {
     use windows::Win32::NetworkManagement::IpHelper::*;
     use windows::Win32::Foundation::*;
+    use windows::Win32::Networking::WinSock::AF_INET;
 
     unsafe {
         let mut size = 0u32;
 
         GetExtendedTcpTable(
-            std::ptr::null_mut(),
+            Some(std::ptr::null_mut()),
             &mut size,
             false.into(),
             AF_INET.0 as u32,
@@ -498,7 +499,7 @@ pub fn get_port_owner(port: u16) -> Option<PortOwner> {
         let mut buffer = vec![0u8; size as usize];
 
         let res = GetExtendedTcpTable(
-            buffer.as_mut_ptr() as *mut _,
+            Some(buffer.as_mut_ptr() as *mut _),
             &mut size,
             false.into(),
             AF_INET.0 as u32,
@@ -506,7 +507,7 @@ pub fn get_port_owner(port: u16) -> Option<PortOwner> {
             0,
         );
 
-        if res != NO_ERROR.0 as i32 {
+        if res != NO_ERROR.0 as u32 {
             return None;
         }
 
