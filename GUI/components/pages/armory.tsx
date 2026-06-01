@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event"
-import { RefreshCcw, Search } from "lucide-react";
+import { RefreshCcw, Search, Download, FolderOpen, Package, Sparkle } from "lucide-react";
 import InstallCard from "@/components/ui/install-card";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
@@ -21,43 +21,38 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
   const [shurikens, setShurikens] = useState<ArmoryItem[]>([])
   const [installedShurikens, setInstalledShurikens] = useState<ArmoryItem[]>([]);
   const [localShuriken, setLocalShuriken] = useState<ArmoryMetadata | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-   const installLocalFile = async () => {
-     const file = await open({
-       filters: [
-         {
-           name: "Shurikens",
-           extensions: ["shuriken"],
-         },
-       ],
-     });
- 
-     if (!file) {
-       console.log("No file selected");
-       return;
-     }
- 
-     console.log("Selected file:", file);
- 
-     try {
-       // 👇 tell TypeScript what we expect back
-       setPath(file)
-       const res = await invoke<ArmoryMetadata>("open_shuriken", { path: file });
- 
-       console.log(res);
- 
-       // Option A: show it in a dedicated Install UI
-       setLocalShuriken(res);
- 
-       // Option B (optional): also add it to the list
-       // setShurikens(prev => [...prev, res]);
-     } catch (e) {
-       console.error("Failed to open shuriken:", e);
-     }
-   };
+  const installLocalFile = async () => {
+    const file = await open({
+      filters: [
+        {
+          name: "Shurikens",
+          extensions: ["shuriken"],
+        },
+      ],
+    });
+
+    if (!file) {
+      console.log("No file selected");
+      return;
+    }
+
+    console.log("Selected file:", file);
+
+    try {
+      setPath(file)
+      const res = await invoke<ArmoryMetadata>("open_shuriken", { path: file });
+      console.log(res);
+      setLocalShuriken(res);
+    } catch (e) {
+      console.error("Failed to open shuriken:", e);
+    }
+  };
 
   const handleInstallComplete = () => {
-    // Refresh both registry and installed shurikens after installation
     invoke<ArmoryItem[]>("registry_get_all_shurikens")
       .then((items) => {
         setShurikens(items);
@@ -65,24 +60,84 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
       });
   };
 
+  const refreshShurikens = async () => {
+    setIsRefreshing(true);
+    try {
+      const items = await invoke<ArmoryItem[]>("registry_get_all_shurikens");
+      setShurikens(items);
+      setInstalledShurikens(items.filter((item) => item.installed));
+    } catch (e) {
+      console.error("Failed to refresh shurikens:", e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
+    setIsLoading(true);
     invoke<ArmoryItem[]>("registry_get_all_shurikens")
       .then((items) => {
         setShurikens(items);
         setInstalledShurikens(items.filter((item) => item.installed));
-      });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
+  const filteredShurikens = shurikens.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-      <div className="relative w-screen overflow-hidden flex justify-center">
-        <div className="h-full w-5/6">
+      <div className="relative w-full flex justify-center">
+        <div className="h-full w-5/6 max-w-7xl">
+          {/* Header */}
+          <div className="pt-10 pb-8">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                  <div key="zap" className="relative">
+      <svg className="w-8 h-8 absolute">
+        <defs>
+          <linearGradient id="zapStrokeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <Sparkle className="mr-1 h-8 w-8" style={{ 
+             fill: 'none', 
+             stroke: 'url(#zapStrokeGradient)', 
+             strokeWidth: 2 
+           }}/>
+    </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Armory</h1>
+                  <p className="text-sm text-neutral-400">Manage your Shurikens</p>
+                </div>
+              </div>
+              <Button
+                onClick={refreshShurikens}
+                disabled={isRefreshing}
+                variant="outline"
+                className="gap-2"
+              >
+                <RefreshCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </div>
+          </div>
+
           {/* Installed Shurikens Section */}
           {installedShurikens.length > 0 && (
-            <div className="w-full mt-10">
-              <div className="w-full flex justify-between items-center mb-6">
-                <h1 className="font-bold text-2xl select-none">Installed Shurikens</h1>
+            <div className="mb-16">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="p-1.5 rounded bg-green-500/20">
+                  <Package className="w-4 h-4 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">Installed ({installedShurikens.length})</h2>
+                <div className="flex-1 h-px bg-neutral-700"></div>
               </div>
-              <div className="grid gap-4 grid-cols-4 mb-16">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 {installedShurikens.map((shuriken) => (
                   <ArmoryCard shuriken={shuriken} key={shuriken.name} />
                 ))}
@@ -91,34 +146,72 @@ export default function Armory({platform}: {platform: "mac" | "windows" | "linux
           )}
 
           {/* Explore & Install Section */}
-          <div className="w-full">
-            <div className="w-full flex justify-between items-center mb-6">
-              <h1 className="font-bold text-2xl select-none">Explore shurikens</h1>
-            </div>
-            <div id="search" className="w-full flex justify-center items-center mb-6">
-              <div className="flex gap-2 w-full">
-                <div className="relative w-full">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                  <Input className="pl-10 w-full" placeholder="Search..." />
-                </div>
-                <Button onClick={installLocalFile}>Install local file</Button>
+          <div>
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-1.5 rounded">
+                <Search className="w-4 h-4 text-primary" />
               </div>
+              <h2 className="text-xl font-bold text-white">Explore Shurikens ({filteredShurikens.length})</h2>
+              <div className="flex-1 h-px bg-neutral-700"></div>
             </div>
-    
-            {/* 👇 show the InstallCard if we have a local shuriken */}
+
+            {/* Search and Install Bar */}
+            <div className="flex gap-3 mb-8">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 w-4 h-4 pointer-events-none" />
+                <Input 
+                  className="pl-10 bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500 focus:border-blue-500"
+                  placeholder="Search by name or description..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <Button 
+                onClick={installLocalFile}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+              >
+                <FolderOpen className="w-4 h-4" />
+                Install Local File
+              </Button>
+            </div>
+
+            {/* Local Shuriken Install Card */}
             {localShuriken && (
-              <div className="mt-4 mb-10">
-                <InstallCard shuriken={localShuriken} path={path} onClose={() => setLocalShuriken(null)} />
+              <div className="mb-10 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10">
+                <InstallCard 
+                  shuriken={localShuriken} 
+                  path={path} 
+                  onClose={() => setLocalShuriken(null)} 
+                />
               </div>
             )}
-    
-            <div className="grid gap-4 grid-cols-4">
-              {shurikens.map((shuriken) => (
-                <ArmoryCard shuriken={shuriken} key={shuriken.name} />
-              ))}
-            </div>
+
+            {/* Shurikens Grid */}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                  <p className="mt-4 text-neutral-400">Loading shurikens...</p>
+                </div>
+              </div>
+            ) : filteredShurikens.length > 0 ? (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                {filteredShurikens.map((shuriken) => (
+                  <ArmoryCard shuriken={shuriken} key={shuriken.name} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <Package className="w-12 h-12 text-neutral-600 mx-auto mb-4" />
+                  <p className="text-neutral-400">
+                    {searchQuery ? 'No shurikens found matching your search' : 'No shurikens available'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    );
+  );
 }

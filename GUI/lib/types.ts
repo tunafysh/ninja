@@ -41,21 +41,75 @@ export interface LogsConfig {
     "log-path"?: string; // PlatformPath as string
 }
 
-export type ArmoryItem = {
-    name: string,
-    label: string,
-    synopsis: string,
-    description: string,
-    version: string,
-    authors: string[],
-    license: string,
-    repository: string,
-    platforms: string[],
-    checksum: string,
-    installed: boolean
-}
+export type ArmoryItem = 
+  | {
+      name: string;
+      version: string;
+      description: string;
+      author: string;
+      license: string;
+      platforms: string[];
+      sourceType: "url";
+      url: string;
+      installed?: boolean;
+      label?: string;
+      synopsis?: string;
+      repository?: string;
+      checksum?: string;
+      authors?: string[];
+    }
+  | {
+      name: string;
+      version: string;
+      description: string;
+      author: string;
+      license: string;
+      platforms: string[];
+      sourceType: "registry";
+      registry: string;
+      shuriken: string;
+      installed?: boolean;
+      label?: string;
+      synopsis?: string;
+      repository?: string;
+      checksum?: string;
+      authors?: string[];
+    }
+  | {
+      name: string;
+      version: string;
+      description: string;
+      author: string;
+      license: string;
+      platforms: string[];
+      sourceType: "file" | "path";
+      path: string;
+      installed?: boolean;
+      label?: string;
+      synopsis?: string;
+      repository?: string;
+      checksum?: string;
+      authors?: string[];
+    }
+  | {
+      // Fallback for when sourceType is not set
+      name: string;
+      version: string;
+      description: string;
+      author: string;
+      license: string;
+      platforms: string[];
+      url?: string;
+      sourceType?: never;
+      installed?: boolean;
+      label?: string;
+      synopsis?: string;
+      repository?: string;
+      checksum?: string;
+      authors?: string[];
+    }
 
-export interface LocalArmoryItem extends ArmoryItem {
+export type LocalArmoryItem = ArmoryItem & {
     installed: boolean,
     localVersion: string
 }

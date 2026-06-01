@@ -373,7 +373,7 @@ impl DslContext {
 /// - `ctx`: DSL execution context with manager and selected Shuriken
 /// - `script`: The DSL script string to execute
 ///
-/// # Returns
+/// # Returnse
 /// - `Ok(output)` with a vector of output messages from command execution
 /// - `Err` if parsing or execution fails
 pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<String>> {

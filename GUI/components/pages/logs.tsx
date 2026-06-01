@@ -22,7 +22,7 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
           className="w-full"
           defaultValue={withLogs[0].metadata.name} // <-- ensures first tab shows
         >
-          <TabsList className={`grid grid-cols-${withLogs.length} max-w-md mb-6`}>
+          <TabsList className={`grid grid-cols-${shurikens.length} max-w-md mb-6`}>
             {withLogs.map((value) => (
               <TabsTrigger
                 key={value.metadata.name}

@@ -48,7 +48,7 @@ export default function InstallCard({ shuriken, path, onClose }: InstallCardProp
     try {
       setInstalling(true);
       setInstalled(false);
-      await invoke("install_shuriken", { path });
+      await invoke("install_shuriken", { name: path });
       setInstalled(true);
     } catch (err) {
       console.error("Failed to install shuriken:", err);

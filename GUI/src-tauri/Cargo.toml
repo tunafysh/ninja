@@ -1,8 +1,8 @@
 [package]
 name = "ninja-desktop"
-description = "A control panel similar to XAMPP"
+description = "A modular service manager inspired by XAMPP."
 authors = ["tunafysh"]
-edition = "2021"
+edition = "2024"
 license.workspace = true
 version.workspace = true
 
