@@ -1,5 +1,5 @@
-use ninja::manager::ShurikenManager;
-use tauri::{menu::Menu, Emitter, Manager};
+use ninja::{manager::ShurikenManager, common::traits::Reporter};
+use tauri::{Emitter, Manager, menu::Menu, AppHandle};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
@@ -7,8 +7,25 @@ use commands::*;
 use dirs_next::home_dir;
 use std::{fs, path::Path};
 use tokio::sync::Mutex;
+use anyhow::Result;
 
 mod link_parser;
+
+pub struct TauriReporter {
+    app: AppHandle
+}
+
+impl Reporter for TauriReporter {
+    fn progress(&self, percent: u8) -> Result<()> {
+        self.app.emit("install-progress", percent)?;
+        Ok(())
+    }
+
+    fn stage(&self, stage: ninja::common::types::InstallStage) -> Result<()> {
+        self.app.emit("install-stage", stage)?;
+        Ok(())
+    }
+}
 
 fn is_url(s: &str) -> bool {
     Url::parse(s).is_ok()

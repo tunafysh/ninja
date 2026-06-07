@@ -3,7 +3,9 @@ use std::path::Path;
 use futures_util::future::join_all;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
+use tokio::io::AsyncWriteExt;
+
+use crate::common::{traits::Reporter, types::InstallStage};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Registry {
@@ -86,10 +88,39 @@ pub async fn fetch_registry(url: &str) -> Result<Registry, anyhow::Error> {
     Ok(registry)
 }
 
-pub async fn download_shuriken(path: &Path, url: &str) -> Result<(), anyhow::Error> {
+pub async fn download_shuriken<R>(path: &Path, url: &str, tx: &R) -> Result<(), anyhow::Error>
+where
+    R: Reporter + Send + Sync + 'static,
+{
     let response = reqwest::get(url).await?;
-    let bytes = response.bytes().await?.to_vec();
-    fs::write(path, &bytes).await?;
+
+    let total_size = response.content_length().unwrap_or(0);
+
+    let mut downloaded: u64 = 0;
+
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut stream = response.bytes_stream();
+
+    use futures_util::StreamExt;
+
+    tx.stage(InstallStage::Downloading)?;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+
+        file.write_all(&chunk).await?;
+
+        downloaded += chunk.len() as u64;
+
+        if total_size > 0 {
+            let percent = (downloaded * 100 / total_size) as u8;
+
+            tx.progress(percent)?;
+        }
+    }
+
+    file.flush().await?;
+
     Ok(())
 }
 

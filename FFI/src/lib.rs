@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ninja::common::types::ArmoryMetadata;
+use ninja::common::{structs::NoopReporter, types::ArmoryMetadata};
 use ninja::manager::ShurikenManager;
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -465,7 +465,8 @@ pub unsafe extern "C" fn ninja_install_shuriken_sync(
             return -1;
         }
     };
-    match RUNTIME.block_on(manager.install(&path)) {
+    let reporter = NoopReporter {};
+    match RUNTIME.block_on(manager.install(&path, reporter)) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("Install failed: {}", e);

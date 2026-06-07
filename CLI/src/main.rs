@@ -1,13 +1,15 @@
 use ::log::info;
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
+use indicatif::{ProgressBar, ProgressStyle};
 use ninja::{
     VERSION,
     common::{
         config::{
-            ShurikenReference, find_shuriken_in_registries, get_shuriken_info, resolve_shuriken_url,
+            ShurikenReference, get_shuriken_info,
         },
-        registry::ArmoryItem,
+        traits::Reporter,
         types::{ArmoryMetadata, ShurikenState},
     },
     manager::ShurikenManager,
@@ -24,7 +26,6 @@ use std::{
     process::exit,
     sync::Arc,
 };
-
 use tokio::{fs, sync::Mutex};
 
 mod log;
@@ -35,6 +36,37 @@ use repl::repl_mode;
 
 mod prompts;
 use prompts::{collect_forge_metadata, collect_new_shuriken_input};
+
+struct CliReporter {
+    bar: ProgressBar,
+}
+
+impl CliReporter {
+    pub fn new() -> Self {
+        let bar = ProgressBar::new(100);
+
+        bar.set_style(
+            ProgressStyle::default_bar()
+                .template("[{bar:30.cyan/blue}] {pos}% {msg}")
+                .unwrap()
+                .progress_chars("=> "),
+        );
+
+        Self { bar }
+    }
+}
+
+impl Reporter for CliReporter {
+    fn progress(&self, percent: u8) -> Result<()> {
+        self.bar.set_position(percent as u64);
+        Ok(())
+    }
+
+    fn stage(&self, stage: ninja::common::types::InstallStage) -> Result<()> {
+        self.bar.set_message(format!("{:?}", stage));
+        Ok(())
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "ninja")]
@@ -372,8 +404,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server(args.port).await?;
         }
         Some(Commands::Install(args)) => {
+            let reporter = CliReporter {
+                bar: ProgressBar::hidden(),
+            };
             info!("Installing a shuriken");
-            manager.install(&args.name).await?;
+            manager.install(&args.name, reporter).await?;
         }
         Some(Commands::Forge(args)) => {
             use serde_json::from_str;
@@ -424,59 +459,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "Installing shuriken from registry with reference: {}",
                         install_args.reference
                     );
-                    // Similar to Get, but we also resolve the URL and then call manager.install_url
+
                     let reference = ShurikenReference::parse(&install_args.reference)?;
-                    match find_shuriken_in_registries(&config.registries, &reference).await {
-                        Ok((shuriken, registry_name)) => {
-                            let registry_url =
-                                config.registries.get(&registry_name).ok_or_else(|| {
-                                    anyhow::anyhow!(
-                                        "Registry URL not found for '{}'",
-                                        registry_name
-                                    )
-                                })?;
-                            let shuriken_url = match shuriken {
-                                ArmoryItem::Shuriken { url, .. } => url,
-                                ArmoryItem::Bundle { shurikens, .. } => {
-                                    for shuriken_ref in shurikens {
-                                        let item_ref = ShurikenReference {
-                                            registry: registry_name.clone(),
-                                            shuriken: shuriken_ref.clone(),
-                                        };
-                                        match find_shuriken_in_registries(
-                                            &config.registries,
-                                            &item_ref,
-                                        )
-                                        .await
-                                        {
-                                            Ok((item, _)) => {
-                                                if let ArmoryItem::Shuriken { url, .. } = item {
-                                                    let resolved_url =
-                                                        resolve_shuriken_url(registry_url, &url)?;
-                                                    manager.install_url(&resolved_url).await?;
-                                                } else {
-                                                    eprintln!("{}", format!("Bundle '{}' contains another bundle '{}', nested bundles are not supported", reference.shuriken, shuriken_ref).red());
-                                                }
-                                            }
-                                            Err(e) => {
-                                                eprintln!("{}", format!("Failed to find shuriken '{}' in registries: {}", shuriken_ref, e).red());
-                                            }
-                                        }
-                                    }
-                                    return Ok(()); // After processing all shurikens in the bundle, we can exit
-                                }
-                            };
-                            let resolved_url = resolve_shuriken_url(registry_url, &shuriken_url)?;
-                            manager.install_url(&resolved_url).await?;
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "{}",
-                                format!("Failed to find shuriken in registries: {}", e).red()
-                            );
-                            exit(1);
-                        }
-                    }
+
+                    let reporter = CliReporter::new();
+
+                    manager.install_from_registry(&reference, reporter).await?;
                 }
             }
         }

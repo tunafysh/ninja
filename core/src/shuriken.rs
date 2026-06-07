@@ -168,8 +168,7 @@ impl Shuriken {
                             "Port {} is already in use by process {}. Please free the port and try again.",
                             port, name
                         ));
-                    }
-                    else {
+                    } else {
                         info!("Port {} is free", port);
                     }
                 }
@@ -420,8 +419,7 @@ impl Shuriken {
             let mut state = self.state.lock().await;
             *state = ShurikenState::Idle;
             Ok(())
-        }
-        else {
+        } else {
             return Err("Shuriken does not have a script path or is not a daemon".to_string());
         }
     }

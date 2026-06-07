@@ -1,14 +1,15 @@
+use crate::common::structs::NoopReporter;
 use crate::scripting::NinjaEngine;
 use crate::{common::types::FieldValue, manager::ShurikenManager};
 use anyhow::{Error, Result, bail};
 use either::Either;
 use log::debug;
 use shlex::split;
-use std::env;
-use std::sync::Arc;
-use std::{io, path::PathBuf, process::Stdio};
-use tokio::process::Command as SubprocessCommand;
-use tokio::sync::RwLock;
+use std::{env, io, path::PathBuf, process::Stdio, sync::Arc};
+use tokio::{
+    process::Command as SubprocessCommand,
+    sync::RwLock
+};
 
 /// Commands that can be executed within the Ninja DSL.
 ///
@@ -341,14 +342,15 @@ fn locate_ninja_cli() -> Result<PathBuf> {
 /// Context for executing Ninja DSL commands.
 ///
 /// Maintains the manager reference and currently selected Shuriken.
-pub struct DslContext {
+#[derive(Debug)]
+pub struct DslEngine {
     /// Reference to the Shuriken manager
     pub manager: ShurikenManager,
     /// Currently selected Shuriken name (if any)
     pub selected: Arc<RwLock<Option<String>>>,
 }
 
-impl DslContext {
+impl DslEngine {
     /// Creates a new DSL context with the given manager.
     ///
     /// # Arguments
@@ -362,102 +364,102 @@ impl DslContext {
             selected: Arc::new(RwLock::new(None)),
         }
     }
-}
 
-/// Parses and executes a series of DSL commands.
-///
-/// Processes the DSL script, executing each command in sequence
-/// and collecting output messages.
-///
-/// # Arguments
-/// - `ctx`: DSL execution context with manager and selected Shuriken
-/// - `script`: The DSL script string to execute
-///
-/// # Returnse
-/// - `Ok(output)` with a vector of output messages from command execution
-/// - `Err` if parsing or execution fails
-pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<String>> {
-    let parsed_commands = command_parser(script.as_str())?;
+    /// Parses and executes a series of DSL commands.
+    ///
+    /// Processes the DSL script, executing each command in sequence
+    /// and collecting output messages.
+    ///
+    /// # Arguments
+    /// - `ctx`: DSL execution context with manager and selected Shuriken
+    /// - `script`: The DSL script string to execute
+    ///
+    /// # Returnse
+    /// - `Ok(output)` with a vector of output messages from command execution
+    /// - `Err` if parsing or execution fails
 
-    let mut output: Vec<String> = Vec::new();
+    pub async fn execute(&self, script: String) -> Result<Vec<String>> {
+        let parsed_commands = command_parser(script.as_str())?;
 
-    for command in parsed_commands {
-        match command {
-            // HTTP server
-            Command::HttpStart(port) => {
-                let path = locate_ninja_cli()?;
-                SubprocessCommand::new(path)
-                    .arg("api")
-                    .arg(port.to_string())
-                    .stdout(Stdio::inherit())
-                    .stderr(Stdio::inherit())
-                    .stdin(Stdio::inherit())
-                    .status()
-                    .await?;
-                output.push(format!("HTTP server started on port {}", port));
-            }
+        let mut output: Vec<String> = Vec::new();
 
-            // Select shuriken
-            Command::Select(name) => {
-                debug!("Shurikens: {:#?}", ctx.manager.shurikens.read().await);
-                if ctx.manager.shurikens.read().await.contains_key(&name) {
-                    *ctx.selected.write().await = Some(name.clone());
-                    output.push(format!("Selected shuriken '{}'", name));
-                } else {
-                    output.push(format!("No such shuriken: {}", name));
+        for command in parsed_commands {
+            match command {
+                // HTTP server
+                Command::HttpStart(port) => {
+                    let path = locate_ninja_cli()?;
+                    SubprocessCommand::new(path)
+                        .arg("api")
+                        .arg(port.to_string())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .stdin(Stdio::inherit())
+                        .status()
+                        .await?;
+                    output.push(format!("HTTP server started on port {}", port));
                 }
-            }
 
-            // simple legacy configure
-            Command::Configure => {
-                if let Some(name) = &*ctx.selected.read().await {
-                    let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(name) {
-                        let path = &ctx.manager.root_path;
-                        shuriken
-                            .configure(
-                                path,
-                                &*ctx.manager.engine.lock().await,
-                                Some(ctx.manager.clone()),
-                            )
-                            .await
-                            .map_err(Error::msg)?;
-
-                        output.push(format!(
-                            "Generated configuration for shuriken {} successfully.",
-                            &name
-                        ));
+                // Select shuriken
+                Command::Select(name) => {
+                    debug!("Shurikens: {:#?}", &self.manager.shurikens.read().await);
+                    if self.manager.shurikens.read().await.contains_key(&name) {
+                        *self.selected.write().await = Some(name.clone());
+                        output.push(format!("Selected shuriken '{}'", name));
+                    } else {
+                        output.push(format!("No such shuriken: {}", name));
                     }
                 }
-            }
 
-            // New: configure block
-            Command::ConfigureBlock(kvs) => {
-                if let Some(shuriken_name) = &*ctx.selected.read().await {
-                    let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
-                        && let Some(cfg) = &mut shuriken.config
-                    {
-                        let partial_options = cfg.options.get_or_insert_with(Default::default);
-                        for (k, v) in kvs {
-                            partial_options.insert(k.clone(), v.clone());
+                // simple legacy configure
+                Command::Configure => {
+                    if let Some(name) = &*self.selected.read().await {
+                        let mut shurikens = self.manager.shurikens.write().await;
+                        if let Some(shuriken) = shurikens.get_mut(name) {
+                            let path = &&self.manager.root_path;
+                            shuriken
+                                .configure(
+                                    path,
+                                    &*&self.manager.engine.lock().await,
+                                    Some(self.manager.clone()),
+                                )
+                                .await
+                                .map_err(Error::msg)?;
+
                             output.push(format!(
-                                "Set {} = {} for {}",
-                                k,
-                                v.render(),
-                                shuriken_name
+                                "Generated configuration for shuriken {} successfully.",
+                                &name
                             ));
                         }
-                    } else {
-                        output.push("No selected shuriken or missing config while applying configure block.".to_string());
                     }
-                } else {
-                    output.push("No shuriken selected — configure block ignored.".into());
                 }
-            }
 
-            Command::Help => {
-                output.push(
+                // New: configure block
+                Command::ConfigureBlock(kvs) => {
+                    if let Some(shuriken_name) = &*self.selected.read().await {
+                        let mut shurikens = self.manager.shurikens.write().await;
+                        if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                            && let Some(cfg) = &mut shuriken.config
+                        {
+                            let partial_options = cfg.options.get_or_insert_with(Default::default);
+                            for (k, v) in kvs {
+                                partial_options.insert(k.clone(), v.clone());
+                                output.push(format!(
+                                    "Set {} = {} for {}",
+                                    k,
+                                    v.render(),
+                                    shuriken_name
+                                ));
+                            }
+                        } else {
+                            output.push("No selected shuriken or missing config while applying configure block.".to_string());
+                        }
+                    } else {
+                        output.push("No shuriken selected — configure block ignored.".into());
+                    }
+                }
+
+                Command::Help => {
+                    output.push(
                     "Available commands:
                   http start <port>        - Start the HTTP server
                   select <name>            - Select a shuriken
@@ -476,119 +478,124 @@ pub async fn execute_commands(ctx: &DslContext, script: String) -> Result<Vec<St
                   help                     - Show this message"
                         .to_string(),
                 );
-            }
+                }
 
-            // Config commands
-            Command::Set { key, value } => {
-                if let Some(shuriken_name) = &*ctx.selected.read().await {
-                    let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
-                        && let Some(cfg) = &mut shuriken.config
-                    {
-                        let cloned_value: FieldValue = value.clone();
-                        if let Some(partial_options) = &mut cfg.options {
-                            partial_options.insert(key.clone(), FieldValue::from(value.render()));
+                // Config commands
+                Command::Set { key, value } => {
+                    if let Some(shuriken_name) = &*self.selected.read().await {
+                        let mut shurikens = self.manager.shurikens.write().await;
+                        if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                            && let Some(cfg) = &mut shuriken.config
+                        {
+                            let cloned_value: FieldValue = value.clone();
+                            if let Some(partial_options) = &mut cfg.options {
+                                partial_options
+                                    .insert(key.clone(), FieldValue::from(value.render()));
+                            }
+
+                            output.push(format!(
+                                "Set {} = {} for {}",
+                                key,
+                                cloned_value.render(),
+                                shuriken_name
+                            ));
                         }
-
-                        output.push(format!(
-                            "Set {} = {} for {}",
-                            key,
-                            cloned_value.render(),
-                            shuriken_name
-                        ));
                     }
                 }
-            }
 
-            Command::Get(key) => {
-                if let Some(shuriken_name) = &*ctx.selected.read().await {
-                    let shurikens = ctx.manager.shurikens.read().await;
-                    if let Some(shuriken) = shurikens.get(shuriken_name)
-                        && let Some(cfg) = &shuriken.config
-                        && let Some(options) = &cfg.options
-                    {
-                        output.push(format!("{:?} = {:?}", key, options.get(&key)));
+                Command::Get(key) => {
+                    if let Some(shuriken_name) = &*self.selected.read().await {
+                        let shurikens = &self.manager.shurikens.read().await;
+                        if let Some(shuriken) = shurikens.get(shuriken_name)
+                            && let Some(cfg) = &shuriken.config
+                            && let Some(options) = &cfg.options
+                        {
+                            output.push(format!("{:?} = {:?}", key, options.get(&key)));
+                        }
                     }
                 }
-            }
 
-            Command::Toggle(key) => {
-                if let Some(shuriken_name) = &*ctx.selected.read().await {
-                    let mut shurikens = ctx.manager.shurikens.write().await;
-                    if let Some(shuriken) = shurikens.get_mut(shuriken_name)
-                        && let Some(cfg) = &mut shuriken.config
-                        && let Some(options) = &mut cfg.options
-                        && let Some(FieldValue::Bool(value)) = options.get_mut(&key)
-                    {
-                        *value = !*value;
-                        output.push(format!("Toggled {} to {}", key, value));
+                Command::Toggle(key) => {
+                    if let Some(shuriken_name) = &*self.selected.read().await {
+                        let mut shurikens = self.manager.shurikens.write().await;
+                        if let Some(shuriken) = shurikens.get_mut(shuriken_name)
+                            && let Some(cfg) = &mut shuriken.config
+                            && let Some(options) = &mut cfg.options
+                            && let Some(FieldValue::Bool(value)) = options.get_mut(&key)
+                        {
+                            *value = !*value;
+                            output.push(format!("Toggled {} to {}", key, value));
+                        }
                     }
                 }
-            }
 
-            // Shuriken management
-            Command::List => {
-                if let Either::Right(names) = ctx.manager.list(false).await? {
-                    output.push(format!("Shurikens: {:?}", names))
-                }
-            }
-            Command::ListState => {
-                if let Either::Left(states) = ctx.manager.list(true).await? {
-                    for (name, state) in states {
-                        output.push(format!("{} -> {:?}", name, state));
+                // Shuriken management
+                Command::List => {
+                    if let Either::Right(names) = &self.manager.list(false).await? {
+                        output.push(format!("Shurikens: {:?}", names))
                     }
                 }
-            }
-
-            Command::Start => {
-                if let Some(name) = &*ctx.selected.read().await {
-                    match ctx.manager.start(name).await {
-                        Ok(_) => output.push(format!("Started {}", name)),
-                        Err(e) => output.push(format!("Error: {}", e)),
+                Command::ListState => {
+                    if let Either::Left(states) = &self.manager.list(true).await? {
+                        for (name, state) in states {
+                            output.push(format!("{} -> {:?}", name, state));
+                        }
                     }
                 }
-            }
-            Command::Stop => {
-                if let Some(name) = &*ctx.selected.read().await {
-                    match ctx.manager.stop(name).await {
-                        Ok(_) => output.push(format!("Stopped {}", name)),
-                        Err(e) => output.push(format!("Error: {}", e)),
+
+                Command::Start => {
+                    if let Some(name) = &*self.selected.read().await {
+                        match &self.manager.start(name).await {
+                            Ok(_) => output.push(format!("Started {}", name)),
+                            Err(e) => output.push(format!("Error: {}", e)),
+                        }
                     }
                 }
-            }
-
-            Command::Execute(script_path) => {
-                let engine = NinjaEngine::new()
-                    .await
-                    .map_err(|e| io::Error::other(e.to_string()))?;
-                engine
-                    .execute_file(&script_path, None, Some(ctx.manager.clone()))
-                    .await
-                    .map_err(|e| io::Error::other(e.to_string()))?;
-            }
-            Command::Install(file_path) => match ctx.manager.install(&file_path).await {
-                Ok(_) => output.push("Installed successfully".into()),
-                Err(e) => output.push(format!("Install failed: {}", e)),
-            },
-
-            // Exit the shuriken
-            Command::Exit => {
-                if ctx.selected.write().await.is_some() {
-                    *ctx.selected.write().await = None;
-                    output.push("Discarded current shuriken".into());
-                } else {
-                    output.push("Cannot exit when there's no shuriken to discard.".into());
+                Command::Stop => {
+                    if let Some(name) = &*self.selected.read().await {
+                        match &self.manager.stop(name).await {
+                            Ok(_) => output.push(format!("Stopped {}", name)),
+                            Err(e) => output.push(format!("Error: {}", e)),
+                        }
+                    }
                 }
-            }
 
-            // Unsupported
-            Command::None => {
-                output.push("Invalid or unsupported command.".to_string());
+                Command::Execute(script_path) => {
+                    let engine = NinjaEngine::new()
+                        .await
+                        .map_err(|e| io::Error::other(e.to_string()))?;
+                    engine
+                        .execute_file(&script_path, None, Some(self.manager.clone()))
+                        .await
+                        .map_err(|e| io::Error::other(e.to_string()))?;
+                }
+                Command::Install(file_path) => {
+                    let reporter = NoopReporter {};
+                    match &self.manager.install(&file_path, reporter).await {
+                        Ok(_) => output.push("Installed successfully".into()),
+                        Err(e) => output.push(format!("Install failed: {}", e)),
+                    }
+                }
+
+                // Exit the shuriken
+                Command::Exit => {
+                    if self.selected.write().await.is_some() {
+                        *self.selected.write().await = None;
+                        output.push("Discarded current shuriken".into());
+                    } else {
+                        output.push("Cannot exit when there's no shuriken to discard.".into());
+                    }
+                }
+
+                // Unsupported
+                Command::None => {
+                    output.push("Invalid or unsupported command.".to_string());
+                }
             }
         }
-    }
 
-    Ok(output)
+        Ok(output)
+    }
 }
 
 #[cfg(test)]

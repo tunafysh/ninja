@@ -1,20 +1,21 @@
 use log::{debug, error, info};
-use ninja::backup::{create_backup, restore_backup, CompressionType};
+use ninja::backup::{CompressionType, create_backup, restore_backup};
 use ninja::common::config::NinjaConfig;
 use ninja::common::registry::ArmoryItem;
 use ninja::shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata, Tool};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 use tokio::{fs, sync::Mutex};
-
 use ninja::{
     common::types::{ArmoryMetadata, FieldValue, ShurikenState},
     manager::ShurikenManager,
-    scripting::dsl::{execute_commands, DslContext},
+    scripting::dsl::DslEngine,
 };
 use tauri::State;
+
+use crate::TauriReporter;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DopedShuriken {
@@ -105,7 +106,10 @@ pub async fn get_all_shurikens(
         for name in list {
             match manager.get(name.clone()).await {
                 Ok(shuriken) => {
-                    debug!("Retrieved shuriken: name={}, has_metadata={:#?}", name, shuriken.metadata);
+                    debug!(
+                        "Retrieved shuriken: name={}, has_metadata={:#?}",
+                        name, shuriken.metadata
+                    );
                     output.push(shuriken.into_doped().await);
                 }
                 Err(e) => {
@@ -158,9 +162,9 @@ pub async fn execute_dsl(
 ) -> Result<Vec<String>, String> {
     info!("Executing command {}", command);
     let manager = manager.lock().await;
-    let context = DslContext::new(manager.clone());
+    let engine = DslEngine::new(manager.clone());
 
-    let res = execute_commands(&context, command.to_string())
+    let res = engine.execute(command.to_string())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -266,14 +270,15 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
 
 #[tauri::command]
 pub async fn install_shuriken(
+    app: AppHandle,
     manager: State<'_, Mutex<ShurikenManager>>,
     name: String,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager
-        .install(&name)
-        .await
-        .map_err(|e| e.to_string())?;
+    let reporter = TauriReporter {
+        app
+    };
+    manager.install(&name, reporter).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 

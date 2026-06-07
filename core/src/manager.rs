@@ -5,22 +5,25 @@ use crate::{
             ArmoryItem, download_shuriken, get_shuriken_from_registries,
             get_shurikens_from_registries,
         },
-        types::{ArmoryMetadata, FieldValue, ShurikenState},
+        traits::Reporter,
+        types::{ArmoryMetadata, FieldValue, InstallStage, ShurikenState},
     },
-    scripting::{NinjaEngine, dsl::DslContext},
+    scripting::{NinjaEngine, dsl::DslEngine},
     shuriken::{Shuriken, ShurikenConfig},
     utils::{create_tar_gz_bytes, load_shurikens, normalize_shuriken_name},
 };
-use futures_util::future::join_all;
 use anyhow::{Context, Error, Result};
+use ciborium::{from_reader, ser::into_writer};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
+use flate2::write::GzDecoder;
+use futures_util::future::join_all;
 use log::{debug, info, warn};
-use serde_cbor::to_vec;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     env, io,
+    marker::Send,
     path::{Path, PathBuf},
     str,
     sync::Arc,
@@ -28,8 +31,7 @@ use std::{
 use tokio::{
     fs::{self, File},
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
-    sync::RwLock,
+    sync::{Mutex, RwLock},
 };
 
 const MAGIC: &[u8; 6] = b"HSRZEG";
@@ -136,7 +138,7 @@ impl ShurikenManager {
     pub async fn start(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         info!("Starting shuriken: {}", name);
-        
+
         let shurikens = self.shurikens.read().await;
         let shuriken = shurikens
             .get(&normalized_name)
@@ -419,12 +421,12 @@ impl ShurikenManager {
         }
     }
 
-    /// Creates a new DSL context for script execution.
+    /// Creates a new DSL engine for flow/repl execution.
     ///
     /// # Returns
-    /// A `DslContext` that can be used to interpret Ninja DSL commands
-    pub fn dsl_ctx(&self) -> DslContext {
-        DslContext {
+    /// A `DslEngine` that can be used to interpret Ninja DSL commands
+    pub fn new_dsl(&self) -> DslEngine {
+        DslEngine {
             selected: Arc::new(RwLock::new(None)),
             manager: self.clone(),
         }
@@ -460,7 +462,9 @@ impl ShurikenManager {
 
         // ---- 1) Serialize metadata ----
 
-        let serialized_metadata = to_vec(&meta)?;
+        let mut serialized_metadata = Vec::new();
+
+        into_writer(&meta, &mut serialized_metadata)?;
 
         if serialized_metadata.len() > u16::MAX as usize {
             return Err(anyhow::Error::msg(
@@ -468,11 +472,11 @@ impl ShurikenManager {
             ));
         }
 
-        // ---- 2) Build archive bytes (tar.gz) in a blocking thread ----
-        let archive = {
-            let path_clone = path.clone();
-            tokio::task::spawn_blocking(move || create_tar_gz_bytes(&path_clone)).await??
-        };
+        // ---- 2) Build archive bytes (tar.gz) in a non-blocking thread for some reason ----
+        let path_clone = path.to_path_buf();
+
+        let archive =
+            tokio::task::spawn(async move { create_tar_gz_bytes(path_clone).await }).await??;
         let archive_len = archive.len();
 
         if archive_len > u32::MAX as usize {
@@ -571,14 +575,18 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if installation completed
     /// - `Err` if source is invalid or installation fails
-    pub async fn install(&self, name: &str) -> Result<()> {
+    pub async fn install<R>(&self, name: &str, report: R) -> Result<()>
+    where
+        R: Reporter + Send + Sync + 'static,
+    {
         if ShurikenReference::parse(&name).is_ok() {
             let reference = ShurikenReference::parse(&name)?;
-            self.install_from_registry(&reference).await
+            self.install_from_registry(&reference, report).await
         } else if url::Url::parse(&name).is_ok() {
-            self.install_url(&name).await
+            self.install_url(&name, report).await
         } else {
-            self.install_file(&PathBuf::from(name)).await
+            let arc_tx = Arc::new(report);
+            self.install_file(&PathBuf::from(name), arc_tx).await
         }
     }
 
@@ -592,19 +600,27 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if installation succeeded
     /// - `Err` if download or installation fails
-    pub async fn install_url(&self, url: &str) -> Result<()> {
+    pub async fn install_url<R>(&self, url: &str, tx: R) -> Result<()>
+    where
+        R: Reporter + Send + Sync + 'static,
+    {
         let temp_path = self.root_path.join("temp_shuriken.shuriken");
-        download_shuriken(&temp_path, url).await?;
-        let result = self.install_file(&temp_path).await;
+        download_shuriken(&temp_path, url, &tx).await?;
+        let arc_tx = Arc::new(tx);
+        let result = self.install_file(&temp_path, arc_tx).await;
         let _ = fs::remove_file(temp_path).await; // clean up temp file
         result
     }
 
     /// Install a shuriken from a registry reference (e.g., "my-registry:my-shuriken")
-    pub async fn install_from_registry(
+    pub async fn install_from_registry<R>(
         &self,
         reference: &crate::common::config::ShurikenReference,
-    ) -> Result<()> {
+        tx: R,
+    ) -> Result<()>
+    where
+        R: Reporter + Send + Sync + 'static,
+    {
         let registries = &self.config.read().await.registries;
         let download_url =
             crate::common::config::resolve_download_url(registries, reference).await?;
@@ -612,7 +628,7 @@ impl ShurikenManager {
             "Installing shuriken {} from {}",
             reference.shuriken, download_url
         );
-        self.install_url(&download_url).await
+        self.install_url(&download_url, tx).await
     }
 
     /// Installs a Shuriken from a local file.
@@ -634,7 +650,10 @@ impl ShurikenManager {
     /// - archive_length (u32 LE)  
     /// - archive (tar.gz)
     /// - signature (32 bytes SHA256)
-    pub async fn install_file(&self, path: &Path) -> Result<(), anyhow::Error> {
+    pub async fn install_file<R>(&self, path: &Path, tx: Arc<R>) -> Result<(), anyhow::Error>
+    where
+        R: Reporter + Send + Sync + 'static,
+    {
         use sha2::{Digest, Sha256};
         use std::io::Cursor;
 
@@ -647,13 +666,16 @@ impl ShurikenManager {
             .await
             .map_err(|e| io::Error::other(format!("Failed to open shuriken file: {e}")))?;
 
+        tx.stage(InstallStage::Validating)?;
+        tx.progress(0)?;
+
         // 1) MAGIC (6 bytes)
         let mut magic_buf = [0u8; 6];
         file.read_exact(&mut magic_buf).await?;
         if &magic_buf != MAGIC {
             return Err(anyhow::Error::msg("Invalid shuriken file (bad MAGIC)."));
         }
-        // this comment is just a small change
+
         // 2) metadata_length (u16 LE)
         let mut meta_len_buf = [0u8; 2];
         file.read_exact(&mut meta_len_buf).await?;
@@ -668,7 +690,7 @@ impl ShurikenManager {
         let mut metadata_buf = vec![0u8; metadata_length];
         file.read_exact(&mut metadata_buf).await?;
         let metadata: ArmoryMetadata =
-            serde_cbor::from_slice(&metadata_buf).context("Failed to parse metadata CBOR")?;
+            from_reader(metadata_buf.as_slice()).context("Failed to parse metadata CBOR")?;
 
         info!("Metadata parsing complete");
 
@@ -714,19 +736,41 @@ impl ShurikenManager {
             ));
         }
 
+        tx.stage(InstallStage::Extracting)?;
+        tx.progress(20)?;
+
         // Unpack archive in blocking task
         let archive_cursor = Cursor::new(archive_buf);
         let archive_name = normalize_shuriken_name(&metadata.name);
         let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
         let root_path = self.root_path.clone().join("shurikens").join(&archive_name);
+        let thread_tx = tx.clone();
 
-        tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-            let gz_decoder = flate2::read::GzDecoder::new(archive_cursor);
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let gz_decoder = GzDecoder::new(archive_cursor);
             let mut archive = tar::Archive::new(gz_decoder);
-            archive.unpack(&unpack_path)?;
+            let entries = archive.entries()?;
+            let total = entries.size_hint().0.max(1);
+
+            let mut count = 0;
+
+            for entry in entries {
+                let mut entry = entry?;
+
+                entry.unpack_in(&unpack_path)?;
+
+                count += 1;
+
+                let progress = 20 + (count as f64 / total as f64 * 60.0) as u8; // 20% to 80%
+
+                thread_tx.progress(progress)?;
+            }
             Ok(())
         })
         .await??;
+
+        tx.stage(InstallStage::PostInstall)?;
+        tx.progress(90)?;
 
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {
@@ -741,6 +785,10 @@ impl ShurikenManager {
         // save config so the paths are correct when we launch.
         self.refresh().await?;
         self.configure(&metadata.name).await?;
+
+        tx.stage(InstallStage::Installed)?;
+        tx.progress(100)?;
+
         Ok(())
     }
 

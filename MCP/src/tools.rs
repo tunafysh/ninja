@@ -1,7 +1,4 @@
-use ninja::{
-    manager::ShurikenManager,
-    scripting::dsl::{DslContext, execute_commands},
-};
+use ninja::manager::ShurikenManager;
 use rmcp::{
     ErrorData as McpError,
     ServerHandler,
@@ -144,9 +141,9 @@ impl Manager {
         Parameters(ScriptRequest { script }): Parameters<ScriptRequest>,
     ) -> Result<CallToolResult, McpError> {
         let manager = &self.manager;
-        let context = DslContext::new(manager.clone());
+        let engine = manager.new_dsl();
 
-        let res = execute_commands(&context, script)
+        let res = engine.execute(script)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(res.join("\n"))]))
@@ -192,12 +189,12 @@ impl Manager {
     )]
     pub fn read_docs(&self) -> Result<CallToolResult, McpError> {
         let home_dir = &self.manager.root_path;
-        let cheatsheet_path = home_dir.join("docs").join("cheatsheet.md");
-        let cheatsheet_content = fs::read_to_string(cheatsheet_path).map_err(|e| {
-            McpError::internal_error(format!("Failed to read cheatsheet: {}", e), None)
+        let docs_path = home_dir.join("docs").join("docs.md");
+        let docs_content = fs::read_to_string(docs_path).map_err(|e| {
+            McpError::internal_error(format!("Failed to read docs: {}", e), None)
         })?;
         Ok(CallToolResult::success(vec![Content::text(
-            cheatsheet_content.as_str(),
+            docs_content.as_str(),
         )]))
     }
 }

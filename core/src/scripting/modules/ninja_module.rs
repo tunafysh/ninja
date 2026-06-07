@@ -1,4 +1,7 @@
-use crate::{common::types::ShurikenState, manager::ShurikenManager};
+use crate::{
+    common::{structs::NoopReporter, types::ShurikenState},
+    manager::ShurikenManager,
+};
 use mlua::{Either, Error as LuaError, Lua, Result, Table};
 use std::sync::Arc;
 
@@ -129,9 +132,9 @@ pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<T
 
             move |_, name: String| {
                 let mgr = mgr.clone();
-
+                let reporter = NoopReporter {};
                 async move {
-                    mgr.install(&name).await?;
+                    mgr.install(&name, reporter).await?;
                     Ok(())
                 }
             }

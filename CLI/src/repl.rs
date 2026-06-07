@@ -1,9 +1,6 @@
 use std::io::{self, Write as _};
 
-use ninja::{
-    manager::ShurikenManager,
-    scripting::dsl::{DslContext, execute_commands},
-};
+use ninja::{manager::ShurikenManager};
 
 pub fn get_input(prompt: &str) -> Result<String, io::Error> {
     // print prompt exactly as given
@@ -27,7 +24,7 @@ pub fn get_input(prompt: &str) -> Result<String, io::Error> {
 
 pub async fn repl_mode() -> Result<(), Box<dyn std::error::Error>> {
     let manager = ShurikenManager::new().await?;
-    let rt = DslContext::new(manager);
+    let rt = manager.new_dsl();
     println!("Welcome to REPL mode of Ninja. if you want to exit, use .exit\n");
     loop {
         let mut prompt = "ninja".to_string();
@@ -42,7 +39,7 @@ pub async fn repl_mode() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
-        let res = execute_commands(&rt, input.clone()).await?;
+        let res = rt.execute(input).await?;
 
         for line in res {
             println!("{}", line);

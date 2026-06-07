@@ -273,3 +273,26 @@ pub struct ArmoryMetadata {
     /// Supported platforms (e.g., "linux-x86_64,windows-x86_64")
     pub platform: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LocalInstallStages {
+    Validating,
+    Extracting(u8),
+    PostInstall,
+    Installed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum InstallStage {
+    Downloading,
+    Validating,
+    Extracting,
+    PostInstall,
+    Installed,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstallEvent {
+    pub stage: InstallStage,
+    pub progress: u8,
+}

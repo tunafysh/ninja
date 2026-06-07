@@ -294,7 +294,7 @@ pub fn normalize_shuriken_name(name: &str) -> String {
     name.to_lowercase()
 }
 
-pub fn create_tar_gz_bytes(src_dir: &Path) -> Result<Vec<u8>> {
+pub async fn create_tar_gz_bytes(src_dir: PathBuf) -> Result<Vec<u8>> {
     if !src_dir.is_dir() {
         return Err(anyhow::Error::msg(format!(
             "Source directory does not exist or is not a directory: {}",
@@ -480,8 +480,8 @@ pub fn get_port_owner(port: u16) -> Option<PortOwner> {
 
 #[cfg(target_os = "windows")]
 pub fn get_port_owner(port: u16) -> Option<PortOwner> {
-    use windows::Win32::NetworkManagement::IpHelper::*;
     use windows::Win32::Foundation::*;
+    use windows::Win32::NetworkManagement::IpHelper::*;
     use windows::Win32::Networking::WinSock::AF_INET;
 
     unsafe {
@@ -514,10 +514,7 @@ pub fn get_port_owner(port: u16) -> Option<PortOwner> {
         let table = buffer.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
         let table = &*table;
 
-        let rows = std::slice::from_raw_parts(
-            table.table.as_ptr(),
-            table.dwNumEntries as usize,
-        );
+        let rows = std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize);
 
         for row in rows {
             let local_port = u16::from_be((*row).dwLocalPort as u16);
