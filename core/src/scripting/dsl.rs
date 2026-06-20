@@ -6,10 +6,7 @@ use either::Either;
 use log::debug;
 use shlex::split;
 use std::{env, io, path::PathBuf, process::Stdio, sync::Arc};
-use tokio::{
-    process::Command as SubprocessCommand,
-    sync::RwLock
-};
+use tokio::{process::Command as SubprocessCommand, sync::RwLock};
 
 /// Commands that can be executed within the Ninja DSL.
 ///

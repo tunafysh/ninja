@@ -144,3 +144,8 @@ export type Config = {
   devMode: boolean,
   checkUpdates: boolean
 }
+
+export type InstallProgress = {
+  progress: number,
+  stage: string
+}

@@ -1,10 +1,7 @@
 use crate::{
     common::{
         config::{NinjaConfig, ShurikenReference},
-        registry::{
-            ArmoryItem, download_shuriken, get_shuriken_from_registries,
-            get_shurikens_from_registries,
-        },
+        registry::{ArmoryItem, RegistrySources, download_shuriken},
         traits::Reporter,
         types::{ArmoryMetadata, FieldValue, InstallStage, ShurikenState},
     },
@@ -16,7 +13,7 @@ use anyhow::{Context, Error, Result};
 use ciborium::{from_reader, ser::into_writer};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
-use flate2::write::GzDecoder;
+use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
@@ -621,9 +618,9 @@ impl ShurikenManager {
     where
         R: Reporter + Send + Sync + 'static,
     {
-        let registries = &self.config.read().await.registries;
+        let registries = self.config.read().await.registries.clone();
         let download_url =
-            crate::common::config::resolve_download_url(registries, reference).await?;
+            crate::common::config::resolve_download_url(&registries, reference).await?;
         info!(
             "Installing shuriken {} from {}",
             reference.shuriken, download_url
@@ -761,7 +758,8 @@ impl ShurikenManager {
 
                 count += 1;
 
-                let progress = 20 + (count as f64 / total as f64 * 60.0) as u8; // 20% to 80%
+                let progress =
+                    (20.0 + (count as f64 / total as f64 * 60.0)).clamp(20.0, 80.0) as u8;
 
                 thread_tx.progress(progress)?;
             }
@@ -797,16 +795,8 @@ impl ShurikenManager {
     /// # Returns
     /// A vector of `ArmoryItem` entries from all registries
     pub async fn registry_get_all_shurikens(&self) -> Vec<ArmoryItem> {
-        let registries: Vec<String> = self
-            .config
-            .read()
-            .await
-            .registries
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-        let shurikens = get_shurikens_from_registries(&registries).await;
-        shurikens
+        let registries = self.config.read().await.registries.clone();
+        RegistrySources::new(registries).all_shurikens().await
     }
 
     /// Fetches a specific Shuriken from any configured registry.
@@ -818,9 +808,10 @@ impl ShurikenManager {
     /// - `Some(ArmoryItem)` if found in a registry
     /// - `None` if not found
     pub async fn registry_get_shuriken(&self, name: String) -> Option<ArmoryItem> {
-        let partial_registries = &self.config.read().await.registries;
-        let registries: Vec<String> = partial_registries.values().cloned().collect::<Vec<_>>();
-        get_shuriken_from_registries(name, &registries).await
+        let registries = self.config.read().await.registries.clone();
+        RegistrySources::new(registries)
+            .find_shuriken_anywhere(&name)
+            .await
     }
 
     // -------------------- Project management API --------------------
