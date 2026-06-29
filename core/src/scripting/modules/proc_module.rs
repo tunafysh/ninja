@@ -83,11 +83,9 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                         use std::iter::once;
 
                         use windows::{
-                            Win32::System::Threading::{
-                                CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CreateProcessW,
-                                DETACHED_PROCESS, PROCESS_INFORMATION, STARTUPINFOW,
-                            },
-                            core::{PCWSTR, PWSTR},
+                            Win32::{System::Threading::{
+                                CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CreateProcessW, DETACHED_PROCESS, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
+                            }, UI::WindowsAndMessaging::SW_HIDE}, core::{PCWSTR, PWSTR},
                         };
 
                         let cwd_to_use = custom_cwd.as_deref().or(proc_cwd.as_deref());
@@ -99,6 +97,9 @@ pub(crate) fn make_proc_module(lua: &Lua, base_cwd: Option<&Path>) -> Result<Tab
                         );
                         let mut si = STARTUPINFOW::default();
                         si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+
+                        si.dwFlags = STARTF_USESHOWWINDOW;
+                        si.wShowWindow = SW_HIDE.0 as u16;
 
                         let mut pi = PROCESS_INFORMATION::default();
 
