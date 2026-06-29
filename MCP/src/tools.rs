@@ -204,7 +204,6 @@ impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
         let capabilities = ServerCapabilities::builder()
             .enable_tools()
-            .enable_logging()
             .build();
 
         ServerInfo::new(capabilities)
