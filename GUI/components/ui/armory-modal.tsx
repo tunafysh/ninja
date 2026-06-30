@@ -25,15 +25,19 @@ type ArmoryModalProps = {
 };
 
 const getInitialInstallMethod = (item: ArmoryItem): InstallMethod => {
-  if ("sourceType" in item && item.sourceType) {
-    return item.sourceType === "file" ? "path" : item.sourceType;
-  }
-
+  // enforce priority order explicitly
+  if ("registry" in item && item.registry) return "registry";
   if ("url" in item && item.url) return "url";
   if ("path" in item && item.path) return "path";
+
+  // fallback if metadata lies or is incomplete
+  if ("sourceType" in item && item.sourceType) {
+    if (item.sourceType === "file") return "path";
+    return item.sourceType as InstallMethod;
+  }
+
   return "registry";
 };
-
 const getInstallPreview = (item: ArmoryItem, method: InstallMethod) => {
   switch (method) {
     case "url":

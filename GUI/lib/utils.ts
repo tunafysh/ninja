@@ -10,7 +10,7 @@ export function capitalizeFirstLetter(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-export type InstallMethod = "url" | "registry" | "path";
+export type InstallMethod = "registry" | "url" | "path";
 
 export function resolveInstallSource(
   item: ArmoryItem,
