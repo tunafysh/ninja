@@ -16,3 +16,6 @@ package.license = "GNU Affero General Public License v3.0"
 opt-level = 3
 lto = "thin"
 
+[patch.crates-io]
+cookie = { git = "https://github.com/tunafysh/cookie-rs" }
+

@@ -19,23 +19,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.0", features = ["macos-private-api", "rustls-tls", "devtools"] }
-tauri-plugin-opener = "2.5.4"
+tauri = { version = "2.11.1", features = ["macos-private-api", "rustls-tls", "devtools"] }
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-log = { version = "2.8.0", features = ["colored"] }
+tauri-plugin-log = { version = "2", features = ["colored"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 log = "0.4.29"
 tokio = { version = "1.52.1", features = ["sync"] }
 ninja-core = { path = "../../core" }
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-shell = "2.3.5"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
 tauri-plugin-deep-link = "2"
-tauri-plugin-fs = { version = "2.5.1", features = ["watch"] }
+tauri-plugin-fs = { version = "2", features = ["watch"] }
 url = "2.5.8"
 serde_cbor = "0.11.1"
 dirs-next = "2.0.0"
-tauri-plugin-process = "2.3.1"
+tauri-plugin-process = "2"
 anyhow = "1.0.102"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
