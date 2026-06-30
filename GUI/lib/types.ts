@@ -91,23 +91,8 @@ export type ArmoryItem =
       checksum?: string;
       authors?: string[];
     }
-  | {
-      // Fallback for when sourceType is not set
-      name: string;
-      version: string;
-      description: string;
-      author: string;
-      license: string;
-      platforms: string[];
-      url?: string;
-      sourceType?: never;
-      installed?: boolean;
-      label?: string;
-      synopsis?: string;
-      repository?: string;
-      checksum?: string;
-      authors?: string[];
-    }
+
+// Why would i have a fallback type on a discriminated union?
 
 export type LocalArmoryItem = ArmoryItem & {
     installed: boolean,
