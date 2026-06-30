@@ -18,6 +18,7 @@ import Backup from "@/components/pages/backup"
 import Tools from "@/components/pages/tools"
 import { UpdateInfo } from "@/lib/types";
 import { useConfig } from "@/hooks/config"
+import { Button } from "@/components/ui/button"
 
 export default function Page() {
   const { config, toggleDevMode, loading, fetchConfig } = useConfig();
@@ -174,7 +175,8 @@ export default function Page() {
           borderBottomRightRadius: "7px",
         }}
       >
-            <div className={`flex flex-row select-none items-center ${platform === "mac" ? "pt-2" : "pt-4"}`}>
+        <div className={`flex flex-row select-none items-center px-2 ${platform === "mac" ? "pt-2" : "pt-4"}`}>
+          {/* <Button  variant={"ghost"}></Button> */}
               <Card className="w-full border-none shadow-none relative flex items-center py-2 justify-center bg-transparent">
                 <CardContent className="p-0">
                   <div className="relative">
