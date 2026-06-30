@@ -143,7 +143,8 @@ impl Manager {
         let manager = &self.manager;
         let engine = manager.new_dsl();
 
-        let res = engine.execute(script)
+        let res = engine
+            .execute(script)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         Ok(CallToolResult::success(vec![Content::text(res.join("\n"))]))
@@ -190,9 +191,8 @@ impl Manager {
     pub fn read_docs(&self) -> Result<CallToolResult, McpError> {
         let home_dir = &self.manager.root_path;
         let docs_path = home_dir.join("docs").join("docs.md");
-        let docs_content = fs::read_to_string(docs_path).map_err(|e| {
-            McpError::internal_error(format!("Failed to read docs: {}", e), None)
-        })?;
+        let docs_content = fs::read_to_string(docs_path)
+            .map_err(|e| McpError::internal_error(format!("Failed to read docs: {}", e), None))?;
         Ok(CallToolResult::success(vec![Content::text(
             docs_content.as_str(),
         )]))
@@ -202,9 +202,7 @@ impl Manager {
 #[tool_handler]
 impl ServerHandler for Manager {
     fn get_info(&self) -> ServerInfo {
-        let capabilities = ServerCapabilities::builder()
-            .enable_tools()
-            .build();
+        let capabilities = ServerCapabilities::builder().enable_tools().build();
 
         ServerInfo::new(capabilities)
             .with_instructions(r#"This server provides resources and mostly tools

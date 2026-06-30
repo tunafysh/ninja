@@ -6,9 +6,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use ninja::{
     VERSION,
     common::{
-        config::{
-            ShurikenReference, get_shuriken_info,
-        },
+        config::{ShurikenReference, get_shuriken_info},
         traits::Reporter,
         types::{ArmoryMetadata, ShurikenState},
     },

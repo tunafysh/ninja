@@ -1,6 +1,6 @@
 use std::io::{self, Write as _};
 
-use ninja::{manager::ShurikenManager};
+use ninja::manager::ShurikenManager;
 
 pub fn get_input(prompt: &str) -> Result<String, io::Error> {
     // print prompt exactly as given

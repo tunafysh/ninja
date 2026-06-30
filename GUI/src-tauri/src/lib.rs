@@ -1,18 +1,18 @@
-use ninja::{manager::ShurikenManager, common::traits::Reporter};
-use tauri::{Emitter, Manager, menu::Menu, AppHandle};
+use ninja::{common::traits::Reporter, manager::ShurikenManager};
+use tauri::{AppHandle, Emitter, Manager, menu::Menu};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use url::Url;
 mod commands;
+use anyhow::Result;
 use commands::*;
 use dirs_next::home_dir;
 use std::{fs, path::Path};
 use tokio::sync::Mutex;
-use anyhow::Result;
 
 mod link_parser;
 
 pub struct TauriReporter {
-    app: AppHandle
+    app: AppHandle,
 }
 
 impl Reporter for TauriReporter {

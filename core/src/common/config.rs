@@ -1,5 +1,6 @@
 use anyhow::Result;
 use log::{self, error, info};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 use tokio::fs;
@@ -15,18 +16,20 @@ pub struct ShurikenReference {
 impl ShurikenReference {
     /// Parse a "registry:shuriken" format string
     pub fn parse(input: &str) -> Result<Self, anyhow::Error> {
-        let parts: Vec<&str> = input.splitn(2, ':').collect();
-        if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        let re = Regex::new(r"^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$")?;
+        if re.is_match(input) {
+            let parts: Vec<&str> = input.splitn(2, ':').collect();
+
+            return Ok(ShurikenReference {
+                registry: parts[0].to_string(),
+                shuriken: parts[1].to_string(),
+            });
+        } else {
             return Err(anyhow::anyhow!(
                 "Invalid shuriken reference format. Expected 'registry:shuriken', got '{}'",
                 input
             ));
         }
-
-        Ok(ShurikenReference {
-            registry: parts[0].to_string(),
-            shuriken: parts[1].to_string(),
-        })
     }
 }
 

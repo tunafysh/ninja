@@ -3,17 +3,17 @@ use ninja::backup::{CompressionType, create_backup, restore_backup};
 use ninja::common::config::NinjaConfig;
 use ninja::common::registry::ArmoryItem;
 use ninja::shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata, Tool};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::Read, path::PathBuf};
-use tauri::{AppHandle, Manager};
-use tauri_plugin_opener::OpenerExt;
-use tokio::{fs, sync::Mutex};
 use ninja::{
     common::types::{ArmoryMetadata, FieldValue, ShurikenState},
     manager::ShurikenManager,
     scripting::dsl::DslEngine,
 };
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::State;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt;
+use tokio::{fs, sync::Mutex};
 
 use crate::TauriReporter;
 
@@ -164,7 +164,8 @@ pub async fn execute_dsl(
     let manager = manager.lock().await;
     let engine = DslEngine::new(manager.clone());
 
-    let res = engine.execute(command.to_string())
+    let res = engine
+        .execute(command.to_string())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -275,10 +276,11 @@ pub async fn install_shuriken(
     name: String,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    let reporter = TauriReporter {
-        app
-    };
-    manager.install(&name, reporter).await.map_err(|e| e.to_string())?;
+    let reporter = TauriReporter { app };
+    manager
+        .install(&name, reporter)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

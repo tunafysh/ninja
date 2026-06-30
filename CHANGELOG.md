@@ -98,3 +98,7 @@
 * Moved `test.c` from root to test.
 * Fixed the UI logs to work.
 * Some fixed in the `useShuriken` hook.
+
+## 1.15.2
+* Linting 
+* Stricter matching through regex in `ShurikenReference::parse()`
