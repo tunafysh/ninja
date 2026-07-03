@@ -102,7 +102,7 @@ pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<T
                 let mgr = mgr.clone();
 
                 async move {
-                    mgr.configure(&name).await?;
+                    mgr.configure_shuriken(&name).await?;
                     Ok(())
                 }
             }

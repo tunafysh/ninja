@@ -58,14 +58,14 @@
   --input: oklch(90% 0.08 330);
   --ring: oklch(70% 0.25 330);
   --radius: 0.5rem;
-  
+
   /* Chart colors for data visualization - OKLCH */
   --chart-1: oklch(70% 0.25 330);
   --chart-2: oklch(68% 0.22 340);
-  --chart-3: oklch(66% 0.20 350);
+  --chart-3: oklch(66% 0.2 350);
   --chart-4: oklch(72% 0.28 320);
-  --chart-5: oklch(75% 0.30 310);
-  
+  --chart-5: oklch(75% 0.3 310);
+
   /* Sidebar colors - OKLCH */
   --sidebar-background: oklch(0.93, 0.03, 31.13);
   --sidebar-foreground: oklch(25% 0.02 340);
@@ -75,15 +75,15 @@
   --sidebar-accent-foreground: oklch(25% 0.02 340);
   --sidebar-border: oklch(90% 0.08 330);
   --sidebar-ring: oklch(70% 0.25 330);
-  
+
   /* Custom Hello Kitty Colors - OKLCH */
   --kitty-pink: oklch(70% 0.25 330);
   --kitty-light-pink: oklch(96% 0.08 330);
   --kitty-bow-red: oklch(65% 0.25 20);
   --kitty-pastel-blue: oklch(85% 0.08 220);
   --kitty-pastel-yellow: oklch(88% 0.12 85);
-  --kitty-hot-pink: oklch(65% 0.30 325);
-  --kitty-blush: oklch(94% 0.10 15);
+  --kitty-hot-pink: oklch(65% 0.3 325);
+  --kitty-blush: oklch(94% 0.1 15);
 }
 
 .dark {

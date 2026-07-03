@@ -1,30 +1,36 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Minus, Square, X } from "lucide-react"
+import * as React from "react";
+import { Minus, Square, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 
 type WindowControlsProps = {
-  onMinimize?: () => void,
-  onMaximize?: () => void,
-  onClose?: () => void
-}
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+};
 
-export function WindowControls({ onMinimize, onMaximize, onClose }: WindowControlsProps) {
-  const [platform, setPlatform] = React.useState<"mac" | "windows" | "linux" | "unknown">("unknown")
+export function WindowControls({
+  onMinimize,
+  onMaximize,
+  onClose,
+}: WindowControlsProps) {
+  const [platform, setPlatform] = React.useState<
+    "mac" | "windows" | "linux" | "unknown"
+  >("unknown");
 
   React.useEffect(() => {
     // Detect platform
-    const userAgent = window.navigator.userAgent.toLowerCase()
+    const userAgent = window.navigator.userAgent.toLowerCase();
     if (userAgent.indexOf("mac") !== -1) {
-      setPlatform("mac")
+      setPlatform("mac");
     } else if (userAgent.indexOf("win") !== -1) {
-      setPlatform("windows")
+      setPlatform("windows");
     } else if (userAgent.indexOf("linux") !== -1) {
-      setPlatform("linux")
+      setPlatform("linux");
     }
-  }, [])
+  }, []);
 
   if (platform === "mac") {
     return (
@@ -47,16 +53,16 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
         </button>
         {onMaximize !== undefined && (
           <button
-          onClick={onMinimize}
-          className="group flex h-3 w-3 items-center justify-center rounded-full bg-green-500 transition-colors hover:bg-green-600"
-          title="Minimize"
-        >
-          <Square className="invisible h-2 w-2 text-green-900 group-hover:visible" />
-          <span className="sr-only">Minimize</span>
-        </button>
+            onClick={onMinimize}
+            className="group flex h-3 w-3 items-center justify-center rounded-full bg-green-500 transition-colors hover:bg-green-600"
+            title="Minimize"
+          >
+            <Square className="invisible h-2 w-2 text-green-900 group-hover:visible" />
+            <span className="sr-only">Minimize</span>
+          </button>
         )}
       </div>
-    )
+    );
   }
 
   // Windows/Linux/Default style - icons always visible
@@ -72,19 +78,18 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
         <Minus className="h-4 w-4" />
         <span className="sr-only">Minimize</span>
       </Button>
-    {onMaximize!== undefined && (
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-sm hover:bg-muted"
-        onClick={onMaximize}
-        title="Close"
-      >
-        <Square className="h-8 w-8" />
-        <span className="sr-only">Close</span>
-      </Button>
-    )}
+      {onMaximize !== undefined && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-sm hover:bg-muted"
+          onClick={onMaximize}
+          title="Close"
+        >
+          <Square className="h-8 w-8" />
+          <span className="sr-only">Close</span>
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon"
@@ -96,6 +101,5 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
         <span className="sr-only">Close</span>
       </Button>
     </div>
-  )
+  );
 }
-

@@ -13,25 +13,19 @@ export function useInstallShuriken() {
     let unlistenStage: (() => void) | undefined;
 
     const init = async () => {
-      unlistenProgress = await listen<number>(
-        "install-progress",
-        (event) => {
-          setProgress(prev => ({
-            progress: event.payload,
-            stage: prev?.stage ?? "Starting..."
-          }));
-        }
-      );
+      unlistenProgress = await listen<number>("install-progress", (event) => {
+        setProgress((prev) => ({
+          progress: event.payload,
+          stage: prev?.stage ?? "Starting...",
+        }));
+      });
 
-      unlistenStage = await listen<string>(
-        "install-stage",
-        (event) => {
-          setProgress(prev => ({
-            progress: prev?.progress ?? 0,
-            stage: event.payload
-          }));
-        }
-      );
+      unlistenStage = await listen<string>("install-stage", (event) => {
+        setProgress((prev) => ({
+          progress: prev?.progress ?? 0,
+          stage: event.payload,
+        }));
+      });
     };
 
     init();
@@ -48,16 +42,16 @@ export function useInstallShuriken() {
       setError(null);
       setProgress({
         progress: 0,
-        stage: "Starting..."
+        stage: "Starting...",
       });
 
       await invoke("install_shuriken", {
-        name: source
+        name: source,
       });
 
       setProgress({
         progress: 100,
-        stage: "Finished"
+        stage: "Finished",
       });
       return true;
     } catch (e) {

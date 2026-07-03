@@ -1,5 +1,5 @@
-import { ArmoryMetadata } from '@/lib/types';
-import { motion, AnimatePresence } from 'motion/react';
+import { ArmoryMetadata } from "@/lib/types";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Package,
   BadgeCheck,
@@ -8,10 +8,10 @@ import {
   Check,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { useOutsideClick } from '@/hooks/use-outside-click';
-import { invoke } from '@tauri-apps/api/core';
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { useOutsideClick } from "@/hooks/use-outside-click";
+import { invoke } from "@tauri-apps/api/core";
 
 type InstallCardProps = {
   shuriken: ArmoryMetadata;
@@ -19,7 +19,11 @@ type InstallCardProps = {
   onClose: () => void;
 };
 
-export default function InstallCard({ shuriken, path, onClose }: InstallCardProps) {
+export default function InstallCard({
+  shuriken,
+  path,
+  onClose,
+}: InstallCardProps) {
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(false);
 
@@ -95,10 +99,7 @@ export default function InstallCard({ shuriken, path, onClose }: InstallCardProp
               </div>
 
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleInstall}
-                  disabled={installing}
-                >
+                <Button onClick={handleInstall} disabled={installing}>
                   {installing ? (
                     <Spinner className="w-4 h-4" />
                   ) : installed ? (
@@ -110,8 +111,8 @@ export default function InstallCard({ shuriken, path, onClose }: InstallCardProp
                     {installing
                       ? "Installing..."
                       : installed
-                      ? "Installed"
-                      : "Install"}
+                        ? "Installed"
+                        : "Install"}
                   </p>
                 </Button>
               </div>

@@ -187,15 +187,16 @@ pub fn run() {
             lockpick_shuriken,
             add_registry,
             get_config,
-            toggle_dev_mode,
+            set_dev_mode,
             remove_registry,
-            toggle_updates,
+            set_updates,
             config_exists,
             registry_get_all_shurikens,
             remove_shuriken,
             open_devtools,
             read_logs,
             registry_get_shuriken,
+            save_configuration
         ]);
 
     builder

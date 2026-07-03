@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Input } from "../ui/input"
-import { Button } from "../ui/button"
-import { SaveIcon } from "lucide-react"
-import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item"
-import { useShuriken } from "@/hooks/use-shuriken"
-import { invoke } from "@tauri-apps/api/core"
-import { Switch } from "../ui/switch"
-import { capitalizeFirstLetter } from "@/lib/utils"
+import { useEffect, useState } from "react";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { SaveIcon } from "lucide-react";
+import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item";
+import { useShuriken } from "@/hooks/use-shuriken";
+import { invoke } from "@tauri-apps/api/core";
+import { Switch } from "../ui/switch";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 // Render input based on plain JS type
 function renderInput(
@@ -16,84 +16,108 @@ function renderInput(
   key: string,
   value: any,
   optionsState: Record<string, Record<string, any>>,
-  setOptionsState: React.Dispatch<React.SetStateAction<Record<string, Record<string, any>>>>
+  setOptionsState: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, any>>>
+  >,
 ) {
-  const current = optionsState[shurikenName]?.[key]
+  const current = optionsState[shurikenName]?.[key];
 
   const handleChange = (v: any) => {
-    setOptionsState(prev => ({
+    setOptionsState((prev) => ({
       ...prev,
       [shurikenName]: {
         ...prev[shurikenName],
-        [key]: v
-      }
-    }))
-  }
+        [key]: v,
+      },
+    }));
+  };
 
-  const type = typeof current
+  const type = typeof current;
 
   if (type === "string") {
-    return <Input type="text" value={current} onChange={e => handleChange(e.target.value)} />
+    return (
+      <Input
+        type="text"
+        value={current}
+        onChange={(e) => handleChange(e.target.value)}
+      />
+    );
   } else if (type === "number") {
-    return <Input type="number" value={current} onChange={e => handleChange(Number(e.target.value))} />
+    return (
+      <Input
+        type="number"
+        value={current}
+        onChange={(e) => handleChange(Number(e.target.value))}
+      />
+    );
   } else if (type === "boolean") {
-    return <Switch checked={current} onCheckedChange={handleChange} />
+    return <Switch checked={current} onCheckedChange={handleChange} />;
   } else if (Array.isArray(current) || type === "object") {
-    return <pre className="text-xs">{JSON.stringify(current, null, 2)}</pre>
+    return <pre className="text-xs">{JSON.stringify(current, null, 2)}</pre>;
   } else {
-    return null
+    return null;
   }
 }
 
 export default function Configuration() {
-  const { allShurikens, refreshShurikens } = useShuriken()
-  const [saving, setSaving] = useState<string | null>(null)
+  const { allShurikens, refreshShurikens } = useShuriken();
+  const [saving, setSaving] = useState<string | null>(null);
 
-  const [optionsState, setOptionsState] = useState<Record<string, Record<string, any>>>({})
+  const [optionsState, setOptionsState] = useState<
+    Record<string, Record<string, any>>
+  >({});
 
   // Initialize local state
   useEffect(() => {
-    const newState: Record<string, Record<string, any>> = {}
-    allShurikens.forEach(s => {
+    const newState: Record<string, Record<string, any>> = {};
+    allShurikens.forEach((s) => {
       if (s.config?.options) {
-        newState[s.metadata.name] = { ...s.config.options } // plain JS values
+        newState[s.metadata.name] = { ...s.config.options }; // plain JS values
       }
-    })
-    setOptionsState(newState)
-  }, [allShurikens])
+    });
+    setOptionsState(newState);
+  }, [allShurikens]);
 
   const handleSave = async (shurikenName: string) => {
     try {
-      setSaving(shurikenName)
-      await invoke("save_config", { name: shurikenName, data: optionsState[shurikenName] })
-      await invoke("configure_shuriken", { name: shurikenName })
-      await refreshShurikens()
-      console.log(optionsState[shurikenName])
+      setSaving(shurikenName);
+      await invoke("save_config", {
+        name: shurikenName,
+        data: optionsState[shurikenName],
+      });
+      await invoke("configure_shuriken", { name: shurikenName });
+      await refreshShurikens();
+      console.log(optionsState[shurikenName]);
     } catch (err) {
-      console.error("Failed to configure shuriken:", err)
+      console.error("Failed to configure shuriken:", err);
     } finally {
-      setSaving(null)
+      setSaving(null);
     }
-  }
+  };
 
   const configurableShurikens = allShurikens.filter(
-    s => s.config?.options && Object.keys(s.config.options).length > 0
-  )
+    (s) => s.config?.options && Object.keys(s.config.options).length > 0,
+  );
 
   if (configurableShurikens.length === 0) {
     return (
       <div className="text-center text-muted-foreground mt-8">
         No Shurikens have configurable fields.
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4">
-      {configurableShurikens.map(shuriken => (
-        <div key={shuriken.metadata.name} className="border rounded-md p-4 space-y-2">
+      {configurableShurikens.map((shuriken) => (
+        <div
+          key={shuriken.metadata.name}
+          className="border rounded-md p-4 space-y-2"
+        >
           <div className="flex justify-between items-center">
-            <h3 className="text-base font-semibold">{shuriken.metadata.name}</h3>
+            <h3 className="text-base font-semibold">
+              {shuriken.metadata.name}
+            </h3>
             <Button
               size="sm"
               onClick={() => handleSave(shuriken.metadata.name)}
@@ -115,7 +139,7 @@ export default function Configuration() {
                   key,
                   value,
                   optionsState,
-                  setOptionsState
+                  setOptionsState,
                 )}
               </ItemActions>
             </Item>
@@ -123,5 +147,5 @@ export default function Configuration() {
         </div>
       ))}
     </div>
-  )
+  );
 }

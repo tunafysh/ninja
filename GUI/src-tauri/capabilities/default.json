@@ -19,6 +19,14 @@
     "shell:default",
     "deep-link:default",
     "fs:default",
-    "fs:allow-read-text-file"
+    "fs:allow-read-file",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+       "$APPDATA/**",
+       "$APPLOCALDATA/**" 
+      ]
+    },
+    "fs:allow-read-text-file-lines"
   ]
 }

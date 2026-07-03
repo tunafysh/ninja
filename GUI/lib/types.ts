@@ -1,33 +1,33 @@
-export type ShurikenState = "Running" | "Idle" | { Error: string }
+export type ShurikenState = "Running" | "Idle" | { Error: string };
 
 export type Shuriken = {
-    metadata: ShurikenMetadata
-    config?: ShurikenConfig
-    logs?: LogsConfig
-    tools?: Tool[]
-    state: ShurikenState
-    dirty: boolean
-}
+  metadata: ShurikenMetadata;
+  config?: ShurikenConfig;
+  logs?: LogsConfig;
+  tools?: Tool[];
+  state: ShurikenState;
+  dirty: boolean;
+};
 
 export type ShurikenConfig = {
-    "config-path": String
-    options?: Map<string, Value>
-}
+  "config-path": String;
+  options?: Map<string, Value>;
+};
 
 export type Tool = {
-    name: string
-    path: string
-}
+  name: string;
+  path: string;
+};
 
 export type ShurikenMetadata = {
-  name: string
-  id: string
-  version: string
-  ports?: number[]
-  "check-ports"?: boolean
-  "script-path"?: string
-  type: "daemon" | "executable"
-}
+  name: string;
+  id: string;
+  version: string;
+  ports?: number[];
+  "check-ports"?: boolean;
+  "script-path"?: string;
+  type: "daemon" | "executable";
+};
 
 export type Value =
   | { type: "String"; value: string }
@@ -38,10 +38,10 @@ export type Value =
 
 // Rust: pub struct LogsConfig
 export interface LogsConfig {
-    "log-path"?: string; // PlatformPath as string
+  "log-path"?: string; // PlatformPath as string
 }
 
-export type ArmoryItem = 
+export type ArmoryItem =
   | {
       name: string;
       version: string;
@@ -90,14 +90,14 @@ export type ArmoryItem =
       repository?: string;
       checksum?: string;
       authors?: string[];
-    }
+    };
 
 // Why would i have a fallback type on a discriminated union?
 
 export type LocalArmoryItem = ArmoryItem & {
-    installed: boolean,
-    localVersion: string
-}
+  installed: boolean;
+  localVersion: string;
+};
 
 export type Project = {
   name: string;
@@ -110,27 +110,26 @@ export interface ArmoryMetadata {
   platform: string;
   version: string;
   synopsis?: string | null;
-  postinstall?: string | null;   // PathBuf → string
+  postinstall?: string | null; // PathBuf → string
   description?: string | null;
   authors?: string[] | null;
   license?: string | null;
 }
 
-
 export type UpdateInfo = {
-  version: string
-  date: string | undefined
-  downloadAndInstall: () => void
-  body?: string
-} | null
+  version: string;
+  date: string | undefined;
+  downloadAndInstall: () => void;
+  body?: string;
+} | null;
 
 export type Config = {
-  registries: Map<String, String>,
-  devMode: boolean,
-  checkUpdates: boolean
-}
+  registries: Map<string, string>;
+  devMode: boolean;
+  checkUpdates: boolean;
+};
 
 export type InstallProgress = {
-  progress: number,
-  stage: string
-}
+  progress: number;
+  stage: string;
+};

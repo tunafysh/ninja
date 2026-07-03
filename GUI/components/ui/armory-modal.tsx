@@ -41,10 +41,7 @@ function getInstallTarget(item: ArmoryItem): string {
   return item.name;
 }
 
-export default function ArmoryModal({
-  shuriken,
-  onClose,
-}: ArmoryModalProps) {
+export default function ArmoryModal({ shuriken, onClose }: ArmoryModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   const { removeShuriken } = useShuriken();
@@ -90,9 +87,9 @@ export default function ArmoryModal({
   }
 
   const displayError = localError || error;
-  const installPercent = installing ? progress?.progress ?? 0 : 0;
+  const installPercent = installing ? (progress?.progress ?? 0) : 0;
   const installLabel = installing
-    ? progress?.stage ?? "Installing..."
+    ? (progress?.stage ?? "Installing...")
     : "Install";
 
   return (
@@ -123,9 +120,7 @@ export default function ArmoryModal({
 
             <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-2xl font-bold">
-                  {shuriken.name}
-                </h2>
+                <h2 className="text-2xl font-bold">{shuriken.name}</h2>
 
                 <p className="text-muted-foreground">
                   {shuriken.synopsis || shuriken.description}
@@ -160,7 +155,7 @@ export default function ArmoryModal({
                     onClick={handleInstall}
                     className={cn(
                       installing &&
-                        "relative overflow-hidden bg-muted text-foreground disabled:opacity-100"
+                        "relative overflow-hidden bg-muted text-foreground disabled:opacity-100",
                     )}
                   >
                     {installing && (
@@ -175,9 +170,7 @@ export default function ArmoryModal({
                       {installLabel}
 
                       {installing && (
-                        <span className="tabular-nums">
-                          {installPercent}%
-                        </span>
+                        <span className="tabular-nums">{installPercent}%</span>
                       )}
                     </span>
                   </Button>
@@ -215,9 +208,7 @@ export default function ArmoryModal({
                   <li className="flex items-center gap-2">
                     <BadgeCheck className="h-4 w-4" />
                     Author:{" "}
-                    {shuriken.author ??
-                      shuriken.authors?.join(", ") ??
-                      "N/A"}
+                    {shuriken.author ?? shuriken.authors?.join(", ") ?? "N/A"}
                   </li>
 
                   <li className="flex items-center gap-2">

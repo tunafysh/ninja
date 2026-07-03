@@ -204,7 +204,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if configuration completed successfully
     /// - `Err` if Shuriken not found or configuration fails
-    pub async fn configure(&self, name: &str) -> Result<()> {
+    pub async fn configure_shuriken(&self, name: &str) -> Result<()> {
         info!("Configuring shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
         let partial_shuriken = &self.shurikens.write().await;
@@ -247,6 +247,22 @@ impl ShurikenManager {
         Ok(())
     }
 
+    pub async fn save_config(&self) -> Result<()> {
+        let path = &self.root_path.join("config.toml");
+        let data = &self.config.read().await.clone();
+        let serialized_data = toml::to_string_pretty(data)?;
+        if !path.exists() {
+            let mut file = File::create(path).await?;
+            file.write_all(serialized_data.as_bytes()).await?;
+        }
+        else {
+            fs::remove_file(path).await?;
+            let mut file = File::create(path).await?;
+            file.write_all(serialized_data.as_bytes()).await?;
+        }
+        Ok(())
+    }
+
     /// Saves configuration options for a Shuriken.
     ///
     /// Persists configuration to disk as TOML and updates the in-memory cache.
@@ -259,7 +275,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if configuration saved successfully
     /// - `Err` if file operations fail
-    pub async fn save_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
+    pub async fn save_shuriken_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
         info!("Saving config for shuriken: {}", name);
         debug!("Config data: {:#?}", data);
         let normalized_name = normalize_shuriken_name(name);
@@ -782,7 +798,7 @@ impl ShurikenManager {
 
         // save config so the paths are correct when we launch.
         self.refresh().await?;
-        self.configure(&metadata.name).await?;
+        self.configure_shuriken(&metadata.name).await?;
 
         tx.stage(InstallStage::Installed)?;
         tx.progress(100)?;

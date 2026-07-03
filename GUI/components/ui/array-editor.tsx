@@ -58,17 +58,29 @@ export default function ArrayEditor({
 }: ArrayEditorProps) {
   const detectedMode: "array" | "map" =
     mode === "auto"
-      ? (Array.isArray(value) && value.length > 0 && Array.isArray(value[0]) ? "map" : "array")
+      ? Array.isArray(value) && value.length > 0 && Array.isArray(value[0])
+        ? "map"
+        : "array"
       : (mode as "array" | "map");
 
   const [arrayItems, setArrayItems] = useState<ArrayItem[]>(
-    detectedMode === "array" ? (Array.isArray(value) ? (value as string[]).map((v) => ({ id: uid(), value: v })) : []) : []
+    detectedMode === "array"
+      ? Array.isArray(value)
+        ? (value as string[]).map((v) => ({ id: uid(), value: v }))
+        : []
+      : [],
   );
 
   const [mapItems, setMapItems] = useState<MapItem[]>(
     detectedMode === "map"
-      ? (Array.isArray(value) ? (value as [string, string][]).map(([k, d]) => ({ id: uid(), key: k, desc: d })) : [])
-      : []
+      ? Array.isArray(value)
+        ? (value as [string, string][]).map(([k, d]) => ({
+            id: uid(),
+            key: k,
+            desc: d,
+          }))
+        : []
+      : [],
   );
 
   const [newArrayValue, setNewArrayValue] = useState("");
@@ -78,9 +90,21 @@ export default function ArrayEditor({
 
   useEffect(() => {
     if (detectedMode === "array") {
-      setArrayItems(Array.isArray(value) ? (value as string[]).map((v) => ({ id: uid(), value: v })) : []);
+      setArrayItems(
+        Array.isArray(value)
+          ? (value as string[]).map((v) => ({ id: uid(), value: v }))
+          : [],
+      );
     } else {
-      setMapItems(Array.isArray(value) ? (value as [string, string][]).map(([k, d]) => ({ id: uid(), key: k, desc: d })) : []);
+      setMapItems(
+        Array.isArray(value)
+          ? (value as [string, string][]).map(([k, d]) => ({
+              id: uid(),
+              key: k,
+              desc: d,
+            }))
+          : [],
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, detectedMode]);
@@ -89,9 +113,21 @@ export default function ArrayEditor({
   useEffect(() => {
     if (!open) return;
     if (detectedMode === "array") {
-      setArrayItems(Array.isArray(value) ? (value as string[]).map((v) => ({ id: uid(), value: v })) : []);
+      setArrayItems(
+        Array.isArray(value)
+          ? (value as string[]).map((v) => ({ id: uid(), value: v }))
+          : [],
+      );
     } else {
-      setMapItems(Array.isArray(value) ? (value as [string, string][]).map(([k, d]) => ({ id: uid(), key: k, desc: d })) : []);
+      setMapItems(
+        Array.isArray(value)
+          ? (value as [string, string][]).map(([k, d]) => ({
+              id: uid(),
+              key: k,
+              desc: d,
+            }))
+          : [],
+      );
     }
     setNewArrayValue("");
     setNewKey("");
@@ -179,119 +215,156 @@ export default function ArrayEditor({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-        {detectedMode === "array" ? (
-          <>
-            <div className="flex gap-2">
-              <Input
-                value={newArrayValue}
-                onChange={(e: any) => setNewArrayValue(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent) => {
-                  if (e.key === "Enter") addArrayItem(newArrayValue);
-                }}
-                placeholder={placeholder}
-                className="flex-1"
-              />
-              <Button onClick={() => addArrayItem(newArrayValue)}>Add</Button>
-            </div>
-
-            <div role="list" className="flex flex-col gap-2 max-h-80 overflow-auto">
-              {arrayItems.map((it, idx) => (
-                <div
-                  key={it.id}
-                  role="listitem"
-                  draggable
-                  onDragStart={(e) => onDragStart(e, idx)}
-                  onDragEnd={() => {
-                    dragIndex.current = null;
+          {detectedMode === "array" ? (
+            <>
+              <div className="flex gap-2">
+                <Input
+                  value={newArrayValue}
+                  onChange={(e: any) => setNewArrayValue(e.target.value)}
+                  onKeyDown={(e: React.KeyboardEvent) => {
+                    if (e.key === "Enter") addArrayItem(newArrayValue);
                   }}
-                  onDragOver={onDragOver}
-                  onDrop={(e) => onDropArray(e, idx)}
-                  className="flex items-center gap-3 p-2 border rounded bg-white dark:bg-slate-800"
-                >
-                  <div className="cursor-grab text-sm text-slate-500">☰</div>
+                  placeholder={placeholder}
+                  className="flex-1"
+                />
+                <Button onClick={() => addArrayItem(newArrayValue)}>Add</Button>
+              </div>
 
-                  <div className="flex-1">
-                    {renderItem ? (
-                      renderItem(it.value, idx)
-                    ) : (
+              <div
+                role="list"
+                className="flex flex-col gap-2 max-h-80 overflow-auto"
+              >
+                {arrayItems.map((it, idx) => (
+                  <div
+                    key={it.id}
+                    role="listitem"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, idx)}
+                    onDragEnd={() => {
+                      dragIndex.current = null;
+                    }}
+                    onDragOver={onDragOver}
+                    onDrop={(e) => onDropArray(e, idx)}
+                    className="flex items-center gap-3 p-2 border rounded bg-white dark:bg-slate-800"
+                  >
+                    <div className="cursor-grab text-sm text-slate-500">☰</div>
+
+                    <div className="flex-1">
+                      {renderItem ? (
+                        renderItem(it.value, idx)
+                      ) : (
+                        <input
+                          className="w-full bg-transparent outline-none"
+                          value={it.value}
+                          onChange={(e) =>
+                            setArrayItems((s) =>
+                              s.map((x, i) =>
+                                i === idx ? { ...x, value: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      )}
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      onClick={() => removeArrayAt(idx)}
+                      className="text-sm px-2 py-1"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={newKey}
+                  onChange={(e: any) => setNewKey(e.target.value)}
+                  placeholder="Key"
+                />
+                <Input
+                  value={newDesc}
+                  onChange={(e: any) => setNewDesc(e.target.value)}
+                  placeholder="Description"
+                  onKeyDown={(e: React.KeyboardEvent) => {
+                    if (e.key === "Enter") addMapItem(newKey, newDesc);
+                  }}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={() => addMapItem(newKey, newDesc)}>Add</Button>
+              </div>
+
+              <div
+                role="list"
+                className="flex flex-col gap-2 max-h-80 overflow-auto"
+              >
+                {mapItems.map((it, idx) => (
+                  <div
+                    key={it.id}
+                    role="listitem"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, idx)}
+                    onDragEnd={() => {
+                      dragIndex.current = null;
+                    }}
+                    onDragOver={onDragOver}
+                    onDrop={(e) => onDropMap(e, idx)}
+                    className="flex items-center gap-3 p-2 border rounded bg-white dark:bg-slate-800"
+                  >
+                    <div className="cursor-grab text-sm text-slate-500">☰</div>
+
+                    <div className="flex-1 grid grid-cols-2 gap-2">
                       <input
-                        className="w-full bg-transparent outline-none"
-                        value={it.value}
+                        value={it.key}
                         onChange={(e) =>
-                          setArrayItems((s) => s.map((x, i) => (i === idx ? { ...x, value: e.target.value } : x)))
+                          setMapItems((s) =>
+                            s.map((x, i) =>
+                              i === idx ? { ...x, key: e.target.value } : x,
+                            ),
+                          )
                         }
+                        className="w-full bg-transparent outline-none"
                       />
-                    )}
+                      <input
+                        value={it.desc}
+                        onChange={(e) =>
+                          setMapItems((s) =>
+                            s.map((x, i) =>
+                              i === idx ? { ...x, desc: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        className="w-full bg-transparent outline-none"
+                      />
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      onClick={() => removeMapAt(idx)}
+                      className="text-sm px-2 py-1"
+                    >
+                      Remove
+                    </Button>
                   </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-                  <Button variant="ghost" onClick={() => removeArrayAt(idx)} className="text-sm px-2 py-1">
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <Input value={newKey} onChange={(e: any) => setNewKey(e.target.value)} placeholder="Key" />
-              <Input
-                value={newDesc}
-                onChange={(e: any) => setNewDesc(e.target.value)}
-                placeholder="Description"
-                onKeyDown={(e: React.KeyboardEvent) => {
-                  if (e.key === "Enter") addMapItem(newKey, newDesc);
-                }}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={() => addMapItem(newKey, newDesc)}>Add</Button>
-            </div>
-
-            <div role="list" className="flex flex-col gap-2 max-h-80 overflow-auto">
-              {mapItems.map((it, idx) => (
-                <div
-                  key={it.id}
-                  role="listitem"
-                  draggable
-                  onDragStart={(e) => onDragStart(e, idx)}
-                  onDragEnd={() => {
-                    dragIndex.current = null;
-                  }}
-                  onDragOver={onDragOver}
-                  onDrop={(e) => onDropMap(e, idx)}
-                  className="flex items-center gap-3 p-2 border rounded bg-white dark:bg-slate-800"
-                >
-                  <div className="cursor-grab text-sm text-slate-500">☰</div>
-
-                  <div className="flex-1 grid grid-cols-2 gap-2">
-                    <input
-                      value={it.key}
-                      onChange={(e) => setMapItems((s) => s.map((x, i) => (i === idx ? { ...x, key: e.target.value } : x)))}
-                      className="w-full bg-transparent outline-none"
-                    />
-                    <input
-                      value={it.desc}
-                      onChange={(e) => setMapItems((s) => s.map((x, i) => (i === idx ? { ...x, desc: e.target.value } : x)))}
-                      className="w-full bg-transparent outline-none"
-                    />
-                  </div>
-
-                  <Button variant="ghost" onClick={() => removeMapAt(idx)} className="text-sm px-2 py-1">
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-
-      <DialogFooter>
+        <DialogFooter>
           <div className="flex gap-2">
             <Button
               onClick={() => {
-                const payload = detectedMode === "array" ? arrayItems.map((i) => i.value) : mapItems.map((i): [string, string] => [i.key, i.desc]);
+                const payload =
+                  detectedMode === "array"
+                    ? arrayItems.map((i) => i.value)
+                    : mapItems.map((i): [string, string] => [i.key, i.desc]);
                 onChange?.(payload as string[] | [string, string][]);
                 onSave?.();
                 onOpenChange?.(false);

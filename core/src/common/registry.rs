@@ -1,5 +1,4 @@
 use std::{collections::HashMap, path::Path};
-
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::info;
@@ -26,6 +25,7 @@ pub enum ArmoryItem {
         description: String,
         author: String,
         license: String,
+        id: String,
         platforms: Vec<String>,
         url: String,
     },
@@ -49,6 +49,13 @@ impl ArmoryItem {
         }
     }
 
+    pub fn id(&self) -> String {
+        match self {
+            ArmoryItem::Shuriken { id, .. } => id.to_owned(),
+            ArmoryItem::Bundle { name, .. } => name.to_lowercase(),
+        }
+    }
+
     pub fn is_shuriken(&self) -> bool {
         matches!(self, ArmoryItem::Shuriken { .. })
     }
@@ -60,6 +67,7 @@ impl ArmoryItem {
                 version,
                 description,
                 author,
+                id,
                 license,
                 platforms,
                 url,
@@ -68,6 +76,7 @@ impl ArmoryItem {
                 version,
                 description,
                 author,
+                id,
                 license,
                 platforms,
                 url: resolve_platform_placeholders(&url),
@@ -127,7 +136,7 @@ impl RegistrySources {
         registry
             .shurikens
             .into_iter()
-            .find(|item| item.name() == item_name)
+            .find(|item| item.id() == item_name)
             .with_context(|| {
                 format!(
                     "Shuriken '{}' not found in registry '{}'",
@@ -140,7 +149,7 @@ impl RegistrySources {
         self.all_shurikens()
             .await
             .into_iter()
-            .find(|item| item.name() == name)
+            .find(|item| item.id() == name)
     }
 
     pub async fn download_url(&self, registry_name: &str, shuriken_name: &str) -> Result<String> {

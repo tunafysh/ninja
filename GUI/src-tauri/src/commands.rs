@@ -178,7 +178,7 @@ pub async fn configure_shuriken(
     manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager.configure(name).await.map_err(|e| e.to_string())?;
+    manager.configure_shuriken(name).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -209,7 +209,7 @@ pub async fn save_config(
 ) -> Result<(), String> {
     let manager = manager.lock().await;
     manager
-        .save_config(name, data)
+        .save_shuriken_config(name, data)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -340,11 +340,10 @@ pub async fn get_config(manager: State<'_, Mutex<ShurikenManager>>) -> Result<Ni
 }
 
 #[tauri::command]
-pub async fn toggle_dev_mode(manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
+pub async fn set_dev_mode(manager: State<'_, Mutex<ShurikenManager>>, value: bool) -> Result<(), String> {
     let manager = manager.lock().await;
     let mut config = manager.config.write().await;
-    let dev_mode = !config.dev_mode;
-    config.set_dev_mode(dev_mode);
+    config.set_dev_mode(value);
     Ok(())
 }
 
@@ -361,10 +360,9 @@ pub async fn add_registry(
 }
 
 #[tauri::command]
-pub async fn toggle_updates(manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
+pub async fn set_updates(manager: State<'_, Mutex<ShurikenManager>>, value: bool) -> Result<(), String> {
     let manager = manager.lock().await;
     let mut config = manager.config.write().await;
-    let value = !config.check_updates;
     config.set_check_updates(value);
     Ok(())
 }
@@ -464,4 +462,11 @@ pub async fn read_logs(
         }
         Err(e) => Err(format!("Failed to read logs: {}", e)),
     }
+}
+
+#[tauri::command]
+pub async fn save_configuration(manager: State<'_, Mutex<ShurikenManager>>) -> Result<(), String> {
+    let manager = manager.lock().await;
+    manager.save_config().await.map_err(|e| e.to_string())?;
+    Ok(())
 }

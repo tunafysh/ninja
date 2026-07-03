@@ -1,19 +1,21 @@
-"use client"
+"use client";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogsDisplay } from "../ui/logs-display"
-import { Shuriken } from "@/lib/types"
-import { Suspense } from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LogsDisplay } from "../ui/logs-display";
+import { Shuriken } from "@/lib/types";
+import { Suspense } from "react";
 
 export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
-  const withLogs = shurikens.filter(s => s.logs !== undefined)
+  const withLogs = shurikens.filter((s) => s.logs !== undefined);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div className="space-y-1">
           <h2 className="text-xl font-bold tracking-tight">Server Logs</h2>
-          <p className="text-muted-foreground">View and analyze your server logs</p>
+          <p className="text-muted-foreground">
+            View and analyze your server logs
+          </p>
         </div>
       </div>
 
@@ -22,7 +24,9 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
           className="w-full"
           defaultValue={withLogs[0].metadata.name} // <-- ensures first tab shows
         >
-          <TabsList className={`grid grid-cols-${shurikens.length} max-w-md mb-6`}>
+          <TabsList
+            className={`grid grid-cols-${shurikens.length} max-w-md mb-6`}
+          >
             {withLogs.map((value) => (
               <TabsTrigger
                 key={value.metadata.name}
@@ -35,11 +39,12 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
           </TabsList>
 
           {withLogs.map((value) => (
-            <TabsContent
-              key={value.metadata.name}
-              value={value.metadata.name}
-            >
-              <Suspense fallback={<div className="p-4 text-gray-500">Loading logs...</div>}>
+            <TabsContent key={value.metadata.name} value={value.metadata.name}>
+              <Suspense
+                fallback={
+                  <div className="p-4 text-gray-500">Loading logs...</div>
+                }
+              >
                 <LogsDisplay shuriken={value} />
               </Suspense>
             </TabsContent>
@@ -51,5 +56,5 @@ export default function Logs({ shurikens }: { shurikens: Shuriken[] }) {
         </div>
       )}
     </div>
-  )
+  );
 }

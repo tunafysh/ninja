@@ -42,7 +42,7 @@ export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
         }
 
         const content = await invoke<string[]>("read_logs", {
-          shurikenName: shuriken.metadata.name.toLowerCase()
+          shurikenName: shuriken.metadata.name.toLowerCase(),
         });
 
         const initialLogs = content
@@ -104,7 +104,8 @@ export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
           ) : (
             <ChevronDown size={16} className="text-gray-400" />
           )}
-          Logs for <span className="text-blue-400">{shuriken.metadata.name}</span>
+          Logs for{" "}
+          <span className="text-blue-400">{shuriken.metadata.name}</span>
         </div>
         <div className="text-xs text-gray-500">
           {logs.length} {logs.length === 1 ? "entry" : "entries"}
@@ -133,7 +134,7 @@ export const LogsDisplay = ({ shuriken }: { shuriken: Shuriken }) => {
                 key={idx}
                 className={clsx(
                   "flex items-start gap-3 px-3 py-1.5 border-b border-gray-800/60 hover:bg-gray-800/30 transition-colors",
-                  getLogStyle(log.level)
+                  getLogStyle(log.level),
                 )}
               >
                 <span className="text-gray-500 text-xs whitespace-nowrap min-w-31.25">

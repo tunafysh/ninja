@@ -390,7 +390,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Configure(args)) => {
             info!("Configuring shuriken {}", args.shuriken);
-            manager.configure(&args.shuriken).await?;
+            manager.configure_shuriken(&args.shuriken).await?;
         }
         Some(Commands::Lockpick(args)) => {
             info!("Lockpicking shuriken {}", args.shuriken);

@@ -1,6 +1,6 @@
 interface NinjaConfig {
-    checkUpdates: boolean,
-    devMode: boolean,
-    serverurl: string
-    // Add other configuration options as needed
+  checkUpdates: boolean;
+  devMode: boolean;
+  serverurl: string;
+  // Add other configuration options as needed
 }
