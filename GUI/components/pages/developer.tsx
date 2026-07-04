@@ -33,7 +33,7 @@ export default function DeveloperModePanel() {
         });
 
         const lines = content.split("\n").filter(Boolean);
-        
+
         if (isFirstLoad.current) {
           const initialLogs = lines.map((line, idx) => ({
             id: `file-init-${idx}`,
@@ -79,12 +79,16 @@ export default function DeveloperModePanel() {
 
     try {
       const results: string[] = await invoke("execute_dsl", { command: cmd });
-      
-      const responseEntries = results.join("\n").split("\n").filter(Boolean).map((line, idx) => ({
-        id: `cmd-res-${Date.now()}-${idx}`,
-        text: line,
-        type: "command" as const,
-      }));
+
+      const responseEntries = results
+        .join("\n")
+        .split("\n")
+        .filter(Boolean)
+        .map((line, idx) => ({
+          id: `cmd-res-${Date.now()}-${idx}`,
+          text: line,
+          type: "command" as const,
+        }));
 
       setLogs((prev) => [...prev, ...responseEntries]);
     } catch (e) {
@@ -106,7 +110,7 @@ export default function DeveloperModePanel() {
     }
 
     const lowerText = log.text.toLowerCase();
-    
+
     if (lowerText.includes("error") || lowerText.includes("[err]")) {
       return "text-destructive font-medium"; // Soft red (using shadcn theme variable)
     }
@@ -128,36 +132,36 @@ export default function DeveloperModePanel() {
   };
 
   return (
-  // 1. Give the main outer wrapper a fixed viewport height and make it a flex column
-  <div className="w-full max-w-4xl mx-auto h-[calc(100vh-7rem)] flex flex-col pb-6">
-    <h1 className="text-xl font-bold mb-4 shrink-0">Developer mode</h1>
+    // 1. Give the main outer wrapper a fixed viewport height and make it a flex column
+    <div className="w-full max-w-4xl mx-auto h-[calc(100vh-7rem)] flex flex-col pb-6">
+      <h1 className="text-xl font-bold mb-4 shrink-0">Developer mode</h1>
 
-    {/* 2. Tell the ScrollArea to grow (flex-1) but never push past its bounds (min-h-0) */}
-    <ScrollArea className="flex-1 min-h-0 mb-4 border rounded p-4 bg-muted font-mono text-sm">
-      <div className="space-y-1">
-        {logs.map((log) => (
-          <div
-            key={log.id}
-            className={`whitespace-pre-wrap transition-colors ${getLogColor(log)}`}
-          >
-            {log.text}
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+      {/* 2. Tell the ScrollArea to grow (flex-1) but never push past its bounds (min-h-0) */}
+      <ScrollArea className="flex-1 min-h-0 mb-4 border rounded p-4 bg-muted font-mono text-sm">
+        <div className="space-y-1">
+          {logs.map((log) => (
+            <div
+              key={log.id}
+              className={`whitespace-pre-wrap transition-colors ${getLogColor(log)}`}
+            >
+              {log.text}
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
+
+      {/* 3. Keep the input bar at its native size at the bottom */}
+      <div className="flex gap-2 shrink-0">
+        <Input
+          className="flex-1 font-mono"
+          placeholder="Enter DSL command..."
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+        <Button onClick={executeCommand}>Run</Button>
       </div>
-    </ScrollArea>
-
-    {/* 3. Keep the input bar at its native size at the bottom */}
-    <div className="flex gap-2 shrink-0">
-      <Input
-        className="flex-1 font-mono"
-        placeholder="Enter DSL command..."
-        value={command}
-        onChange={(e) => setCommand(e.target.value)}
-        onKeyDown={handleKeyDown}
-      />
-      <Button onClick={executeCommand}>Run</Button>
     </div>
-  </div>
   );
 }

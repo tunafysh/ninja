@@ -41,58 +41,22 @@ export interface LogsConfig {
   "log-path"?: string; // PlatformPath as string
 }
 
-export type ArmoryItem =
-  | {
-      name: string;
-      version: string;
-      description: string;
-      author: string;
-      license: string;
-      platforms: string[];
-      sourceType: "url";
-      url: string;
-      installed?: boolean;
-      label?: string;
-      synopsis?: string;
-      repository?: string;
-      checksum?: string;
-      authors?: string[];
-    }
-  | {
-      name: string;
-      version: string;
-      description: string;
-      author: string;
-      license: string;
-      platforms: string[];
-      sourceType: "registry";
-      registry: string;
-      shuriken: string;
-      installed?: boolean;
-      label?: string;
-      synopsis?: string;
-      repository?: string;
-      checksum?: string;
-      authors?: string[];
-    }
-  | {
-      name: string;
-      version: string;
-      description: string;
-      author: string;
-      license: string;
-      platforms: string[];
-      sourceType: "file" | "path";
-      path: string;
-      installed?: boolean;
-      label?: string;
-      synopsis?: string;
-      repository?: string;
-      checksum?: string;
-      authors?: string[];
-    };
-
-// Why would i have a fallback type on a discriminated union?
+export type ArmoryItem = {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  license: string;
+  platforms: string[];
+  source: string;
+  installed?: boolean;
+  label?: string;
+  synopsis?: string;
+  repository?: string;
+  checksum?: string;
+  authors?: string[];
+  id: string;
+};
 
 export type LocalArmoryItem = ArmoryItem & {
   installed: boolean;
@@ -115,6 +79,12 @@ export interface ArmoryMetadata {
   authors?: string[] | null;
   license?: string | null;
 }
+
+export type Registry = {
+  name: string;
+  description?: string;
+  shurikens: ArmoryItem[];
+};
 
 export type UpdateInfo = {
   version: string;

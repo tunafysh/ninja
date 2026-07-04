@@ -143,7 +143,7 @@ pub async fn get_shuriken_info(
             id,
             license,
             platforms,
-            url,
+            source,
         } => {
             serde_json::json!({
                 "type": "shuriken",
@@ -155,7 +155,7 @@ pub async fn get_shuriken_info(
                 "license": license,
                 "description": description,
                 "platforms": platforms,
-                "url": url
+                "source": source
             })
         }
         ArmoryItem::Bundle {

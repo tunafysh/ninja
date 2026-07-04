@@ -25,22 +25,6 @@ type ArmoryModalProps = {
   onClose: () => void;
 };
 
-function getInstallTarget(item: ArmoryItem): string {
-  if ("registry" in item && item.registry) {
-    return `${item.registry}:${item.shuriken}`;
-  }
-
-  if ("url" in item) {
-    return item.url;
-  }
-
-  if ("path" in item) {
-    return item.path;
-  }
-
-  return item.name;
-}
-
 export default function ArmoryModal({ shuriken, onClose }: ArmoryModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -77,7 +61,7 @@ export default function ArmoryModal({ shuriken, onClose }: ArmoryModalProps) {
 
     setLocalError(null);
 
-    if (await install(getInstallTarget(shuriken))) {
+    if (await install(shuriken.source)) {
       onClose();
     }
   };

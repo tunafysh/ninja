@@ -1,7 +1,7 @@
 use log::{debug, error, info};
 use ninja::backup::{CompressionType, create_backup, restore_backup};
 use ninja::common::config::NinjaConfig;
-use ninja::common::registry::ArmoryItem;
+use ninja::common::registry::Registry;
 use ninja::shuriken::{LogsConfig, Shuriken, ShurikenConfig, ShurikenMetadata, Tool};
 use ninja::{
     common::types::{ArmoryMetadata, FieldValue, ShurikenState},
@@ -178,7 +178,10 @@ pub async fn configure_shuriken(
     manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    manager.configure_shuriken(name).await.map_err(|e| e.to_string())?;
+    manager
+        .configure_shuriken(name)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -340,7 +343,10 @@ pub async fn get_config(manager: State<'_, Mutex<ShurikenManager>>) -> Result<Ni
 }
 
 #[tauri::command]
-pub async fn set_dev_mode(manager: State<'_, Mutex<ShurikenManager>>, value: bool) -> Result<(), String> {
+pub async fn set_dev_mode(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    value: bool,
+) -> Result<(), String> {
     let manager = manager.lock().await;
     let mut config = manager.config.write().await;
     config.set_dev_mode(value);
@@ -360,7 +366,10 @@ pub async fn add_registry(
 }
 
 #[tauri::command]
-pub async fn set_updates(manager: State<'_, Mutex<ShurikenManager>>, value: bool) -> Result<(), String> {
+pub async fn set_updates(
+    manager: State<'_, Mutex<ShurikenManager>>,
+    value: bool,
+) -> Result<(), String> {
     let manager = manager.lock().await;
     let mut config = manager.config.write().await;
     config.set_check_updates(value);
@@ -389,22 +398,22 @@ pub async fn config_exists(manager: State<'_, Mutex<ShurikenManager>>) -> Result
 }
 
 #[tauri::command]
-pub async fn registry_get_all_shurikens(
+pub async fn registry_get_all_registries(
     manager: tauri::State<'_, Mutex<ShurikenManager>>,
-) -> Result<Vec<ArmoryItem>, String> {
+) -> Result<HashMap<String, Registry>, String> {
     let manager = manager.lock().await;
-    let result = manager.registry_get_all_shurikens().await;
+    let result = manager.registry_get_all_registries().await;
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn registry_get_shuriken(
+pub async fn registry_get_registry_by_shuriken(
     manager: tauri::State<'_, Mutex<ShurikenManager>>,
     name: String,
-) -> Result<ArmoryItem, String> {
+) -> Result<Registry, String> {
     let manager = manager.lock().await;
     let result = manager
-        .registry_get_shuriken(name)
+        .registry_get_registry_by_shuriken(name)
         .await
         .ok_or_else(|| "Shuriken not found in registries".to_string())?;
     Ok(result)

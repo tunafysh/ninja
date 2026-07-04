@@ -1,7 +1,7 @@
 use crate::{
     common::{
         config::{NinjaConfig, ShurikenReference},
-        registry::{ArmoryItem, RegistrySources, download_shuriken},
+        registry::{Registry, RegistrySources, download_shuriken},
         traits::Reporter,
         types::{ArmoryMetadata, FieldValue, InstallStage, ShurikenState},
     },
@@ -254,8 +254,7 @@ impl ShurikenManager {
         if !path.exists() {
             let mut file = File::create(path).await?;
             file.write_all(serialized_data.as_bytes()).await?;
-        }
-        else {
+        } else {
             fs::remove_file(path).await?;
             let mut file = File::create(path).await?;
             file.write_all(serialized_data.as_bytes()).await?;
@@ -275,7 +274,11 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if configuration saved successfully
     /// - `Err` if file operations fail
-    pub async fn save_shuriken_config(&self, name: &str, data: HashMap<String, FieldValue>) -> Result<()> {
+    pub async fn save_shuriken_config(
+        &self,
+        name: &str,
+        data: HashMap<String, FieldValue>,
+    ) -> Result<()> {
         info!("Saving config for shuriken: {}", name);
         debug!("Config data: {:#?}", data);
         let normalized_name = normalize_shuriken_name(name);
@@ -490,11 +493,13 @@ impl ShurikenManager {
 
         let archive =
             tokio::task::spawn(async move { create_tar_gz_bytes(path_clone).await }).await??;
-        let archive_len = archive.len();
+        let archive_len: u64 = archive.len().try_into()?;
+        // Define a reasonable upper bound to protect system memory (e.g., 5E GB)
+        const MAX_ARCHIVE_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 
-        if archive_len > u32::MAX as usize {
+        if archive_len > MAX_ARCHIVE_SIZE {
             return Err(anyhow::Error::msg(
-                "Archive too large to fit in u32 length field",
+                "Archive exceeds the maximum allowable size limit.",
             ));
         }
 
@@ -508,7 +513,7 @@ impl ShurikenManager {
         // [MAGIC]                 // 4 bytes
         // [metadata_length]       // u16 LE
         // [metadata]              // CBOR
-        // [archive_length]        // u32 LE
+        // [archive_length]        // u64 LE
         // [archive]               // tar.gz
         // [signature]             // 32 bytes SHA-256(archive)
 
@@ -583,23 +588,23 @@ impl ShurikenManager {
     /// - Local file path
     ///
     /// # Arguments
-    /// - `name`: The Shuriken source (reference, URL, or file path)
+    /// - `source`: The Shuriken source (reference, URL, or file path)
     ///
     /// # Returns
     /// - `Ok(())` if installation completed
     /// - `Err` if source is invalid or installation fails
-    pub async fn install<R>(&self, name: &str, report: R) -> Result<()>
+    pub async fn install<R>(&self, source: &str, report: R) -> Result<()>
     where
         R: Reporter + Send + Sync + 'static,
     {
-        if ShurikenReference::parse(&name).is_ok() {
-            let reference = ShurikenReference::parse(&name)?;
+        if ShurikenReference::parse(&source).is_ok() {
+            let reference = ShurikenReference::parse(&source)?;
             self.install_from_registry(&reference, report).await
-        } else if url::Url::parse(&name).is_ok() {
-            self.install_url(&name, report).await
+        } else if source.starts_with("http://") || source.starts_with("https://") {
+            self.install_url(&source, report).await
         } else {
             let arc_tx = Arc::new(report);
-            self.install_file(&PathBuf::from(name), arc_tx).await
+            self.install_file(&PathBuf::from(source), arc_tx).await
         }
     }
 
@@ -711,12 +716,12 @@ impl ShurikenManager {
         debug!("meta_len:  {}", metadata_length);
         debug!("metadata:  {:#?}", metadata);
 
-        // 4) archive_length (u32 LE)
-        let mut archive_len_buf = [0u8; 4];
+        // 4) archive_length (u64 LE)
+        let mut archive_len_buf = [0u8; 8];
         file.read_exact(&mut archive_len_buf).await?;
-        let archive_length = u32::from_le_bytes(archive_len_buf) as usize;
+        let archive_length = u64::from_le_bytes(archive_len_buf) as usize;
 
-        const MAX_ARCHIVE: usize = 1024 * 1024 * 1024; // 1 GB
+        const MAX_ARCHIVE: usize = 10 * 1024 * 1024 * 1024; // 1 GB
         if archive_length > MAX_ARCHIVE {
             return Err(anyhow::Error::msg("Archive too large"));
         }
@@ -806,27 +811,27 @@ impl ShurikenManager {
         Ok(())
     }
 
-    /// Fetches all available Shurikens from all configured registries.
+    /// Fetches all available registries.
     ///
     /// # Returns
-    /// A vector of `ArmoryItem` entries from all registries
-    pub async fn registry_get_all_shurikens(&self) -> Vec<ArmoryItem> {
+    /// A HashMap matching the registry name to its full `Registry` data.
+    pub async fn registry_get_all_registries(&self) -> std::collections::HashMap<String, Registry> {
         let registries = self.config.read().await.registries.clone();
-        RegistrySources::new(registries).all_shurikens().await
+        RegistrySources::new(registries).fetch_all().await
     }
 
-    /// Fetches a specific Shuriken from any configured registry.
+    /// Fetches the specific Registry containing a given Shuriken.
     ///
     /// # Arguments
-    /// - `name`: The name of the Shuriken to fetch
+    /// - `name`: The name of the Shuriken to search for
     ///
     /// # Returns
-    /// - `Some(ArmoryItem)` if found in a registry
-    /// - `None` if not found
-    pub async fn registry_get_shuriken(&self, name: String) -> Option<ArmoryItem> {
+    /// - `Some(Registry)` containing the found Shuriken
+    /// - `None` if the Shuriken isn't found in any registry
+    pub async fn registry_get_registry_by_shuriken(&self, name: String) -> Option<Registry> {
         let registries = self.config.read().await.registries.clone();
         RegistrySources::new(registries)
-            .find_shuriken_anywhere(&name)
+            .find_registry_by_shuriken(&name)
             .await
     }
 

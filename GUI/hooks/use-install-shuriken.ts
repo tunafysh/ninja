@@ -46,7 +46,7 @@ export function useInstallShuriken() {
       });
 
       await invoke("install_shuriken", {
-        name: source,
+        source: source,
       });
 
       setProgress({

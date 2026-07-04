@@ -1,8 +1,8 @@
-use std::{collections::HashMap, path::Path};
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, path::Path};
 use tokio::io::AsyncWriteExt;
 use url::Url;
 
@@ -27,7 +27,7 @@ pub enum ArmoryItem {
         license: String,
         id: String,
         platforms: Vec<String>,
-        url: String,
+        source: String,
     },
 
     #[serde(rename = "bundle")]
@@ -70,7 +70,7 @@ impl ArmoryItem {
                 id,
                 license,
                 platforms,
-                url,
+                source,
             } => ArmoryItem::Shuriken {
                 name,
                 version,
@@ -79,7 +79,7 @@ impl ArmoryItem {
                 id,
                 license,
                 platforms,
-                url: resolve_platform_placeholders(&url),
+                source: resolve_platform_placeholders(&source),
             },
 
             ArmoryItem::Bundle { .. } => self,
@@ -120,6 +120,23 @@ impl RegistrySources {
             .collect()
     }
 
+    /// Finds the first registry that contains the requested shuriken ID.
+    pub async fn find_registry_by_shuriken(&self, name: &str) -> Option<Registry> {
+        let all_registries = self.fetch_all().await;
+
+        for (_, registry) in all_registries {
+            let contains_shuriken = registry
+                .shurikens
+                .iter()
+                .any(|item| item.id() == name && item.is_shuriken());
+
+            if contains_shuriken {
+                return Some(registry);
+            }
+        }
+        None
+    }
+
     pub async fn all_shurikens(&self) -> Vec<ArmoryItem> {
         self.fetch_all()
             .await
@@ -136,7 +153,7 @@ impl RegistrySources {
         registry
             .shurikens
             .into_iter()
-            .find(|item| item.id() == item_name)
+            .find(|item| item.id() == item_name || item.name() == item_name)
             .with_context(|| {
                 format!(
                     "Shuriken '{}' not found in registry '{}'",
@@ -161,7 +178,7 @@ impl RegistrySources {
             .resolve();
 
         match item {
-            ArmoryItem::Shuriken { url, .. } => resolve_shuriken_url(&registry_url, &url),
+            ArmoryItem::Shuriken { source, .. } => resolve_shuriken_url(&registry_url, &source),
             ArmoryItem::Bundle { .. } => {
                 Err(anyhow::anyhow!("Bundles do not have direct download URLs"))
             }

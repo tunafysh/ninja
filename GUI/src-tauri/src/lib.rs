@@ -191,11 +191,11 @@ pub fn run() {
             remove_registry,
             set_updates,
             config_exists,
-            registry_get_all_shurikens,
+            registry_get_all_registries,
             remove_shuriken,
             open_devtools,
             read_logs,
-            registry_get_shuriken,
+            registry_get_registry_by_shuriken,
             save_configuration
         ]);
 

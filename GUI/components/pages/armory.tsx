@@ -1,23 +1,15 @@
 "use client";
-import { ApplicationMenubar } from "@/components/ui/application-menubar";
+
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { RefreshCcw, Search, FolderOpen, Package, Sparkle } from "lucide-react";
+
 import ArmoryCard from "@/components/ui/armory-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { open } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
-import {
-  RefreshCcw,
-  Search,
-  Download,
-  FolderOpen,
-  Package,
-  Sparkle,
-} from "lucide-react";
 import InstallCard from "@/components/ui/install-card";
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
-import { ArmoryItem, ArmoryMetadata } from "@/lib/types";
-import ArrayEditor from "@/components/ui/array-editor";
+import { ArmoryItem, ArmoryMetadata, Registry } from "@/lib/types";
 import { useConfig } from "@/hooks/config";
 
 export default function Armory({
@@ -25,11 +17,7 @@ export default function Armory({
 }: {
   platform: "mac" | "windows" | "linux" | "unknown";
 }) {
-  const { config, addRegistry, removeRegistry, fetchConfig } = useConfig();
-  const [registryEditorOpen, setRegistryEditorOpen] = useState(false);
-  const [pendingRegistries, setPendingRegistries] = useState<
-    [string, string][]
-  >([]);
+  const { config } = useConfig();
   const [path, setPath] = useState("");
   const [shurikens, setShurikens] = useState<ArmoryItem[]>([]);
   const [installedShurikens, setInstalledShurikens] = useState<ArmoryItem[]>(
@@ -42,46 +30,55 @@ export default function Armory({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const installLocalFile = async () => {
-    const file = await open({
-      filters: [
-        {
-          name: "Shurikens",
-          extensions: ["shuriken"],
-        },
-      ],
+  // Helper function to fetch registries and map their items to include a 'source' property
+  const fetchAndProcessShurikens = async () => {
+    // 1. Invoke the updated command that returns a Record/HashMap of registries
+    const registriesMap = await invoke<Record<string, Registry>>(
+      "registry_get_all_registries",
+    );
+
+    const allItems: ArmoryItem[] = [];
+
+    // 2. Iterate over the registries, inject the computed source reference into each item
+    Object.entries(registriesMap).forEach(([registryName, registry]) => {
+      if (registry && registry.shurikens) {
+        registry.shurikens.forEach((item) => {
+          // Identify the unique item string (fallback to name if id isn't populated)
+          const itemId = item.id || item.name?.toLowerCase();
+
+          allItems.push({
+            ...item,
+            // INJECTING SOURCE: Emits exactly what ShurikenReference::parse expects ("registry:id")
+            source: `${registryName}:${itemId}`,
+          });
+        });
+      }
     });
 
-    if (!file) {
-      console.log("No file selected");
-      return;
-    }
+    setShurikens(allItems);
+    setInstalledShurikens(allItems.filter((item) => item.installed));
+  };
 
-    console.log("Selected file:", file);
+  const installLocalFile = async () => {
+    const file = await open({
+      filters: [{ name: "Shurikens", extensions: ["shuriken"] }],
+    });
+
+    if (!file) return;
 
     try {
       setPath(file);
       const res = await invoke<ArmoryMetadata>("open_shuriken", { path: file });
-      console.log(res);
       setLocalShuriken(res);
     } catch (e) {
       console.error("Failed to open shuriken:", e);
     }
   };
 
-  const handleInstallComplete = () => {
-    invoke<ArmoryItem[]>("registry_get_all_shurikens").then((items) => {
-      setShurikens(items);
-      setInstalledShurikens(items.filter((item) => item.installed));
-    });
-  };
-
   const refreshShurikens = async () => {
     setIsRefreshing(true);
     try {
-      const items = await invoke<ArmoryItem[]>("registry_get_all_shurikens");
-      setShurikens(items);
-      setInstalledShurikens(items.filter((item) => item.installed));
+      await fetchAndProcessShurikens();
     } catch (e) {
       console.error("Failed to refresh shurikens:", e);
     } finally {
@@ -91,18 +88,15 @@ export default function Armory({
 
   useEffect(() => {
     setIsLoading(true);
-    invoke<ArmoryItem[]>("registry_get_all_shurikens")
-      .then((items) => {
-        setShurikens(items);
-        setInstalledShurikens(items.filter((item) => item.installed));
-      })
+    fetchAndProcessShurikens()
+      .catch((e) => console.error("Initial fetch failed:", e))
       .finally(() => setIsLoading(false));
   }, []);
 
   const filteredShurikens = shurikens.filter(
     (s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.description.toLowerCase().includes(searchQuery.toLowerCase()),
+      s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.description?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -112,7 +106,7 @@ export default function Armory({
         <div className="pt-10 pb-8">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <div key="zap" className="relative">
+              <div className="relative">
                 <svg className="w-8 h-8 absolute">
                   <defs>
                     <linearGradient
@@ -210,14 +204,14 @@ export default function Armory({
           </div>
 
           {/* Local Shuriken Install Card */}
+          {/* Local Shuriken Install Card */}
           {localShuriken && (
-            <div className="mb-10 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10">
-              <InstallCard
-                shuriken={localShuriken}
-                path={path}
-                onClose={() => setLocalShuriken(null)}
-              />
-            </div>
+            <InstallCard
+              shuriken={localShuriken}
+              path={path}
+              onClose={() => setLocalShuriken(null)}
+              onComplete={fetchAndProcessShurikens} // <-- Forces immediate local list update!
+            />
           )}
 
           {/* Shurikens Grid */}
