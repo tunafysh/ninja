@@ -713,8 +713,10 @@ impl ShurikenManager {
         info!("Metadata parsing complete");
 
         debug!("MAGIC:     {:?}", magic_buf);
-        debug!("meta_len:  {}", metadata_length);
-        debug!("metadata:  {:#?}", metadata);
+        debug!("Metadata Length:  {}", metadata_length);
+        debug!("Metadata:  {:#?}", metadata);
+        debug!("Archive Length Buffer = {:?}", archive_len_buf);
+        debug!("Archive Length = {}", archive_length);
 
         // 4) archive_length (u64 LE)
         let mut archive_len_buf = [0u8; 8];
