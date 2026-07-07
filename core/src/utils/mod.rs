@@ -14,58 +14,17 @@ use crate::{
     common::types::{FieldValue, ShurikenState},
     shuriken::{Shuriken, ShurikenConfig},
 };
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Error, Result};
 use flate2::{Compression, write::GzEncoder};
-use regex::Regex;
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tar::Builder as TarBuilder;
 use tokio::{fs as async_fs, sync::Mutex};
 
-pub fn get_http_port() -> Result<u16> {
-    let apache_conf = "shurikens/Apache/conf/httpd.conf";
-    let nginx_conf = "shurikens/Nginx/nginx.conf";
-
-    if Path::new(apache_conf).exists() {
-        return parse_apache_port(apache_conf);
-    }
-
-    if Path::new(nginx_conf).exists() {
-        return parse_nginx_port(nginx_conf);
-    }
-
-    Err(anyhow!("No Apache or Nginx shuriken found in ./shurikens"))
-}
-
-fn parse_apache_port(path: &str) -> Result<u16> {
-    let file = fs::read_to_string(path)?;
-    let re = Regex::new(r#"(?mi)^\s*Listen\s+([0-9]+)"#)?;
-
-    if let Some(cap) = re.captures(&file) {
-        return Ok(cap[1].parse()?);
-    }
-
-    Err(anyhow!(
-        "Apache config exists but contains no Listen directive"
-    ))
-}
-
-fn parse_nginx_port(path: &str) -> Result<u16> {
-    let file = fs::read_to_string(path)?;
-    let re = Regex::new(r#"(?mi)^\s*listen\s+([0-9]+)"#)?;
-
-    if let Some(cap) = re.captures(&file) {
-        return Ok(cap[1].parse()?);
-    }
-
-    Err(anyhow!(
-        "Nginx config exists but contains no listen directive"
-    ))
-}
+// fuh apache
 
 pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
     let p = Path::new(path);
@@ -75,6 +34,15 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
     } else {
         virtual_cwd.join(p)
     }
+}
+
+pub fn parse_path(seed: &PathBuf, path: String, delimiter: Option<&str>) -> PathBuf {
+    let delimiter = delimiter.unwrap_or("/");
+    let directories: Vec<String> = path.split(delimiter).map(String::from).collect();
+    let final_path = directories.iter().fold(PathBuf::from(seed), |path, dir| {
+        path.join(dir)
+    });
+    final_path
 }
 
 #[cfg(windows)]

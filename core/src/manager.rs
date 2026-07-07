@@ -31,7 +31,7 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 
-const MAGIC: &[u8; 6] = b"HSRZEG";
+const MAGIC_BYTES: &[u8; 6] = b"HSRZEG";
 
 /// A thin wrapper around a spawned process. We keep it simple: the
 /// ManagedProcess owns a `tokio::process::Child` and provides async helpers.
@@ -451,7 +451,7 @@ impl ShurikenManager {
     /// Packages a Shuriken into a distributable `.shuriken` file.
     ///
     /// Creates a signed archive containing metadata, the Shuriken directory, and SHA256 checksum.
-    /// Format: MAGIC + metadata_length + metadata + archive_length + archive + signature
+    /// Format: MAGIC_BYTES + metadata_length + metadata + archive_length + archive + signature
     ///
     /// # Arguments
     /// - `meta`: Metadata for the packaged Shuriken
@@ -510,15 +510,15 @@ impl ShurikenManager {
         let signature = hasher.finalize(); // 32 bytes
 
         // ---- 4) Write in correct order ----
-        // [MAGIC]                 // 4 bytes
+        // [MAGIC_BYTES]                 // 4 bytes
         // [metadata_length]       // u16 LE
         // [metadata]              // CBOR
         // [archive_length]        // u64 LE
         // [archive]               // tar.gz
         // [signature]             // 32 bytes SHA-256(archive)
 
-        // MAGIC
-        file.write_all(MAGIC).await?;
+        // MAGIC_BYTES
+        file.write_all(MAGIC_BYTES).await?;
 
         // metadata_length (u16 LE)
         let meta_len_le = (serialized_metadata.len() as u16).to_le_bytes();
@@ -662,7 +662,7 @@ impl ShurikenManager {
     /// - `Err` if file is invalid, corrupted, incompatible, or extraction fails
     ///
     /// # File Format
-    /// - MAGIC (6 bytes): "HSRZEG"
+    /// - MAGIC_BYTES (6 bytes): "HSRZEG"
     /// - metadata_length (u16 LE)
     /// - metadata (CBOR encoded)
     /// - archive_length (u32 LE)  
@@ -687,11 +687,11 @@ impl ShurikenManager {
         tx.stage(InstallStage::Validating)?;
         tx.progress(0)?;
 
-        // 1) MAGIC (6 bytes)
+        // 1) MAGIC_BYTES (6 bytes)
         let mut magic_buf = [0u8; 6];
         file.read_exact(&mut magic_buf).await?;
-        if &magic_buf != MAGIC {
-            return Err(anyhow::Error::msg("Invalid shuriken file (bad MAGIC)."));
+        if &magic_buf != MAGIC_BYTES {
+            return Err(anyhow::Error::msg("Invalid shuriken file (bad MAGIC_BYTES)."));
         }
 
         // 2) metadata_length (u16 LE)
@@ -712,7 +712,7 @@ impl ShurikenManager {
 
         info!("Metadata parsing complete");
 
-        debug!("MAGIC:     {:?}", magic_buf);
+        debug!("MAGIC_BYTES:     {:?}", magic_buf);
         debug!("Metadata Length:  {}", metadata_length);
         debug!("Metadata:  {:#?}", metadata);
 
@@ -737,7 +737,7 @@ impl ShurikenManager {
         let mut signature = [0u8; 32];
         file.read_exact(&mut signature).await?;
 
-        // Verify checksum = SHA256(MAGIC + metadata_len + metadata + archive_len + archive)
+        // Verify checksum = SHA256(MAGIC_BYTES + metadata_len + metadata + archive_len + archive)
         let mut hasher = Sha256::new();
         hasher.update(&archive_buf);
         let digest = hasher.finalize();
