@@ -675,7 +675,7 @@ impl ShurikenManager {
         use sha2::{Digest, Sha256};
         use std::io::Cursor;
 
-        info!("Starting installation");
+        info!("Starting installation of {:?}", path);
         if !path.exists() {
             return Err(anyhow::Error::msg("Path does not exist"));
         }
@@ -715,15 +715,16 @@ impl ShurikenManager {
         debug!("MAGIC:     {:?}", magic_buf);
         debug!("Metadata Length:  {}", metadata_length);
         debug!("Metadata:  {:#?}", metadata);
-        debug!("Archive Length Buffer = {:?}", archive_len_buf);
-        debug!("Archive Length = {}", archive_length);
 
         // 4) archive_length (u64 LE)
         let mut archive_len_buf = [0u8; 8];
         file.read_exact(&mut archive_len_buf).await?;
         let archive_length = u64::from_le_bytes(archive_len_buf) as usize;
 
-        const MAX_ARCHIVE: usize = 10 * 1024 * 1024 * 1024; // 1 GB
+        debug!("Archive Length Buffer = {:?}", archive_len_buf);
+        debug!("Archive Length = {}", archive_length);
+
+        const MAX_ARCHIVE: usize = 10 * 1024 * 1024 * 1024; // 10 GB
         if archive_length > MAX_ARCHIVE {
             return Err(anyhow::Error::msg("Archive too large"));
         }
@@ -805,7 +806,12 @@ impl ShurikenManager {
 
         // save config so the paths are correct when we launch.
         self.refresh().await?;
-        self.configure_shuriken(&metadata.name).await?;
+        debug!("Shurikens currently: {:#?}", self.list(false).await);
+        if let Some(shuriken) = self.shurikens.read().await.get(&metadata.id)
+            && shuriken.config.is_some()
+        {
+            self.configure_shuriken(&metadata.name).await?;
+        }
 
         tx.stage(InstallStage::Installed)?;
         tx.progress(100)?;
