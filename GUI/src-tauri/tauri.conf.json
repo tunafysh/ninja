@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ninja",
+  "productName": "shurikenctl",
   "identifier": "com.tunafysh.ninja",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -62,6 +62,14 @@
       "minimumSystemVersion": "10.13"
     },
     "targets": "all",
+    "linux": {
+      "deb": {
+        "name": "shurikenctl"
+      },
+      "rpm": {
+        "name": "shurikenctl"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

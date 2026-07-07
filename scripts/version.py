@@ -63,34 +63,34 @@ root = {
     "platforms": {
         "linux-x86_64": {
             "url": make_asset_url(
-                f"Ninja_{version}_amd64.AppImage", version
+                f"shurikenctl_{version}_amd64.AppImage", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_amd64.AppImage", ARTIFACTS_DIR
+                f"shurikenctl_{version}_amd64.AppImage", ARTIFACTS_DIR
             ),
         },
         "linux-aarch64": {
             "url": make_asset_url(
-                f"Ninja_{version}_aarch64.AppImage", version
+                f"shurikenctl_{version}_aarch64.AppImage", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_aarch64.AppImage", ARTIFACTS_DIR
+                f"shurikenctl_{version}_aarch64.AppImage", ARTIFACTS_DIR
             ),
         },
         "windows-x86_64": {
             "url": make_asset_url(
-                f"Ninja_{version}_x64-setup.exe", version
+                f"shurikenctl_{version}_x64-setup.exe", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja_{version}_x64-setup.exe", ARTIFACTS_DIR
+                f"shurikenctl_{version}_x64-setup.exe", ARTIFACTS_DIR
             ),
         },
         "darwin-aarch64": {
             "url": make_asset_url(
-                f"Ninja.app.tar.gz", version
+                f"shurikenctl.app.tar.gz", version
             ),
             "signature": read_sig_for_asset(
-                f"Ninja.app.tar.gz", ARTIFACTS_DIR
+                f"shurikenctl.app.tar.gz", ARTIFACTS_DIR
             ),
         },
     },

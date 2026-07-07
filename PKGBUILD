@@ -1,34 +1,27 @@
+# shellcheck disable=SC2148
+
 pkgname=shurikenctl
-pkgver=1.15.0
+pkgver=1.15.3
 pkgrel=1
 depends=(
     'cairo' 'desktop-file-utils' 'gdk-pixbuf2' 'glib2' 'gtk3'
     'hicolor-icon-theme' 'libsoup' 'pango' 'webkit2gtk-4.1'
 )
-makedepends=("cargo" "python" "nodejs")
-arch=('i686' 'x86_64' 'aarch64' 'armv7h')
-source=()
-b2sums=('SKIP')
+makedepends=("binutils")
+arch=('x86_64' 'aarch64')
+source_x86_64=(
+    "Ninja_${pkgver}_amd64.deb::https://github.com/tunafysh/ninja/releases/download/v${pkgver}/Ninja_${pkgver}_amd64.deb"
+    "Ninja_${pkgver}_amd64.deb.sig::https://github.com/tunafysh/ninja/releases/download/v${pkgver}/Ninja_${pkgver}_amd64.deb.sig"
+)
 
-prepare() {
-    export RUSTUP_TOOLCHAIN=stable
-    cargo fetch --locked
-}
+source_x86_64=(
+    "Ninja_${pkgver}_aarch64.deb::https://github.com/tunafysh/ninja/releases/download/v${pkgver}/Ninja_${pkgver}_aarch64.deb"
+    "Ninja_${pkgver}_aarch64.deb.sig::https://github.com/tunafysh/ninja/releases/download/v${pkgver}/Ninja_${pkgver}_aarch64.deb.sig"
+)
 
-build() {
-    export RUSTUP_TOOLCHAIN=stable
-    export CARGO_TARGET_DIR=target
-    cargo build --frozen --release --all-features
-}
-
-#check() {
-#    export RUSTUP_TOOLCHAIN=stable
-#    cargo test --frozen --all-features
-#}
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
 
 package() {
-    mv "target/release/ninja" "target/release/ninja-app"
-    install -Dm0755 -t "$pkgdir/usr/bin/" "target/release/{$pkgname, ninja-app}"
-    # for custom license, e.g. MIT
-    # install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    tar -xf "$srcdir/data.tar.xz" -C "$pkgdir"
 }
