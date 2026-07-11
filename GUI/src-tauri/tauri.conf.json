@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "shurikenctl",
+  "productName": "Ninja",
   "identifier": "com.tunafysh.ninja",
   "build": {
     "beforeDevCommand": "pnpm dev",
