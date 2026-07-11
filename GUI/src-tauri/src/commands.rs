@@ -281,7 +281,7 @@ pub async fn install_shuriken(
     let manager = manager.lock().await;
     let reporter = TauriReporter { app };
     manager
-        .install(&name, reporter)
+        .install(&source, reporter)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
