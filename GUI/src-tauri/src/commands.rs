@@ -276,7 +276,7 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
 pub async fn install_shuriken(
     app: AppHandle,
     manager: State<'_, Mutex<ShurikenManager>>,
-    name: String,
+    source: String,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
     let reporter = TauriReporter { app };
