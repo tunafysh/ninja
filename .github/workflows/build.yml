@@ -172,14 +172,14 @@ jobs:
           name: "Ninja ${{ env.VERSION }}"
           body: ${{ env.RELEASE_BODY }}
           files: |
-            artifacts/**/shurikenctl*.exe
-            artifacts/**/shurikenctl*.msi
-            artifacts/**/shurikenctl*.zip
-            artifacts/**/shurikenctl*.dmg
-            artifacts/**/shurikenctl*.deb
-            artifacts/**/shurikenctl*.rpm
-            artifacts/**/shurikenctl*.tar.gz
-            artifacts/**/shurikenctl*.AppImage
+            artifacts/**/Ninja*.exe
+            artifacts/**/Ninja*.msi
+            artifacts/**/Ninja*.zip
+            artifacts/**/Ninja*.dmg
+            artifacts/**/Ninja*.deb
+            artifacts/**/Ninja*.rpm
+            artifacts/**/Ninja*.tar.gz
+            artifacts/**/Ninja*.AppImage
             artifacts/**/*.sig
             **/latest.json
         env:
