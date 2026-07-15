@@ -767,6 +767,8 @@ impl ShurikenManager {
         let root_path = self.root_path.clone().join("shurikens").join(&archive_name);
         let thread_tx = tx.clone();
 
+        fs::create_dir_all(&unpack_path).await?;
+
         tokio::task::spawn_blocking(move || -> Result<()> {
             let gz_decoder = GzDecoder::new(archive_cursor);
             let mut archive = tar::Archive::new(gz_decoder);
