@@ -102,3 +102,7 @@
 ## 1.15.2
 * Linting 
 * Stricter matching through regex in `ShurikenReference::parse()`
+
+* ## 1.15.4
+* Fixed some UI inconsistencies
+* Fixed the directory not being created after resolving path in `install_file<R>`.
