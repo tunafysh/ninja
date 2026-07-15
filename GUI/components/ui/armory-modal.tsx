@@ -149,7 +149,7 @@ export default function ArmoryModal({ shuriken, onClose }: ArmoryModalProps) {
                       />
                     )}
 
-                    <span className="relative z-10 flex items-center gap-2">
+                    <span className="relative z-10 flex items-center gap-2 mix-blend-difference">
                       <Download className="h-4 w-4" />
                       {installLabel}
 
