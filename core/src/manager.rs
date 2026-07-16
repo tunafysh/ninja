@@ -4,10 +4,7 @@ use crate::{
         registry::{Registry, RegistrySources, download_shuriken},
         traits::Reporter,
         types::{ArmoryMetadata, FieldValue, InstallStage, ShurikenState},
-    },
-    scripting::{NinjaEngine, dsl::DslEngine},
-    shuriken::{Shuriken, ShurikenConfig},
-    utils::{create_tar_gz_bytes, load_shurikens, normalize_shuriken_name},
+    }, scripting::{NinjaEngine, dsl::DslEngine}, shuriken::{Shuriken, ShurikenConfig}, utils::{create_tar_gz_bytes, load_shurikens, normalize_path, normalize_shuriken_name, parse_path},
 };
 use anyhow::{Context, Error, Result};
 use ciborium::{from_reader, ser::into_writer};
@@ -800,8 +797,11 @@ impl ShurikenManager {
 
         // Run postinstall script if present
         if let Some(pi_script) = &metadata.postinstall {
+            debug!("original postinstall script path: {:#?}", &pi_script);
+            let path = normalize_path(pi_script.as_path());
+            let path = parse_path(&root_path, path.display().to_string(), None);
+            debug!("normalized postinstall script path: {:#?}", &path);
             info!("Running postinstall script");
-            let path = root_path.join(pi_script);
             let engine = &self.engine.lock().await;
             engine
                 .execute_file(&path, Some(&root_path), Some(self.clone()))

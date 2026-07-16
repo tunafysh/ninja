@@ -1,6 +1,6 @@
 use crate::common::types::ShurikenState;
 use crate::manager::ShurikenManager;
-use crate::utils::get_port_owner;
+use crate::utils::{get_port_owner, parse_path, normalize_path};
 use crate::{common::types::FieldValue, scripting::NinjaEngine, scripting::templater::Templater};
 use anyhow::Result;
 use log::{debug, error, info, warn};
@@ -178,7 +178,8 @@ impl Shuriken {
         if self.metadata.shuriken_type == "daemon"
             && let Some(script_path) = &self.metadata.script_path
         {
-            let full_script_path = self.resolve_script_path(script_path, shuriken_dir);
+            let path = normalize_path(&script_path.as_path());
+            let full_script_path = parse_path(&shuriken_dir.to_path_buf(), path.display().to_string(), None);
 
             let stem = full_script_path
                 .file_stem()
@@ -374,7 +375,7 @@ impl Shuriken {
         }
     }
 
-    /// Stops this running Shuriken by executing its stop script.
+    /// Stops this running Shuriken wby executing its stop script.
     ///
     /// Calls the `stop` function if defined, removes the lock file,
     /// and updates internal state to `Idle`.
@@ -399,7 +400,8 @@ impl Shuriken {
         if self.metadata.shuriken_type == "daemon"
             && let Some(script_path) = &self.metadata.script_path
         {
-            let full_script_path = self.resolve_script_path(script_path, shuriken_dir);
+            let path = normalize_path(&script_path.as_path());
+            let full_script_path = parse_path(&shuriken_dir.to_path_buf(), path.display().to_string(), None);
 
             let stem = full_script_path
                 .file_stem()

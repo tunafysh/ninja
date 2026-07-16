@@ -262,6 +262,22 @@ pub fn normalize_shuriken_name(name: &str) -> String {
     name.to_lowercase()
 }
 
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                result.pop();
+            }
+            component => result.push(component),
+        }
+    }
+
+    result
+}
+
 pub async fn create_tar_gz_bytes(src_dir: PathBuf) -> Result<Vec<u8>> {
     if !src_dir.is_dir() {
         return Err(anyhow::Error::msg(format!(
