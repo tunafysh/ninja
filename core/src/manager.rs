@@ -4,7 +4,12 @@ use crate::{
         registry::{Registry, RegistrySources, download_shuriken},
         traits::Reporter,
         types::{ArmoryMetadata, FieldValue, InstallStage, ShurikenState},
-    }, scripting::{NinjaEngine, dsl::DslEngine}, shuriken::{Shuriken, ShurikenConfig}, utils::{create_tar_gz_bytes, load_shurikens, normalize_path, normalize_shuriken_name, parse_path},
+    },
+    scripting::{NinjaEngine, dsl::DslEngine},
+    shuriken::{Shuriken, ShurikenConfig},
+    utils::{
+        create_tar_gz_bytes, load_shurikens, normalize_path, normalize_shuriken_name, parse_path,
+    },
 };
 use anyhow::{Context, Error, Result};
 use ciborium::{from_reader, ser::into_writer};

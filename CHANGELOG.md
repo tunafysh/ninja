@@ -112,3 +112,5 @@
 * Added logging in the `useInstallShuriken` hook
 
 ## 1.15.6
+* Added a check to see if the post_config function exists and if it does to run it.
+* fixed path parsing from script_path and postinstall

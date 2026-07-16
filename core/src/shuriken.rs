@@ -1,6 +1,6 @@
 use crate::common::types::ShurikenState;
 use crate::manager::ShurikenManager;
-use crate::utils::{get_port_owner, parse_path, normalize_path};
+use crate::utils::{get_port_owner, normalize_path, parse_path};
 use crate::{common::types::FieldValue, scripting::NinjaEngine, scripting::templater::Templater};
 use anyhow::Result;
 use log::{debug, error, info, warn};
@@ -179,7 +179,11 @@ impl Shuriken {
             && let Some(script_path) = &self.metadata.script_path
         {
             let path = normalize_path(&script_path.as_path());
-            let full_script_path = parse_path(&shuriken_dir.to_path_buf(), path.display().to_string(), None);
+            let full_script_path = parse_path(
+                &shuriken_dir.to_path_buf(),
+                path.display().to_string(),
+                None,
+            );
 
             let stem = full_script_path
                 .file_stem()
@@ -293,7 +297,11 @@ impl Shuriken {
             warn!("Shuriken '{}' has no configuration", self.metadata.name);
         }
 
-        if let Some(script_path) = &self.metadata.script_path {
+        if let Some(script_path) = &self.metadata.script_path
+            && engine
+                .check_function_exists("post_config", script_path)
+                .await?
+        {
             info!("Running post_config from '{}'", script_path.display());
 
             engine
@@ -401,7 +409,11 @@ impl Shuriken {
             && let Some(script_path) = &self.metadata.script_path
         {
             let path = normalize_path(&script_path.as_path());
-            let full_script_path = parse_path(&shuriken_dir.to_path_buf(), path.display().to_string(), None);
+            let full_script_path = parse_path(
+                &shuriken_dir.to_path_buf(),
+                path.display().to_string(),
+                None,
+            );
 
             let stem = full_script_path
                 .file_stem()
