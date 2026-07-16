@@ -106,3 +106,7 @@
 * ## 1.15.4
 * Fixed some UI inconsistencies
 * Fixed the directory not being created after resolving path in `install_file<R>`.
+
+## 1.15.5
+* Fixed an inconsistency with the install button
+* Added logging in the `useInstallShuriken` hook
