@@ -112,3 +112,5 @@
 * Added logging in the `useInstallShuriken` hook
 
 ## 1.15.6
+* Fixed `configure` hanging in `install_file`
+* Fixing Os error 2 the file cannot be found

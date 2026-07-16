@@ -202,12 +202,13 @@ impl ShurikenManager {
     /// - `Ok(())` if configuration completed successfully
     /// - `Err` if Shuriken not found or configuration fails
     pub async fn configure_shuriken(&self, name: &str) -> Result<()> {
-        info!("Configuring shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
+        info!("Configuring shuriken: {} with normalized name: {}", name, normalized_name);
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(&normalized_name);
 
         if let Some(shuriken) = shuriken {
+            info!("Found shuriken for configuration: {}", name);
             let path = &self.root_path;
             shuriken
                 .configure(path, &*self.engine.lock().await, Some(self.clone()))
@@ -551,7 +552,8 @@ impl ShurikenManager {
         info!("Removing shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
         warn!("Deleting {}.", name);
-        fs::remove_dir_all(format!("shurikens/{}", normalized_name)).await?;
+        let shuriken_dir = self.root_path.join("shurikens").join(&normalized_name);
+        fs::remove_dir_all(&shuriken_dir).await?;
         let _ = &self.shurikens.write().await.remove(&normalized_name);
         info!("Successfully deleted shuriken {}, refreshing.", name);
         #[cfg(debug_assertions)]
@@ -811,10 +813,10 @@ impl ShurikenManager {
         // save config so the paths are correct when we launch.
         self.refresh().await?;
         debug!("Shurikens currently: {:#?}", self.list(false).await);
-        if let Some(shuriken) = self.shurikens.read().await.get(&metadata.id)
+        if let Some(shuriken) = self.shurikens.read().await.get(&normalize_shuriken_name(&metadata.name))
             && shuriken.config.is_some()
         {
-            self.configure_shuriken(&metadata.name).await?;
+            shuriken.configure(&self.root_path, &*self.engine.lock().await, Some(self.clone())).await?;
         }
 
         tx.stage(InstallStage::Installed)?;
