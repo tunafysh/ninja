@@ -98,6 +98,39 @@ impl NinjaEngine {
         Ok(engine)
     }
 
+    pub async fn check_function_exists(
+        &self,
+        function: &str,
+        path: &PathBuf,
+    ) -> Result<bool, LuaError> {
+        let lua = &self.lua;
+
+        let script = fs::read_to_string(path)?;
+
+        // Create isolated env for the script
+        let env = lua.create_table()?;
+
+        // Make environment inherit standard globals
+        let globals = lua.globals();
+        env.set_metatable(Some(lua.create_table_from([("__index", globals)])?))?;
+
+        // Load script into the isolated environment
+        let chunk = lua.load(&script).set_environment(env.clone());
+
+        // Execute and capture the return value
+        let result: mlua::Value = chunk.eval_async().await?;
+
+        // Try to get the function from the returned value first (if it's a table)
+        let exists = match result {
+            mlua::Value::Table(table) => {
+                !matches!(table.get::<mlua::Value>(function)?, mlua::Value::Nil)
+            }
+            _ => !matches!(env.get::<mlua::Value>(function)?, mlua::Value::Nil),
+        };
+
+        Ok(exists)
+    }
+
     /// Execute a raw Lua script in the global environment.
     pub async fn execute(
         &self,
