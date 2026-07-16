@@ -276,7 +276,7 @@ impl Shuriken {
             let templater = Templater::new(fields, shuriken_path.clone())?;
             debug!("Templater initialized");
 
-            let config_full_path = shuriken_path.join(&ctx.config_path);
+            let config_full_path = &shuriken_path.join(&ctx.config_path);
             info!("Generating config '{}'", config_full_path.display());
 
             if let Some(parent) = config_full_path.parent() {
@@ -297,21 +297,28 @@ impl Shuriken {
             warn!("Shuriken '{}' has no configuration", self.metadata.name);
         }
 
-        if let Some(script_path) = &self.metadata.script_path
-            && engine
-                .check_function_exists("post_config", script_path)
-                .await?
-        {
-            info!("Running post_config from '{}'", script_path.display());
 
-            engine
-                .execute_function("post_config", script_path, Some(root_path), mgr)
-                .await?;
+        // TODO: implement in the future
+        // if let Some(script_path) = &self.metadata.script_path {
+        //     let resolved_script = parse_path(&root_path.to_path_buf(), script_path.display().to_string(), None);
 
-            info!("post_config completed");
-        } else {
-            debug!("No post_config script");
-        }
+        //     if engine
+        //         .check_function_exists("post_config", &resolved_script)
+        //         .await?
+        //     {
+        //         info!("Running post_config from '{}'", resolved_script.display());
+
+        //         engine
+        //             .execute_function("post_config", &resolved_script, Some(root_path), mgr)
+        //             .await?;
+
+        //         info!("post_config completed");
+        //     } else {
+        //         debug!("No post_config function found");
+        //     }
+        // } else {
+        //     debug!("No post_config script");
+        // }
 
         info!("Finished configuring '{}'", self.metadata.name);
         Ok(())

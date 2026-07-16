@@ -208,7 +208,10 @@ impl ShurikenManager {
     /// - `Err` if Shuriken not found or configuration fails
     pub async fn configure_shuriken(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
-        info!("Configuring shuriken: {} with normalized name: {}", name, normalized_name);
+        info!(
+            "Configuring shuriken: {} with normalized name: {}",
+            name, normalized_name
+        );
         let partial_shuriken = &self.shurikens.write().await;
         let shuriken = partial_shuriken.get(&normalized_name);
 
@@ -818,10 +821,20 @@ impl ShurikenManager {
         // save config so the paths are correct when we launch.
         self.refresh().await?;
         debug!("Shurikens currently: {:#?}", self.list(false).await);
-        if let Some(shuriken) = self.shurikens.read().await.get(&normalize_shuriken_name(&metadata.name))
+        if let Some(shuriken) = self
+            .shurikens
+            .read()
+            .await
+            .get(&normalize_shuriken_name(&metadata.name))
             && shuriken.config.is_some()
         {
-            shuriken.configure(&self.root_path, &*self.engine.lock().await, Some(self.clone())).await?;
+            shuriken
+                .configure(
+                    &self.root_path,
+                    &*self.engine.lock().await,
+                    Some(self.clone()),
+                )
+                .await?;
         }
 
         tx.stage(InstallStage::Installed)?;
