@@ -110,3 +110,5 @@
 ## 1.15.5
 * Fixed an inconsistency with the install button
 * Added logging in the `useInstallShuriken` hook
+
+## 1.15.6

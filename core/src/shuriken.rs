@@ -3,7 +3,7 @@ use crate::manager::ShurikenManager;
 use crate::utils::get_port_owner;
 use crate::{common::types::FieldValue, scripting::NinjaEngine, scripting::templater::Templater};
 use anyhow::Result;
-use log::info;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
@@ -249,51 +249,63 @@ impl Shuriken {
         engine: &NinjaEngine,
         mgr: Option<ShurikenManager>,
     ) -> anyhow::Result<()> {
-        if let Some(ctx) = &self.config
-            && let Some(script_path) = &self.metadata.script_path
-        {
-            let shuriken_fields = ctx.options.clone();
-            let mut fields = HashMap::new();
-            if let Some(partial_fields) = shuriken_fields {
-                for (name, value) in partial_fields {
-                    fields.insert(name, value);
-                }
-            }
+        info!("Configuring shuriken '{}'", self.metadata.name);
 
-            // Construct full path to the shuriken folder
+        if let Some(ctx) = &self.config {
+            debug!("Configuration found");
+
+            let fields = ctx
+                .options
+                .clone()
+                .into_iter()
+                .flatten()
+                .collect::<HashMap<_, _>>();
+
             let shuriken_path = root_path
                 .join("shurikens")
-                .join(&self.metadata.name.to_lowercase());
+                .join(self.metadata.name.to_lowercase());
 
-            // Ensure the directory exists
+            debug!("Creating directory '{}'", shuriken_path.display());
             fs::create_dir_all(&shuriken_path).await?;
 
-            // Initialize Templater with the fields and shuriken path
             let templater = Templater::new(fields, shuriken_path.clone())?;
+            debug!("Templater initialized");
 
-            // Full path to write the generated config
             let config_full_path = shuriken_path.join(&ctx.config_path);
+            info!("Generating config '{}'", config_full_path.display());
 
-            // Ensure the parent directory of the config file exists
             if let Some(parent) = config_full_path.parent() {
+                debug!("Ensuring parent directory '{}'", parent.display());
                 fs::create_dir_all(parent).await?;
             }
 
-            templater
-                .generate_config(config_full_path)
-                .await
-                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+            match templater.generate_config(config_full_path.clone()).await {
+                Ok(_) => {
+                    info!("Successfully generated '{}'", config_full_path.display());
+                }
+                Err(e) => {
+                    error!("Failed to generate config: {e}");
+                    return Err(anyhow::Error::msg(e.to_string()));
+                }
+            }
+        } else {
+            warn!("Shuriken '{}' has no configuration", self.metadata.name);
+        }
+
+        if let Some(script_path) = &self.metadata.script_path {
+            info!("Running post_config from '{}'", script_path.display());
 
             engine
                 .execute_function("post_config", script_path, Some(root_path), mgr)
                 .await?;
 
-            Ok(())
+            info!("post_config completed");
         } else {
-            Err(anyhow::Error::msg(
-                "Shuriken does not have a config or script path",
-            ))
+            debug!("No post_config script");
         }
+
+        info!("Finished configuring '{}'", self.metadata.name);
+        Ok(())
     }
 
     /// Imports data for this Shuriken by executing its import script.

@@ -39,9 +39,9 @@ pub fn resolve_path(virtual_cwd: &Path, path: &PathBuf) -> PathBuf {
 pub fn parse_path(seed: &PathBuf, path: String, delimiter: Option<&str>) -> PathBuf {
     let delimiter = delimiter.unwrap_or("/");
     let directories: Vec<String> = path.split(delimiter).map(String::from).collect();
-    let final_path = directories.iter().fold(PathBuf::from(seed), |path, dir| {
-        path.join(dir)
-    });
+    let final_path = directories
+        .iter()
+        .fold(PathBuf::from(seed), |path, dir| path.join(dir));
     final_path
 }
 

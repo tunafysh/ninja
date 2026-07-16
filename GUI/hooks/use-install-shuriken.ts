@@ -18,7 +18,6 @@ export function useInstallShuriken() {
       console.log("[Install] Registering listeners...");
 
       unlistenProgress = await listen<number>("install-progress", (event) => {
-        console.log("[Install] Progress event:", event.payload);
 
         setProgress((prev) => {
           const next = {
