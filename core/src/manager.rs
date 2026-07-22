@@ -533,8 +533,8 @@ impl ShurikenManager {
         // metadata
         file.write_all(&serialized_metadata).await?;
 
-        // archive_length (u32 LE)
-        let archive_len_le = (archive_len as u32).to_le_bytes();
+        // archive_length (u64 LE)
+        let archive_len_le = archive_len.to_le_bytes();
         file.write_all(&archive_len_le).await?;
 
         // archive
