@@ -1,3 +1,4 @@
+use ciborium::from_reader;
 use log::{debug, error, info};
 use ninja::backup::{CompressionType, create_backup, restore_backup};
 use ninja::common::config::NinjaConfig;
@@ -265,9 +266,8 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
     let mut metadata_buf = vec![0u8; metadata_len.into()];
     file.read_exact(&mut metadata_buf)
         .map_err(|e| e.to_string())?;
-
-    let metadata: ArmoryMetadata =
-        into_writer(&metadata_buf).map_err(|e| e.to_string())?;
+    let mut cursor = std::io::Cursor::new(metadata_buf);
+    let metadata: ArmoryMetadata = from_reader(&mut cursor).map_err(|e| e.to_string())?;
 
     Ok(metadata)
 }

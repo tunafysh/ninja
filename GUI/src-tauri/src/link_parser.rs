@@ -30,7 +30,7 @@ pub async fn handle_shurikenctl(url: &str, manager: State<'_, Mutex<ShurikenMana
             if let Some(pkg) = query.get("pkg") {
                 info!("Installing Shuriken: {}", pkg);
                 let reporter = NoopReporter {};
-                if let Err(e) = manager.install(&pkg, reporter).await {
+                if let Err(e) = manager.install(&pkg, &reporter).await {
                     error!("Failed to install '{}': {}", pkg, e);
                 }
             } else {

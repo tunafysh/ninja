@@ -37,6 +37,7 @@ dirs-next = "2.0.0"
 tauri-plugin-process = "2"
 anyhow = "1.0.104"
 ciborium = "0.2.2"
+cookie = "0.18.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = {version = "2", features = ["deep-link"] }

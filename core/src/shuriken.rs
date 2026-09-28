@@ -251,8 +251,8 @@ impl Shuriken {
     pub async fn configure(
         &self,
         root_path: &Path,
-        engine: &NinjaEngine,
-        mgr: Option<ShurikenManager>,
+        // engine: &NinjaEngine,
+        // mgr: Option<ShurikenManager>,
     ) -> anyhow::Result<()> {
         info!("Configuring shuriken '{}'", self.metadata.name);
 
