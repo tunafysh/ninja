@@ -8,21 +8,18 @@ use crate::{
     scripting::{NinjaEngine, dsl::DslEngine},
     shuriken::{Shuriken, ShurikenConfig},
     utils::{
-        create_tar_gz_bytes, load_shurikens, normalize_path, normalize_shuriken_name, parse_path,
+        create_tar_zstd_bytes, load_shurikens, normalize_path, normalize_shuriken_name, parse_path,
     },
 };
 use anyhow::{Context, Error, Result};
 use ciborium::{from_reader, ser::into_writer};
 use dirs_next as dirs;
 use either::Either::{self, Left, Right};
-use flate2::read::GzDecoder;
 use futures_util::future::join_all;
-use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     env, io,
-    marker::Send,
     path::{Path, PathBuf},
     str,
     sync::Arc,
@@ -32,6 +29,8 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{Mutex, RwLock},
 };
+use tracing::{debug, info, instrument, warn};
+use zstd::stream::Decoder;
 
 const MAGIC_BYTES: &[u8; 6] = b"HSRZEG";
 
@@ -134,6 +133,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if startup completed successfully
     /// - `Err` if Shuriken not found, script execution fails, or startup errors occur
+    #[instrument(skip(self), fields(name = %name))]
     pub async fn start(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         info!("Starting shuriken: {}", name);
@@ -186,6 +186,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` on success
     /// - `Err` if file system operations fail
+    #[instrument(skip(self))]
     pub async fn refresh(&self) -> Result<()> {
         info!("Refreshing shurikens from disk");
         let new_shurikens = load_shurikens(&self.root_path).await?;
@@ -206,6 +207,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if configuration completed successfully
     /// - `Err` if Shuriken not found or configuration fails
+    #[instrument(skip(self), fields(name = %name))]
     pub async fn configure_shuriken(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         info!(
@@ -238,6 +240,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if lock file successfully removed or didn't exist
     /// - `Err` if operation fails
+    #[instrument(skip(self), fields(name = %name))]
     pub async fn lockpick(&self, name: &str) -> Result<()> {
         info!("Lockpicking shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
@@ -253,6 +256,7 @@ impl ShurikenManager {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn save_config(&self) -> Result<()> {
         let path = &self.root_path.join("config.toml");
         let data = &self.config.read().await.clone();
@@ -339,6 +343,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if stop completed successfully
     /// - `Err` if Shuriken not found or stop script fails
+    #[instrument(skip(self), fields(name = %name))]
     pub async fn stop(&self, name: &str) -> Result<()> {
         let normalized_name = normalize_shuriken_name(name);
         let shurikens = self.shurikens.read().await;
@@ -467,12 +472,18 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if packaging succeeded
     /// - `Err` if metadata is too large, archive creation fails, or I/O fails
-    pub async fn forge(
+    pub async fn forge<R>(
         &self,
         meta: ArmoryMetadata,
         path: PathBuf,
+        level: Option<i32>,
+        threads: Option<u8>,
+        reporter: &R,
         output: Option<PathBuf>,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        R: Reporter,
+    {
         let output = output.unwrap_or_else(|| self.root_path.join("blacksmith"));
         if !output.exists() {
             fs::create_dir_all(&output).await?;
@@ -494,11 +505,9 @@ impl ShurikenManager {
             ));
         }
 
-        // ---- 2) Build archive bytes (tar.gz) in a non-blocking thread for some reason ----
+        // ---- 2) Build archive bytes ----
         let path_clone = path.to_path_buf();
-
-        let archive =
-            tokio::task::spawn(async move { create_tar_gz_bytes(path_clone).await }).await??;
+        let archive = create_tar_zstd_bytes(path_clone, level, threads, reporter).await?;
         let archive_len: u64 = archive.len().try_into()?;
         // Define a reasonable upper bound to protect system memory (e.g., 5E GB)
         const MAX_ARCHIVE_SIZE: u64 = 5 * 1024 * 1024 * 1024;
@@ -556,6 +565,7 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if removal succeeded
     /// - `Err` if Shuriken not found or deletion fails
+    #[instrument(skip(self), fields(name = %name))]
     pub async fn remove(&self, name: &str) -> Result<()> {
         info!("Removing shuriken: {}", name);
         let normalized_name = normalize_shuriken_name(name);
@@ -600,7 +610,8 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if installation completed
     /// - `Err` if source is invalid or installation fails
-    pub async fn install<R>(&self, source: &str, report: R) -> Result<()>
+    #[instrument(skip(self, report), fields(source = %source))]
+    pub async fn install<R>(&self, source: &str, report: &R) -> Result<()>
     where
         R: Reporter + Send + Sync + 'static,
     {
@@ -610,8 +621,7 @@ impl ShurikenManager {
         } else if source.starts_with("http://") || source.starts_with("https://") {
             self.install_url(&source, report).await
         } else {
-            let arc_tx = Arc::new(report);
-            self.install_file(&PathBuf::from(source), arc_tx).await
+            self.install_file(&PathBuf::from(source), report).await
         }
     }
 
@@ -625,14 +635,13 @@ impl ShurikenManager {
     /// # Returns
     /// - `Ok(())` if installation succeeded
     /// - `Err` if download or installation fails
-    pub async fn install_url<R>(&self, url: &str, tx: R) -> Result<()>
+    pub async fn install_url<R>(&self, url: &str, tx: &R) -> Result<()>
     where
-        R: Reporter + Send + Sync + 'static,
+        R: Reporter,
     {
         let temp_path = self.root_path.join("temp_shuriken.shuriken");
-        download_shuriken(&temp_path, url, &tx).await?;
-        let arc_tx = Arc::new(tx);
-        let result = self.install_file(&temp_path, arc_tx).await;
+        download_shuriken(&temp_path, url, tx).await?;
+        let result = self.install_file(&temp_path, tx).await;
         let _ = fs::remove_file(temp_path).await; // clean up temp file
         result
     }
@@ -641,7 +650,7 @@ impl ShurikenManager {
     pub async fn install_from_registry<R>(
         &self,
         reference: &crate::common::config::ShurikenReference,
-        tx: R,
+        tx: &R,
     ) -> Result<()>
     where
         R: Reporter + Send + Sync + 'static,
@@ -675,9 +684,9 @@ impl ShurikenManager {
     /// - archive_length (u32 LE)  
     /// - archive (tar.gz)
     /// - signature (32 bytes SHA256)
-    pub async fn install_file<R>(&self, path: &Path, tx: Arc<R>) -> Result<(), anyhow::Error>
+    pub async fn install_file<R>(&self, path: &Path, tx: &R) -> Result<(), anyhow::Error>
     where
-        R: Reporter + Send + Sync + 'static,
+        R: Reporter,
     {
         use sha2::{Digest, Sha256};
         use std::io::Cursor;
@@ -770,37 +779,29 @@ impl ShurikenManager {
         tx.progress(20)?;
 
         // Unpack archive in blocking task
-        let archive_cursor = Cursor::new(archive_buf);
         let archive_name = normalize_shuriken_name(&metadata.name);
         let unpack_path = self.root_path.clone().join("shurikens").join(&archive_name);
         let root_path = self.root_path.clone().join("shurikens").join(&archive_name);
-        let thread_tx = tx.clone();
 
         fs::create_dir_all(&unpack_path).await?;
 
+        let archive_bytes = archive_buf;
+        let unpack_path_for_blocking = unpack_path.clone();
         tokio::task::spawn_blocking(move || -> Result<()> {
-            let gz_decoder = GzDecoder::new(archive_cursor);
+            let archive_cursor = Cursor::new(archive_bytes);
+            let gz_decoder = Decoder::new(archive_cursor)?;
             let mut archive = tar::Archive::new(gz_decoder);
-            let entries = archive.entries()?;
-            let total = entries.size_hint().0.max(1);
 
-            let mut count = 0;
-
-            for entry in entries {
+            for entry in archive.entries()? {
                 let mut entry = entry?;
-
-                entry.unpack_in(&unpack_path)?;
-
-                count += 1;
-
-                let progress =
-                    (20.0 + (count as f64 / total as f64 * 60.0)).clamp(20.0, 80.0) as u8;
-
-                thread_tx.progress(progress)?;
+                entry.unpack_in(&unpack_path_for_blocking)?;
             }
+
             Ok(())
         })
         .await??;
+
+        tx.progress(80)?;
 
         tx.stage(InstallStage::PostInstall)?;
         tx.progress(90)?;

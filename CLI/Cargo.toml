@@ -16,17 +16,18 @@ clap = { version = "4.5.37", default-features = false, features = ["cargo", "der
 owo-colors = { version = "4.2.0", default-features = false, features = ["supports-color"] }
 tokio = { version = "1.45.1", default-features = false, features = ["rt-multi-thread"] }
 log = { version = "0.4.27", default-features = false }
-fern = { version = "0.7.1", default-features = false, features = ["colored", "chrono"] }
-chrono = { version = "0.4.41", default-features = false }
-file-rotate = { version = "0.8.0", default-features = false }
-ninja-core = { version = "1.15.0", path = "../core" }
-ninja-mcp = { path = "../MCP", version = "1.14.0" }
+tracing = { version = "0.1.41", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "std", "env-filter", "time"] }
+tracing-appender = { version = "0.2.3", default-features = false }
+tracing-log = { version = "0.2.0", default-features = false, features = ["log-tracer", "std"] }
+ninja-core = { path = "../core" }
+ninja-mcp = { path = "../MCP" }
 clap-verbosity-flag = { version = "3.0.3", default-features = true }
 serde = { version = "1.0.219", default-features = false }
 toml = { version = "1.1.2", default-features = false, features = ["display", "serde"] }
 dialoguer = { version = "0.12.0", default-features = false }
-ninja-http = { path = "../HTTP", version = "1.14.0" }
+ninja-http = { path = "../HTTP" }
 serde_json = "1.0.145"
-anyhow = "1.0.100"
+anyhow = "1.0.104"
 dirs-next = "2.0.0"
 indicatif = { version = "0.18.4", default-features = false }

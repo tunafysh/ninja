@@ -11,11 +11,14 @@
 pub mod download;
 
 use crate::{
-    common::types::{FieldValue, ShurikenState},
+    common::{
+        traits::Reporter,
+        types::{FieldValue, ShurikenState},
+    },
     shuriken::{Shuriken, ShurikenConfig},
 };
 use anyhow::{Error, Result};
-use flate2::{Compression, write::GzEncoder};
+use globwalk::GlobWalkerBuilder;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -23,6 +26,7 @@ use std::{
 };
 use tar::Builder as TarBuilder;
 use tokio::{fs as async_fs, sync::Mutex};
+use zstd::stream::Encoder;
 
 // fuh apache
 
@@ -278,7 +282,27 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     result
 }
 
-pub async fn create_tar_gz_bytes(src_dir: PathBuf) -> Result<Vec<u8>> {
+fn directory_size(path: &Path) -> Result<u64> {
+    let mut total = 0;
+
+    for entry in GlobWalkerBuilder::from_patterns(path, &["**/*"]).build()? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+
+        if metadata.is_file() {
+            total += metadata.len();
+        }
+    }
+
+    Ok(total)
+}
+
+pub async fn create_tar_zstd_bytes(
+    src_dir: PathBuf,
+    compression_level: Option<i32>,
+    threads: Option<u8>,
+    reporter: &dyn Reporter,
+) -> Result<Vec<u8>> {
     if !src_dir.is_dir() {
         return Err(anyhow::Error::msg(format!(
             "Source directory does not exist or is not a directory: {}",
@@ -286,20 +310,23 @@ pub async fn create_tar_gz_bytes(src_dir: PathBuf) -> Result<Vec<u8>> {
         )));
     }
 
+    let _ = directory_size(&src_dir)?;
+    reporter.progress(0)?;
+
     let mut buf = Vec::new();
+    let mut enc = Encoder::new(
+        &mut buf,
+        compression_level.unwrap_or(zstd::DEFAULT_COMPRESSION_LEVEL),
+    )?;
+    enc.multithread(threads.unwrap_or(1) as u32)?;
 
-    {
-        // Gzip wraps the in-memory buffer
-        let enc = GzEncoder::new(&mut buf, Compression::default());
-        let mut tar = TarBuilder::new(enc);
+    let mut tar = TarBuilder::new(enc);
+    tar.append_dir_all(".", &src_dir)?;
+    tar.finish()?;
 
-        // This recursively adds `src_dir` contents under "." in the archive
-        tar.append_dir_all(".", src_dir)?;
-
-        // Finish tar, then finish gzip
-        let enc = tar.into_inner()?; // GzEncoder
-        enc.finish()?; // flush into buf
-    }
+    let enc = tar.into_inner()?;
+    enc.finish()?;
+    reporter.progress(100)?;
 
     Ok(buf)
 }

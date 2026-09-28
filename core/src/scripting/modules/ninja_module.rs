@@ -134,7 +134,7 @@ pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<T
                 let mgr = mgr.clone();
                 let reporter = NoopReporter {};
                 async move {
-                    mgr.install(&name, reporter).await?;
+                    mgr.install(&name, &reporter).await?;
                     Ok(())
                 }
             }

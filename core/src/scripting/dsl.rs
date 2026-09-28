@@ -568,7 +568,7 @@ impl DslEngine {
                 }
                 Command::Install(file_path) => {
                     let reporter = NoopReporter {};
-                    match &self.manager.install(&file_path, reporter).await {
+                    match &self.manager.install(&file_path, &reporter).await {
                         Ok(_) => output.push("Installed successfully".into()),
                         Err(e) => output.push(format!("Install failed: {}", e)),
                     }

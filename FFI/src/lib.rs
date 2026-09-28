@@ -367,6 +367,8 @@ ffi_async!(ninja_remove_shuriken_async, |m: &mut ShurikenManager, n| {
 #[unsafe(no_mangle)]
 /// Forge a shuriken from metadata JSON and source path and optionally output dir.
 ///
+/// The default for `compression_level` is `-1` and for `threads` is `0`.
+///
 /// # Safety
 /// `mgr` must be valid, `meta_json` and `src_path` must be valid C strings.
 /// `out_err` can be null.
@@ -374,6 +376,8 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
     mgr: *mut NinjaManagerOpaque,
     meta_json: *const c_char,
     src_path: *const c_char,
+    compression_level: i32,
+    threads: u8,
     output_dir: *const c_char,
     out_err: *mut *mut c_char,
 ) -> i32 {
@@ -395,6 +399,9 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
             return -1;
         }
     };
+    let compression_level: Option<i32> = (compression_level >= 0).then_some(compression_level);
+
+    let threads: Option<u8> = (threads != 0).then_some(threads);
     let src = match path_from_c(src_path) {
         Some(p) => p,
         None => {
@@ -424,7 +431,15 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
             CStr::from_ptr(output_dir).to_string_lossy().to_string()
         }))
     };
-    match RUNTIME.block_on(manager.forge(meta, src, output_dir_opt)) {
+    let reporter = NoopReporter {};
+    match RUNTIME.block_on(manager.forge(
+        meta,
+        src,
+        compression_level,
+        threads,
+        &reporter,
+        output_dir_opt,
+    )) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("Forge failed: {}", e);
@@ -466,7 +481,7 @@ pub unsafe extern "C" fn ninja_install_shuriken_sync(
         }
     };
     let reporter = NoopReporter {};
-    match RUNTIME.block_on(manager.install(&path, reporter)) {
+    match RUNTIME.block_on(manager.install(&path, &reporter)) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("Install failed: {}", e);

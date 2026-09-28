@@ -7,8 +7,6 @@
 use crate::manager::ShurikenManager;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use flate2::Compression;
-use flate2::{read::GzDecoder, write::GzEncoder};
 use ignore::WalkBuilder;
 use opendal::Operator;
 use opendal::services::Fs;
@@ -17,6 +15,7 @@ use std::fs::File;
 use std::{path::Path, process::Command};
 use tar::{Archive, Builder as TarBuilder};
 use tokio::task;
+use zstd::stream::{Decoder, Encoder};
 
 /// Compression level for backup archives.
 ///
@@ -155,6 +154,7 @@ pub fn uninstall_backup_schedule() -> std::io::Result<()> {
 pub async fn create_backup(
     manager: &ShurikenManager,
     compression: Option<CompressionType>,
+    threads: Option<u8>,
 ) -> Result<()> {
     let backup_dir = manager.root_path.join("backups");
 
@@ -177,19 +177,17 @@ pub async fn create_backup(
     task::spawn_blocking(move || -> Result<()> {
         let backup_file =
             File::create(&backup_file_path_clone).context("Failed to create backup file")?;
-        let level: Compression = if let Some(compression) = compression {
-            match compression {
-                CompressionType::Best => Compression::best(),
-                CompressionType::Normal => Compression::default(),
-                CompressionType::Fast => Compression::fast(),
-            }
-        } else {
-            Compression::default()
+        let level = match compression {
+            Some(CompressionType::Best) => 19,
+            Some(CompressionType::Normal) => zstd::DEFAULT_COMPRESSION_LEVEL,
+            Some(CompressionType::Fast) => 1,
+            None => zstd::DEFAULT_COMPRESSION_LEVEL,
         };
 
-        let mut gzip = GzEncoder::new(backup_file, level);
+        let mut enc = Encoder::new(backup_file, level)?;
+        enc.multithread(threads.unwrap_or(1) as u32)?;
         {
-            let mut tar = TarBuilder::new(&mut gzip);
+            let mut tar = TarBuilder::new(&mut enc);
 
             for entry in WalkBuilder::new(&projects_path)
                 .hidden(false)
@@ -211,7 +209,7 @@ pub async fn create_backup(
             tar.finish().context("Failed to finish tar archive")?;
         }
 
-        gzip.finish().context("Failed to finish gzip compression")?;
+        enc.finish().context("Failed to finish gzip compression")?;
         Ok(())
     })
     .await
@@ -259,7 +257,7 @@ pub async fn restore_backup(manager: &ShurikenManager, file: &Path) -> Result<()
     task::spawn_blocking(move || -> Result<()> {
         let backup_file =
             File::open(&backup_file_path_clone).context("Failed to open backup file")?;
-        let decompressor = GzDecoder::new(backup_file);
+        let decompressor = Decoder::new(backup_file)?;
         let mut archive = Archive::new(decompressor);
 
         archive

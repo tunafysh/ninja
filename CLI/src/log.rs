@@ -1,35 +1,11 @@
-use file_rotate::{ContentLimit, FileRotate, suffix::AppendCount};
 use log::LevelFilter;
-use owo_colors::OwoColorize;
-use std::io::Write;
-use std::sync::Mutex;
+use std::{path::Path, sync::OnceLock};
+use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt};
 
-// Custom writer that wraps FileRotate
-pub struct RotatingWriter {
-    file_rotate: Mutex<FileRotate<AppendCount>>,
-}
+static FILE_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
-impl RotatingWriter {
-    pub fn new(file_rotate: FileRotate<AppendCount>) -> Self {
-        Self {
-            file_rotate: Mutex::new(file_rotate),
-        }
-    }
-}
-
-impl Write for RotatingWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut file_rotate = self.file_rotate.lock().unwrap();
-        file_rotate.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        let mut file_rotate = self.file_rotate.lock().unwrap();
-        file_rotate.flush()
-    }
-}
-
-pub fn setup_logger(level: LevelFilter) -> Result<(), fern::InitError> {
+pub fn setup_logger(level: LevelFilter) -> Result<(), Box<dyn std::error::Error>> {
     let log_path = match std::env::consts::OS {
         "linux" => format!(
             "{}{}",
@@ -49,46 +25,54 @@ pub fn setup_logger(level: LevelFilter) -> Result<(), fern::InitError> {
         _ => "logs/shurikenctl.log".to_string(),
     };
 
-    // Ensure the directory exists
-    if let Some(parent) = std::path::Path::new(&log_path).parent() {
-        std::fs::create_dir_all(parent).map_err(fern::InitError::Io)?;
-    }
+    let log_dir = Path::new(&log_path)
+        .parent()
+        .ok_or("log path is missing a parent directory")?;
+    std::fs::create_dir_all(log_dir)?;
 
-    // Configure log rotation
-    let log_rotate = FileRotate::new(
-        log_path,
-        AppendCount::new(5),
-        ContentLimit::Bytes(10_000_000),
-        file_rotate::compression::Compression::None,
-        None,
-    );
+    let file_appender = rolling::daily(log_dir, "shurikenctl.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let _ = FILE_GUARD.set(guard);
 
-    let rotating_writer = RotatingWriter::new(log_rotate);
+    let level_filter = match level {
+        LevelFilter::Off => "off".to_string(),
+        LevelFilter::Error => "error".to_string(),
+        LevelFilter::Warn => "warn".to_string(),
+        LevelFilter::Info => "info".to_string(),
+        LevelFilter::Debug => "debug".to_string(),
+        LevelFilter::Trace => "trace".to_string(),
+    };
 
-    let colors = fern::colors::ColoredLevelConfig::new()
-        .info(fern::colors::Color::Blue)
-        .debug(fern::colors::Color::Cyan)
-        .warn(fern::colors::Color::Yellow)
-        .error(fern::colors::Color::Red);
+    let filter = EnvFilter::new(level_filter.clone()).add_directive("rustpython=off".parse()?);
 
-    fern::Dispatch::new()
-        .format(move |out, message, record| {
-            out.finish(format_args!(
-                "[{}] [{}] {:15}: {}",
-                chrono::Local::now().format("%d/%m/%Y %H:%M:%S"),
-                colors.color(record.level()),
-                record.target().magenta(),
-                message
-            ))
-        })
-        .level(level)
-        .filter(|metadata| {
-            // Block all logs from RustPython
-            !metadata.target().starts_with("rustpython")
-        })
-        .chain(std::io::stdout())
-        .chain(Box::new(rotating_writer) as Box<dyn Write + Send>)
-        .apply()?;
+    tracing_log::LogTracer::builder()
+        .with_max_level(level)
+        .init()?;
 
+    let stdout_layer = fmt::layer()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_span_events(fmt::format::FmtSpan::NEW | fmt::format::FmtSpan::CLOSE)
+        .with_ansi(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_filter(filter.clone());
+
+    let file_layer = fmt::layer()
+        .with_writer(non_blocking)
+        .with_target(true)
+        .with_ansi(false)
+        .with_span_events(fmt::format::FmtSpan::NEW | fmt::format::FmtSpan::CLOSE)
+        .with_file(true)
+        .with_line_number(true)
+        .with_filter(filter);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(file_layer);
+    tracing::subscriber::set_global_default(subscriber)?;
+
+    tracing::info!(target: "ninja::cli", "logger initialized" );
     Ok(())
 }

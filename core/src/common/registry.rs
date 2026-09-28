@@ -246,7 +246,7 @@ async fn fetch_registry_with_client(client: &reqwest::Client, url: &str) -> Resu
 
 pub async fn download_shuriken<R>(path: &Path, url: &str, tx: &R) -> Result<(), anyhow::Error>
 where
-    R: Reporter + Send + Sync + 'static,
+    R: Reporter,
 {
     let response = reqwest::get(url).await?;
 

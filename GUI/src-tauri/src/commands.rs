@@ -267,7 +267,7 @@ pub fn open_shuriken(path: String) -> Result<ArmoryMetadata, String> {
         .map_err(|e| e.to_string())?;
 
     let metadata: ArmoryMetadata =
-        serde_cbor::from_slice(&metadata_buf).map_err(|e| e.to_string())?;
+        into_writer(&metadata_buf).map_err(|e| e.to_string())?;
 
     Ok(metadata)
 }
@@ -281,7 +281,7 @@ pub async fn install_shuriken(
     let manager = manager.lock().await;
     let reporter = TauriReporter { app };
     manager
-        .install(&source, reporter)
+        .install(&source, &reporter)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -303,7 +303,7 @@ pub async fn backup_now(
     manager: State<'_, Mutex<ShurikenManager>>,
 ) -> Result<(), String> {
     let manager = manager.lock().await;
-    create_backup(&manager, Some(level))
+    create_backup(&manager, Some(level), None)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())

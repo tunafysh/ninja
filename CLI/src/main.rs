@@ -1,4 +1,3 @@
-use ::log::info;
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
@@ -25,6 +24,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{fs, sync::Mutex};
+use tracing::info;
 
 mod log;
 use log::setup_logger;
@@ -40,16 +40,14 @@ struct CliReporter {
 }
 
 impl CliReporter {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let bar = ProgressBar::new(100);
-
         bar.set_style(
             ProgressStyle::default_bar()
                 .template("[{bar:30.cyan/blue}] {pos}% {msg}")
-                .unwrap()
+                .expect("progress bar template is valid")
                 .progress_chars("=> "),
         );
-
         Self { bar }
     }
 }
@@ -168,7 +166,13 @@ pub struct ForgeArgs {
     pub path: PathBuf,
     /// optional path to something like forge-options.json to skip inputs (CI friendly)
     #[arg(short = 'c', long)]
-    pub options: Option<PathBuf>,
+    pub options_path: Option<PathBuf>,
+    /// Optional parameter for setting the compression level with 19 being the highest, 3 being the default and 0 being the lowest.
+    #[arg(short = 'l', long)]
+    pub level: Option<i32>,
+    /// Number of threads to use for compression.
+    #[arg(short = 'j', long = "threads")]
+    pub threads: Option<u8>,
     /// optional output path
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
@@ -212,6 +216,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize logger
     setup_logger(args.verbose.into())?;
+
+    let reporter = CliReporter::new();
 
     if args.repl {
         repl_mode().await?;
@@ -402,17 +408,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server(args.port).await?;
         }
         Some(Commands::Install(args)) => {
-            let reporter = CliReporter {
-                bar: ProgressBar::hidden(),
-            };
             info!("Installing a shuriken");
-            manager.install(&args.name, reporter).await?;
+            manager.install(&args.name, &reporter).await?;
         }
         Some(Commands::Forge(args)) => {
             use serde_json::from_str;
             use tokio::fs;
 
-            if let Some(config_path) = args.options {
+            if let Some(config_path) = args.options_path {
                 // --- Load metadata from config file ---
                 let serialized_metadata = fs::read_to_string(&config_path).await?;
                 let metadata: ArmoryMetadata = from_str(&serialized_metadata)?;
@@ -421,12 +424,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // No need to manually create "blacksmith" here,
                 // `forge` already ensures the directory exists.
-                manager.forge(metadata, args.path, args.output).await?;
+                manager
+                    .forge(
+                        metadata,
+                        args.path,
+                        args.level,
+                        args.threads,
+                        &reporter,
+                        args.output,
+                    )
+                    .await?;
             } else {
                 let metadata = collect_forge_metadata()?;
 
                 println!("{}", "Creating shuriken...".bold());
-                manager.forge(metadata, args.path, args.output).await?;
+                manager
+                    .forge(
+                        metadata,
+                        args.path,
+                        args.level,
+                        args.threads,
+                        &reporter,
+                        args.output,
+                    )
+                    .await?;
             }
         }
         Some(Commands::Remove(args)) => {
@@ -460,9 +481,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let reference = ShurikenReference::parse(&install_args.reference)?;
 
-                    let reporter = CliReporter::new();
-
-                    manager.install_from_registry(&reference, reporter).await?;
+                    manager.install_from_registry(&reference, &reporter).await?;
                 }
             }
         }
