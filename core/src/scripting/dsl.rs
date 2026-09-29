@@ -415,9 +415,7 @@ impl DslEngine {
                             let path = &&self.manager.root_path;
                             shuriken
                                 .configure(
-                                    path,
-                                    &*&self.manager.engine.lock().await,
-                                    Some(self.manager.clone()),
+                                    path
                                 )
                                 .await
                                 .map_err(Error::msg)?;

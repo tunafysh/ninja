@@ -221,7 +221,7 @@ impl ShurikenManager {
             info!("Found shuriken for configuration: {}", name);
             let path = &self.root_path;
             shuriken
-                .configure(path, &*self.engine.lock().await, Some(self.clone()))
+                .configure(path)
                 .await?
         } else {
             warn!("Shuriken not found for configuration: {}", name);
@@ -831,9 +831,7 @@ impl ShurikenManager {
         {
             shuriken
                 .configure(
-                    &self.root_path,
-                    &*self.engine.lock().await,
-                    Some(self.clone()),
+                    &self.root_path
                 )
                 .await?;
         }
