@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use url::Url;
 
@@ -244,10 +244,9 @@ async fn fetch_registry_with_client(client: &reqwest::Client, url: &str) -> Resu
     serde_yaml::from_str(&text).with_context(|| format!("Failed to parse registry '{}'", url))
 }
 
-pub async fn download_shuriken<R>(path: &Path, url: &str, tx: &R) -> Result<(), anyhow::Error>
-where
-    R: Reporter,
+pub async fn download_shuriken(path: &Path, url: &str, reporter: Arc<dyn Reporter>,) -> Result<(), anyhow::Error>
 {
+    let tx = reporter.clone();
     let response = reqwest::get(url).await?;
 
     let total_size = response.content_length().unwrap_or(0);

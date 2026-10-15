@@ -10,6 +10,7 @@ use ninja::{
     scripting::dsl::DslEngine,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{collections::HashMap, io::Read, path::PathBuf};
 use tauri::State;
 use tauri::{AppHandle, Manager};
@@ -280,8 +281,9 @@ pub async fn install_shuriken(
 ) -> Result<(), String> {
     let manager = manager.lock().await;
     let reporter = TauriReporter { app };
+    let reporter = Arc::new(reporter);
     manager
-        .install(&source, &reporter)
+        .install(&source, reporter)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())

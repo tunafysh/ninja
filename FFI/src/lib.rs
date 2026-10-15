@@ -3,6 +3,7 @@ use ninja::common::{structs::NoopReporter, types::ArmoryMetadata};
 use ninja::manager::ShurikenManager;
 use once_cell::sync::Lazy;
 use serde::Serialize;
+use std::sync::Arc;
 use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_int, c_void},
@@ -432,12 +433,13 @@ pub unsafe extern "C" fn ninja_forge_shuriken_sync(
         }))
     };
     let reporter = NoopReporter {};
+    let reporter = Arc::new(reporter);
     match RUNTIME.block_on(manager.forge(
         meta,
         src,
         compression_level,
         threads,
-        &reporter,
+        reporter,
         output_dir_opt,
     )) {
         Ok(_) => 0,
@@ -481,7 +483,8 @@ pub unsafe extern "C" fn ninja_install_shuriken_sync(
         }
     };
     let reporter = NoopReporter {};
-    match RUNTIME.block_on(manager.install(&path, &reporter)) {
+    let reporter = Arc::new(reporter);
+    match RUNTIME.block_on(manager.install(&path, reporter)) {
         Ok(_) => 0,
         Err(e) => {
             let msg = format!("Install failed: {}", e);

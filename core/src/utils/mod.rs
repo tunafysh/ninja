@@ -297,12 +297,13 @@ fn directory_size(path: &Path) -> Result<u64> {
     Ok(total)
 }
 
-pub async fn create_tar_zstd_bytes(
+pub fn create_tar_zstd<W: std::io::Write>(
     src_dir: PathBuf,
+    output: W,
     compression_level: Option<i32>,
     threads: Option<u8>,
-    reporter: &dyn Reporter,
-) -> Result<Vec<u8>> {
+    reporter: Arc<dyn Reporter>,
+) -> Result<W> {
     if !src_dir.is_dir() {
         return Err(anyhow::Error::msg(format!(
             "Source directory does not exist or is not a directory: {}",
@@ -313,9 +314,8 @@ pub async fn create_tar_zstd_bytes(
     let _ = directory_size(&src_dir)?;
     reporter.progress(0)?;
 
-    let mut buf = Vec::new();
     let mut enc = Encoder::new(
-        &mut buf,
+        output,
         compression_level.unwrap_or(zstd::DEFAULT_COMPRESSION_LEVEL),
     )?;
     enc.multithread(threads.unwrap_or(1) as u32)?;
@@ -325,10 +325,10 @@ pub async fn create_tar_zstd_bytes(
     tar.finish()?;
 
     let enc = tar.into_inner()?;
-    enc.finish()?;
+    let result = enc.finish()?;
     reporter.progress(100)?;
 
-    Ok(buf)
+    Ok(result)
 }
 
 // Shared logic for loading shurikens from disk

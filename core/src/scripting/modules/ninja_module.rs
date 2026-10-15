@@ -133,8 +133,9 @@ pub(crate) fn make_ninja_module(lua: &Lua, manager: ShurikenManager) -> Result<T
             move |_, name: String| {
                 let mgr = mgr.clone();
                 let reporter = NoopReporter {};
+                let reporter = Arc::new(reporter);
                 async move {
-                    mgr.install(&name, &reporter).await?;
+                    mgr.install(&name, reporter).await?;
                     Ok(())
                 }
             }

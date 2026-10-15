@@ -297,7 +297,6 @@ impl Shuriken {
             warn!("Shuriken '{}' has no configuration", self.metadata.name);
         }
 
-
         // TODO: implement in the future
         // if let Some(script_path) = &self.metadata.script_path {
         //     let resolved_script = parse_path(&root_path.to_path_buf(), script_path.display().to_string(), None);

@@ -1,6 +1,6 @@
 use log::{error, info, warn};
 use ninja::{common::structs::NoopReporter, manager::ShurikenManager};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use tauri::State;
 use tokio::sync::Mutex;
 use url::Url;
@@ -30,7 +30,8 @@ pub async fn handle_shurikenctl(url: &str, manager: State<'_, Mutex<ShurikenMana
             if let Some(pkg) = query.get("pkg") {
                 info!("Installing Shuriken: {}", pkg);
                 let reporter = NoopReporter {};
-                if let Err(e) = manager.install(&pkg, &reporter).await {
+                let reporter = Arc::new(reporter);
+                if let Err(e) = manager.install(&pkg, reporter).await {
                     error!("Failed to install '{}': {}", pkg, e);
                 }
             } else {

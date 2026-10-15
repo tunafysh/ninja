@@ -413,12 +413,7 @@ impl DslEngine {
                         let mut shurikens = self.manager.shurikens.write().await;
                         if let Some(shuriken) = shurikens.get_mut(name) {
                             let path = &&self.manager.root_path;
-                            shuriken
-                                .configure(
-                                    path
-                                )
-                                .await
-                                .map_err(Error::msg)?;
+                            shuriken.configure(path).await.map_err(Error::msg)?;
 
                             output.push(format!(
                                 "Generated configuration for shuriken {} successfully.",
@@ -566,7 +561,8 @@ impl DslEngine {
                 }
                 Command::Install(file_path) => {
                     let reporter = NoopReporter {};
-                    match &self.manager.install(&file_path, &reporter).await {
+                    let reporter = Arc::new(reporter);
+                    match &self.manager.install(&file_path, reporter).await {
                         Ok(_) => output.push("Installed successfully".into()),
                         Err(e) => output.push(format!("Install failed: {}", e)),
                     }

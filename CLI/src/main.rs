@@ -218,6 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logger(args.verbose.into())?;
 
     let reporter = CliReporter::new();
+    let reporter = Arc::new(reporter);
 
     if args.repl {
         repl_mode().await?;
@@ -409,7 +410,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Install(args)) => {
             info!("Installing a shuriken");
-            manager.install(&args.name, &reporter).await?;
+            manager.install(&args.name, reporter.clone()).await?;
         }
         Some(Commands::Forge(args)) => {
             use serde_json::from_str;
@@ -430,7 +431,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         args.path,
                         args.level,
                         args.threads,
-                        &reporter,
+                        reporter.clone(),
                         args.output,
                     )
                     .await?;
@@ -444,7 +445,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         args.path,
                         args.level,
                         args.threads,
-                        &reporter,
+                        reporter.clone(),
                         args.output,
                     )
                     .await?;
@@ -481,7 +482,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let reference = ShurikenReference::parse(&install_args.reference)?;
 
-                    manager.install_from_registry(&reference, &reporter).await?;
+                    manager.install_from_registry(&reference, reporter.clone()).await?;
                 }
             }
         }
