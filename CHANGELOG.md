@@ -116,3 +116,6 @@
 * fixed path parsing from script_path and postinstall
 * Fixed `configure` hanging in `install_file`
 * Fixing Os error 2 the file cannot be found
+
+## 1.16.1
+* Switched the installation and forging logic to streaming instead of holding it in memory.
